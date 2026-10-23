@@ -1,0 +1,65 @@
+--- a/src/base/seedlink/plugins/sockplugin/sock_plugin.c
++++ b/src/base/seedlink/plugins/sockplugin/sock_plugin.c
+@@ -18,7 +18,12 @@
+ #include <errno.h>
+ #include <signal.h>
+ #include <string.h>
++#ifdef _WIN32
++#include "windows_socket_private.h"
++#include "../../libs/slutils/native_getopt.h"
++#else
+ #include <unistd.h>
++#endif
+ #include <stdarg.h>
+ #include <time.h>
+ 
+@@ -31,7 +36,7 @@
+ int verbose = 0;
+ int ignoreeof = 0;
+ int port = 4000;
+-char *host = '\0';
++char *host = NULL;
+ 
+ int seed_size = 512;      /* OK default for now */
+ unsigned char buf[1024];  /* The data buffer */
+@@ -69,7 +74,7 @@
+ 
+   extern char *optarg;
+   extern int optind;
+-  char *match = '\0';
++  char *match = NULL;
+   char *netcode = 0;
+   int errflg=0;
+   int i, c;
+@@ -116,7 +121,7 @@
+   if ( errflg ) 
+     usage(argc,argv);
+ 
+-  if ( host == '\0' ) {
++  if ( host == NULL ) {
+     lprintf(0,"Remote hostname is required! Use the -s argument");
+     exit(1);
+   }
+@@ -129,10 +134,22 @@
+   lprintf(2,"host: %s", host);
+   lprintf(2,"port: %d", port);
+ 
++#ifdef _WIN32
++  i = sock_winsock_start();
++  if (i) {
++    lprintf(0, "Winsock startup failed: %d", i);
++    exit(1);
++  }
++#endif
++
+   while ( 1 ) {
+     i = process_telemetry(host, port, buf, match, netcode, seed_size);
+     if (!ignoreeof && !i) break;
++#ifdef _WIN32
++    sock_sleep(sleeptime);
++#else
+     sleep(sleeptime);
++#endif
+   }
+ 
+   exit(0);

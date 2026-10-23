@@ -1,0 +1,48 @@
+--- a/libs/seiscomp/wired/ipacl.h
++++ b/libs/seiscomp/wired/ipacl.h
+@@ -137,8 +137,8 @@
+ };
+ 
+ 
+-std::string toString(const IPACL &acl);
+-bool fromString(IPACL &acl, const std::string &str);
++SC_SYSTEM_CORE_API std::string toString(const IPACL &acl);
++SC_SYSTEM_CORE_API bool fromString(IPACL &acl, const std::string &str);
+ 
+ 
+ inline IPACL::const_iterator IPACL::begin() const {
+--- a/libs/seiscomp/wired/server.h
++++ b/libs/seiscomp/wired/server.h
+@@ -42,8 +42,8 @@
+ };
+ 
+ 
+-std::string toString(const BindAddress &bind);
+-bool fromString(BindAddress &bind, std::string_view sv);
++SC_SYSTEM_CORE_API std::string toString(const BindAddress &bind);
++SC_SYSTEM_CORE_API bool fromString(BindAddress &bind, std::string_view sv);
+ 
+ 
+ DEFINE_SMARTPOINTER(Server);
+--- a/libs/seiscomp/wired/devices/socket.h
++++ b/libs/seiscomp/wired/devices/socket.h
+@@ -136,7 +136,7 @@
+ 			 * @return The number of bytes written including the terminating
+ 			 *         null byte.
+ 			 */
+-			int toString(char *, bool anonymize = false) const;
++			SC_SYSTEM_CORE_API int toString(char *, bool anonymize = false) const;
+ 
+ 			uint32_t dwords[DWORDS];
+ 			uint8_t bytes[DWORDS*4];
+--- a/apps/messaging/scmaster/statistics/statistics.h
++++ b/apps/messaging/scmaster/statistics/statistics.h
+@@ -36,7 +36,7 @@
+ 
+ 
+ DEFINE_SMARTPOINTER(ServerStatistics);
+-struct SC_BROKER_API ServerStatistics : Core::BaseObject {
++struct ServerStatistics : Core::BaseObject {
+ 	DECLARE_SC_CLASS(ServerStatistics)
+ 
+ 	ServerStatistics();

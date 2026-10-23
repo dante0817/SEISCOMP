@@ -1,0 +1,81 @@
+--- a/src/base/contrib-sed/libs/3rd-party/nll/alomax_matrix/alomax_matrix.c
++++ b/src/base/contrib-sed/libs/3rd-party/nll/alomax_matrix/alomax_matrix.c
+@@ -11,6 +11,9 @@
+ #include <string.h>
+ #include <math.h>
+ #include <float.h>
++#ifdef _WIN32
++#include <stdint.h>
++#endif
+ #include "alomax_matrix.h"
+ #include "alomax_matrix_svd.h"
+ #include "eigv.h"
+@@ -254,6 +257,18 @@
+ int matrix_double_check_diagonal_non_zero_inverse(MatrixDouble mtx_original, int i_original_size, int verify_inverse, int verbose) {
+ 
+     int i;
++#ifdef _WIN32
++    int *inon_zero;
++    if (i_original_size <= 0 || (size_t) i_original_size > SIZE_MAX / sizeof(*inon_zero)) {
++        snprintf(error_message, sizeof(error_message), "ERROR: in matrix_double_check_diagonal_non_zero_inverse(): invalid inon_zero size.");
++        return (-1);
++    }
++    inon_zero = malloc((size_t) i_original_size * sizeof(*inon_zero));
++    if (inon_zero == NULL) {
++        snprintf(error_message, sizeof(error_message), "ERROR: in matrix_double_check_diagonal_non_zero_inverse(): allocating inon_zero.");
++        return (-1);
++    }
++#endif
+ 
+     // estimate tolerance
+     double tolerance = 0.0;
+@@ -266,7 +281,9 @@
+ 
+ 
+     // check for zeros on diagonal
++#ifndef _WIN32
+     int inon_zero[i_original_size];
++#endif
+     int i_checked_size = 0;
+     for (i = 0; i < i_original_size; i++) {
+         if (fabs(mtx_original[i][i]) < tolerance) {
+@@ -279,6 +296,9 @@
+ 
+     if (i_checked_size < 1) {
+         snprintf(error_message, sizeof (error_message), "ERROR: in matrix_double_check_diagonal_non_zero_inverse(): no non-zero diagonal elements.");
++#ifdef _WIN32
++        free(inon_zero);
++#endif
+         return (-1);
+     }
+ 
+@@ -288,6 +308,9 @@
+     if (i_checked_size != i_original_size) {
+         if ((mtx_checked = matrix_double(i_checked_size, i_checked_size)) < 0) {
+             snprintf(error_message, sizeof (error_message), "ERROR: in matrix_double_check_diagonal_non_zero_inverse(): allocating matrix: mtx_checked.");
++#ifdef _WIN32
++            free(inon_zero);
++#endif
+             return (-1);
+         }
+         int nrow_original, ncol_original;
+@@ -335,6 +358,9 @@
+         snprintf(error_message, sizeof (error_message), "ERROR: in matrix_double_check_diagonal_non_zero_inverse()->matrix_double_inverse(): %d", istat);
+         if (verify_inverse)
+             free_matrix_double(mtx_checked_before_inverse, i_checked_size, i_checked_size);
++#ifdef _WIN32
++        free(inon_zero);
++#endif
+         return (-1);
+     }
+ 
+@@ -367,6 +393,9 @@
+         free_matrix_double(mtx_checked, i_checked_size, i_checked_size);
+     }
+ 
++#ifdef _WIN32
++    free(inon_zero);
++#endif
+     return (ierror);
+ 
+ }

@@ -1,0 +1,14 @@
+--- a/src/base/contrib-sed/plugins/locator/nll/nll_locator.cpp
++++ b/src/base/contrib-sed/plugins/locator/nll/nll_locator.cpp
+@@ -19,6 +19,11 @@
+ #define EXTERN_MODE
+ 
+ #include "nll_locator.h"
++
++#ifdef _WIN32
++// Parse MSVC's tm-based manipulators before the NLL C projection function tm.
++#include <iomanip>
++#endif
+ 
+ extern "C" {
+ 

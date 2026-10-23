@@ -1,0 +1,14 @@
+--- a/src/base/common/libs/seiscomp/io/recordstream/sdsarchive.h
++++ b/src/base/common/libs/seiscomp/io/recordstream/sdsarchive.h
+@@ -43,7 +43,11 @@
+ 	//  Xstruction
+ 	// ----------------------------------------------------------------------
+ 	public:
++#ifdef _WIN32
++		SC_SYSTEM_CORE_API SDSArchive();
++#else
+ 		SDSArchive();
++#endif
+ 		SDSArchive(const std::string arcroot);
+ 		~SDSArchive() override;
+ 

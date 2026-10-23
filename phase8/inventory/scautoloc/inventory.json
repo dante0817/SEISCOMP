@@ -1,0 +1,401 @@
+{
+  "phase": "5A source inventory (static/direct includes only; NOT a link closure)",
+  "frozen_revision": {
+    "main": "f63cde995e04151dc816151359a036b8b15f6019",
+    "common": "92d2202a6065aad36ae7d4a9bf960b6fb91222d2"
+  },
+  "source_roots": {
+    "main": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main",
+    "common": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\common"
+  },
+  "sources": [
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\app.cpp",
+      "sha256": "b648c91f23787f6ce6b6ccf87d8eeba6e1fef3a220e0a629ed4b7558a126689a",
+      "direct_includes": [
+        "seiscomp/logging/log.h",
+        "seiscomp/client/inventory.h",
+        "seiscomp/datamodel/eventparameters.h",
+        "seiscomp/datamodel/journaling_package.h",
+        "seiscomp/datamodel/utils.h",
+        "seiscomp/utils/files.h",
+        "seiscomp/config/config.h",
+        "seiscomp/core/datamessage.h",
+        "seiscomp/io/archive/xmlarchive.h",
+        "algorithm",
+        "list",
+        "app.h",
+        "scutil.h"
+      ],
+      "keyword_hits": {
+        "client_application": 7,
+        "messaging_network": 6
+      }
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\associator.cpp",
+      "sha256": "00f940d655a956f76937cef113bdb36c530ea2d8a71892ade67389b482b014d9",
+      "direct_includes": [
+        "seiscomp/logging/log.h",
+        "algorithm",
+        "cmath",
+        "seiscomp/seismology/ttt.h",
+        "util.h",
+        "associator.h"
+      ],
+      "keyword_hits": {
+        "factory": 1
+      }
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\autoloc.cpp",
+      "sha256": "2413d73ced7223e1269579f925000b5d6efcafea9e309424cf041423be5e432a",
+      "direct_includes": [
+        "seiscomp/client/inventory.h",
+        "seiscomp/datamodel/utils.h",
+        "seiscomp/logging/log.h",
+        "seiscomp/seismology/ttt.h",
+        "algorithm",
+        "cmath",
+        "util.h",
+        "scutil.h",
+        "autoloc.h",
+        "stationlocationfile.h"
+      ],
+      "keyword_hits": {
+        "factory": 4
+      }
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\config.cpp",
+      "sha256": "049d9e54922e4e95a690c136eab4ba17a943c3952c79deccdb3cfa018d5d083c",
+      "direct_includes": [
+        "seiscomp/logging/log.h",
+        "config.h"
+      ],
+      "keyword_hits": {}
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\datamodel.cpp",
+      "sha256": "4e66ca88e81de3f044162d3b4b7d290986d6caeae9c1dc52e200763eee5d15a2",
+      "direct_includes": [
+        "seiscomp/logging/log.h",
+        "assert.h",
+        "cmath",
+        "iostream",
+        "algorithm",
+        "set",
+        "seiscomp/math/mean.h",
+        "datamodel.h",
+        "util.h",
+        "scutil.h"
+      ],
+      "keyword_hits": {}
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\locator.cpp",
+      "sha256": "360bb8134b16bae37ea8223c43905f7672016caace3e5d3a240af5df0b3f7978",
+      "direct_includes": [
+        "seiscomp/logging/log.h",
+        "string",
+        "vector",
+        "seiscomp/datamodel/pick.h",
+        "seiscomp/datamodel/origin.h",
+        "seiscomp/datamodel/sensorlocation.h",
+        "util.h",
+        "locator.h"
+      ],
+      "keyword_hits": {
+        "factory": 1
+      }
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\nucleator.cpp",
+      "sha256": "18d81272f632c2e34bbf5fe70c7c4d0bc9caf71d20def2178460f29f43889177",
+      "direct_includes": [
+        "seiscomp/logging/log.h",
+        "seiscomp/core/strings.h",
+        "iostream",
+        "fstream",
+        "sstream",
+        "string",
+        "vector",
+        "set",
+        "list",
+        "cmath",
+        "util.h",
+        "locator.h",
+        "nucleator.h"
+      ],
+      "keyword_hits": {}
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\objectqueue.cpp",
+      "sha256": "6a90242e95ca9e9419df32df3cbd597e4c4fe64469294d08ec215de8ccb5dbf1",
+      "direct_includes": [
+        "objectqueue.h",
+        "algorithm",
+        "seiscomp/datamodel/eventparameters.h",
+        "seiscomp/datamodel/pick.h",
+        "seiscomp/datamodel/amplitude.h",
+        "seiscomp/datamodel/origin.h",
+        "seiscomp/logging/log.h"
+      ],
+      "keyword_hits": {}
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\scutil.cpp",
+      "sha256": "f418be3db804665038cbcc20cf3f241f281b09e26ccd6d1e62f53909a70131c8",
+      "direct_includes": [
+        "seiscomp/logging/log.h",
+        "seiscomp/datamodel/publicobject.h",
+        "seiscomp/datamodel/pick.h",
+        "seiscomp/datamodel/inventory.h",
+        "seiscomp/datamodel/network.h",
+        "seiscomp/datamodel/station.h",
+        "seiscomp/datamodel/utils.h",
+        "map",
+        "string",
+        "sstream",
+        "iomanip",
+        "scutil.h"
+      ],
+      "keyword_hits": {}
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\util.cpp",
+      "sha256": "f4608dc10cda01b2f6480d325d210d1300e1d9e7302d978023ecd9d4963d7554",
+      "direct_includes": [
+        "seiscomp/logging/log.h",
+        "seiscomp/core/datetime.h",
+        "seiscomp/math/geo.h",
+        "seiscomp/math/mean.h",
+        "assert.h",
+        "vector",
+        "iostream",
+        "fstream",
+        "iomanip",
+        "sstream",
+        "string",
+        "map",
+        "algorithm",
+        "cmath",
+        "util.h",
+        "locator.h",
+        "nucleator.h",
+        "datamodel.h"
+      ],
+      "keyword_hits": {
+        "factory": 1
+      }
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\main.cpp",
+      "sha256": "e3c65e5f2a4415d3878ae848ea85e4a3994de149fff751d658418902d6d0fa55",
+      "direct_includes": [
+        "seiscomp/logging/log.h",
+        "app.h"
+      ],
+      "keyword_hits": {}
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\stationconfig.cpp",
+      "sha256": "20f2343da1f817e9dd5e4317a485077b1ea5d22e6610be2019691969a2f0b4e5",
+      "direct_includes": [
+        "stationconfig.h",
+        "iostream",
+        "fstream",
+        "algorithm",
+        "vector",
+        "sys/types.h",
+        "sys/stat.h",
+        "unistd.h",
+        "seiscomp/logging/log.h"
+      ],
+      "keyword_hits": {
+        "windows_unix_os_apis": 1
+      }
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\stationlocationfile.cpp",
+      "sha256": "c139872c73dd87cd410724b3856a70f3f9cfa6f60d882cacaf9a03e164ffc546",
+      "direct_includes": [
+        "seiscomp/logging/log.h",
+        "stationlocationfile.h",
+        "vector",
+        "map",
+        "iostream",
+        "fstream",
+        "string"
+      ],
+      "keyword_hits": {}
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\picklog.cpp",
+      "sha256": "18c73bdb6d122492155661636b67e17a66196ebe98f2fd8974fe7c53fd81cd52",
+      "direct_includes": [
+        "seiscomp/logging/log.h",
+        "datamodel.h",
+        "util.h",
+        "picklog.h"
+      ],
+      "keyword_hits": {}
+    }
+  ],
+  "headers": [
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\app.h",
+      "sha256": "0e586d4084a74b93eb4fd6b828f37451bf04175ed23aea683e9a3e5651579791",
+      "direct_includes": [
+        "queue",
+        "seiscomp/datamodel/pick.h",
+        "seiscomp/datamodel/amplitude.h",
+        "seiscomp/datamodel/origin.h",
+        "seiscomp/datamodel/eventparameters.h",
+        "seiscomp/datamodel/waveformstreamid.h",
+        "seiscomp/client/application.h",
+        "autoloc.h",
+        "objectqueue.h"
+      ]
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\associator.h",
+      "sha256": "722ef20a7a40a196cc194094abec428490bbc2aa593e1aaeb74ce6731aa67a9e",
+      "direct_includes": [
+        "datamodel.h"
+      ]
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\autoloc.h",
+      "sha256": "5ac9cc8326a9c7713b80b25f022ec637749170a5137aab6e9189a88d57878b55",
+      "direct_includes": [
+        "string",
+        "map",
+        "set",
+        "seiscomp/seismology/depthlookup.h",
+        "datamodel.h",
+        "nucleator.h",
+        "associator.h",
+        "locator.h",
+        "config.h",
+        "stationconfig.h",
+        "picklog.h"
+      ]
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\config.h",
+      "sha256": "90769fe90f0456d5ca4be90e0b6f4d82751ad367169406712bd6eace2dee9a5a",
+      "direct_includes": [
+        "seiscomp/config/config.h",
+        "string",
+        "vector",
+        "map",
+        "set"
+      ]
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\datamodel.h",
+      "sha256": "ef75af2969733da942a027c2f21106aee7960e4b4254e075688065e055b4934b",
+      "direct_includes": [
+        "string",
+        "map",
+        "vector",
+        "seiscomp/core/baseobject.h",
+        "seiscomp/datamodel/station.h",
+        "seiscomp/datamodel/origin.h",
+        "seiscomp/datamodel/pick.h",
+        "seiscomp/datamodel/amplitude.h"
+      ]
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\locator.h",
+      "sha256": "914a895c0ce56b58ebf3519bd791ec5066cb4520d3830352e67019505f610632",
+      "direct_includes": [
+        "string",
+        "map",
+        "seiscomp/seismology/locatorinterface.h",
+        "datamodel.h"
+      ]
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\nucleator.h",
+      "sha256": "717e44d886429538c98c1ba0018fd52129180bbfde78ce21fbeca21942db17a4",
+      "direct_includes": [
+        "iostream",
+        "fstream",
+        "string",
+        "vector",
+        "set",
+        "map",
+        "datamodel.h",
+        "locator.h"
+      ]
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\objectqueue.h",
+      "sha256": "7221acd39f2ea1551b5f29fd3a0721e25915acd3377e4bb1a1cb48687f45024b",
+      "direct_includes": [
+        "queue",
+        "seiscomp/datamodel/publicobject.h",
+        "seiscomp/datamodel/eventparameters.h"
+      ]
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\picklog.h",
+      "sha256": "6570e6ec5532eab8e8d8e4871e6bac7c319a8aac1c70949bd50be44840089782",
+      "direct_includes": [
+        "string",
+        "iostream",
+        "fstream"
+      ]
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\scutil.h",
+      "sha256": "4c0d1648cb25d32d6b72547ef178d5e49d5cc3bc14d63e0873771086a0f50318",
+      "direct_includes": [
+        "seiscomp/datamodel/origin.h"
+      ]
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\stationconfig.h",
+      "sha256": "3d144e4eaf3fbfdab27d24d9bfef1628958c5954504f4118a874ccc96885c220",
+      "direct_includes": [
+        "string",
+        "map",
+        "seiscomp/core/datetime.h"
+      ]
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\stationlocationfile.h",
+      "sha256": "f2892e0bf1a9340069f9d9dbdabce9ee9985d72049909cf8191fe95e237b2703",
+      "direct_includes": [
+        "seiscomp/datamodel/inventory.h",
+        "string"
+      ]
+    },
+    {
+      "path": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\source-snapshot\\main\\apps\\processing\\scautoloc\\util.h",
+      "sha256": "c30e6e580133fd2b2a2663a3c28287842626822d98a478b2e3889c3492b6ab2b",
+      "direct_includes": [
+        "string",
+        "vector",
+        "seiscomp/core/datetime.h",
+        "seiscomp/datamodel/pick.h",
+        "seiscomp/datamodel/inventory.h",
+        "seiscomp/seismology/ttt.h",
+        "datamodel.h"
+      ]
+    }
+  ],
+  "detected_hazards": {
+    "client_application": 7,
+    "messaging_network": 6,
+    "factory": 7,
+    "windows_unix_os_apis": 1
+  },
+  "caveats": [
+    "Direct includes and static keyword hits are NOT transitive dependency closure",
+    "Does not compile source or demonstrate factory registration",
+    "No SeisComP services, database or network accessed"
+  ]
+}

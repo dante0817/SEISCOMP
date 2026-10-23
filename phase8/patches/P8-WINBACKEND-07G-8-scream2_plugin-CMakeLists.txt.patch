@@ -1,0 +1,19 @@
+--- a/src/base/seedlink/plugins/scream2_plugin/CMakeLists.txt
++++ b/src/base/seedlink/plugins/scream2_plugin/CMakeLists.txt
+@@ -7,7 +7,7 @@
+ 	mapping.c
+ 	scream.c
+ 	util.c
+-	../plugin.c
++	../../libs/plugin/plugin.c
+ )
+ 
+ INCLUDE_DIRECTORIES(.)
+@@ -20,3 +20,7 @@
+ 
+ FILE(GLOB descs "${CMAKE_CURRENT_SOURCE_DIR}/descriptions/*.xml")
+ INSTALL(FILES ${descs} DESTINATION ${SC3_PACKAGE_APP_DESC_DIR})
++
++IF(WIN32)
++ TARGET_LINK_LIBRARIES(scream_plugin_ring slplugin)
++ENDIF()

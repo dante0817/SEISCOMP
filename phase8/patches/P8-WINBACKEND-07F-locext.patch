@@ -1,0 +1,114 @@
+--- a/src/base/common/plugins/locator/external/external.cpp
++++ b/src/base/common/plugins/locator/external/external.cpp
+@@ -30,8 +30,12 @@
+ 
+ #include <sstream>
+ #include <errno.h>
++#ifdef _WIN32
++#include <seiscomp/utils/windows_child_private.h>
++#else
+ #include <unistd.h>
+ #include <sys/wait.h>
++#endif
+ 
+ 
+ using namespace std;
+@@ -137,6 +141,90 @@
+ 		throw LocatorException("No profile selected");
+ 	}
+ 
++#ifdef _WIN32
++    string payload;
++	IO::XMLArchive ar;
++
++	{
++		// TODO: Append picks and wrap it in EventParameters
++		DataModel::RegistrationDisableGuard guard;
++
++		DataModel::EventParametersPtr ep = new DataModel::EventParameters();
++
++		DataModel::OriginPtr copyOrg = new DataModel::Origin(*origin);
++
++		// Copy arrivals and picks
++		for ( size_t i = 0; i < origin->arrivalCount(); ++i ){
++			DataModel::Arrival *arrival = origin->arrival(i);
++			DataModel::Pick *pick = getPick(arrival);
++
++			if ( !pick ) {
++				throw PickNotFoundException("pick '" + arrival->pickID() + "' not found");
++			}
++
++			copyOrg->add(new DataModel::Arrival(*arrival));
++			ep->add(new DataModel::Pick(*pick));
++		}
++
++		// Copy comments
++		for ( size_t i = 0; i < origin->commentCount(); ++i ){
++			copyOrg->add(new DataModel::Comment(*origin->comment(i)));
++		}
++
++		ep->add(copyOrg.get());
++
++		ostringstream oss;
++		ar.create(oss.rdbuf());
++		ar << ep;
++		ar.close();
++		payload = oss.str();
++	}
++		vector<string> args;
++		Core::split(args, _currentScript->second.c_str(), " ");
++
++		if ( _enableDistanceCutOff ) {
++			args.push_back("--max-dist=" + Core::toString(_distanceCutOff));
++		}
++		if ( _ignoreInitialLocation ) {
++			args.push_back("--ignore-initial-location");
++		}
++		if ( _usingFixedDepth ) {
++			args.push_back("--fixed-depth=" + Core::toString(_fixedDepth));
++		}
++
++    std::pair<DWORD, std::string> reply;
++    try { reply = Seiscomp::Private::WindowsChild::exchange(args, payload); }
++    catch (const Seiscomp::Private::WindowsChild::Error &error) {
++        SEISCOMP_ERROR("External native process: %s", error.what());
++        const string operation = error.operation;
++        if (operation == "Child stdin pipe") throw LocatorException("system error: stdin");
++        if (operation == "Child stdout pipe") throw LocatorException("system error: stdout");
++        if (operation == "Write child XML") throw LocatorException("could not write complete document to input of script");
++        throw LocatorException("system error: exec");
++    }
++    catch (const std::exception &error) {
++        SEISCOMP_ERROR("External native process: %s", error.what());
++        throw LocatorException("system error: exec");
++    }
++    const string &content = reply.second;
++    if (reply.first == EXIT_SUCCESS) {
++			istringstream iss(content);
++			DataModel::Origin *tmp;
++			ar.open(iss.rdbuf());
++			ar >> tmp;
++			ar.close();
++
++			if ( !tmp ) {
++				throw LocatorException("no origin in result document");
++			}
++
++			if ( tmp->publicID() == origin->publicID() ) {
++				DataModel::PublicObject::GenerateId(tmp);
++			}
++
++			return tmp;
++    }
++#else
+ 	int inPipe[2], outPipe[2];
+ 
+ 	// Create in and out pipes
+@@ -293,6 +381,7 @@
+ 		}
+ 	}
+ 
++#endif
+ 	throw LocatorException("external script exited with error");
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<

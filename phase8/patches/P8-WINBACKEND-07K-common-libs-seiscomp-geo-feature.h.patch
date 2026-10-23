@@ -1,0 +1,12 @@
+--- a/src/base/common/libs/seiscomp/geo/feature.h
++++ b/src/base/common/libs/seiscomp/geo/feature.h
+@@ -139,6 +139,9 @@
+ };
+ 
+ 
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ std::ostream& operator<<(std::ostream& os, const GeoFeature &gf);
+ 
+ 

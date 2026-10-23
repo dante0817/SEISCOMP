@@ -1,0 +1,180 @@
+--- /dev/null
++++ b/src/base/common/libs/seiscomp/utils/windows_child_private.h
+@@ -0,0 +1,177 @@
++// Private Windows process implementation for scwfparam and External locator.
++// No exported API, controller dependency, shell, job policy or scientific code.
++#pragma once
++#ifdef _WIN32
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++#ifdef GetMessage
++#undef GetMessage // Preserve SeisComP Notifier::GetMessage at helper consumers.
++#endif
++#include <algorithm>
++#include <string>
++#include <vector>
++#include <thread>
++#include <mutex>
++#include <condition_variable>
++#include <chrono>
++#include <system_error>
++#include <stdexcept>
++#include <exception>
++#include <climits>
++#include <utility>
++
++namespace Seiscomp { namespace Private { namespace WindowsChild {
++struct Error : std::system_error {
++    const char *operation;
++    Error(DWORD code,const char *what):std::system_error(code,std::system_category(),what),operation(what){}
++};
++inline void fail(const char *what) { throw Error(GetLastError(),what); }
++struct Handle {
++    HANDLE value=nullptr;
++    Handle()=default; explicit Handle(HANDLE h):value(h) {}
++    ~Handle(){reset();}
++    Handle(const Handle&)=delete; Handle& operator=(const Handle&)=delete;
++    Handle(Handle&& o) noexcept:value(o.release()){}
++    Handle& operator=(Handle&& o) noexcept {if(this!=&o)reset(o.release());return *this;}
++    HANDLE release(){HANDLE h=value;value=nullptr;return h;}
++    void reset(HANDLE h=nullptr){if(value && value!=INVALID_HANDLE_VALUE)CloseHandle(value);value=h;}
++};
++inline std::wstring wide(const std::string &s) {
++    if(s.find('\0')!=std::string::npos || s.size()>INT_MAX)throw std::invalid_argument("Invalid process argument");
++    if(s.empty())return {};
++    int n=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s.data(),(int)s.size(),nullptr,0);
++    if(!n)fail("UTF-8 process argument");
++    std::wstring out(n,0);
++    if(!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s.data(),(int)s.size(),&out[0],n))fail("UTF-16 process argument");
++    return out;
++}
++inline std::wstring quote(const std::wstring &s) {
++    std::wstring out=L"\"";size_t i=0;
++    while(i<s.size()) {
++        size_t slashes=0;while(i<s.size() && s[i]==L'\\'){++slashes;++i;}
++        if(i==s.size()){out.append(slashes*2,L'\\');break;}
++        out.append(s[i]==L'"'?slashes*2+1:slashes,L'\\');out+=s[i++];
++    }
++    return out+L'"';
++}
++inline std::wstring absolute(const std::wstring &s) {
++    DWORD n=GetFullPathNameW(s.c_str(),0,nullptr,nullptr);if(!n)fail("Executable path");
++    std::vector<wchar_t> out(n);
++    DWORD used=GetFullPathNameW(s.c_str(),n,out.data(),nullptr);
++    if(!used || used>=n)throw std::runtime_error("Executable path changed during resolution");
++    return std::wstring(out.data(),used);
++}
++inline std::wstring resolve(const std::string &name,bool search) {
++    auto s=wide(name);if(s.empty())throw std::invalid_argument("Empty executable");
++    auto native=[](const std::wstring &p) {
++        if(p.size()<4 || _wcsicmp(p.c_str()+p.size()-4,L".exe"))return false;
++        DWORD type;return GetBinaryTypeW(p.c_str(),&type) && (type==SCS_64BIT_BINARY || type==SCS_32BIT_BINARY);
++    };
++    if(!search || s.find_first_of(L"/\\:")!=std::wstring::npos) {
++        auto p=absolute(s);if(native(p))return p;
++        throw std::runtime_error("Unsupported executable/script: require an explicit native .exe or configured native interpreter");
++    }
++    // Explicit execvp-style PATH order only. No application/system directories
++    // or PATHEXT/shell fallback. Bare native names may omit the .exe suffix.
++    if(s.find(L'.')==std::wstring::npos)s+=L".exe";
++    DWORD n=GetEnvironmentVariableW(L"PATH",nullptr,0);
++    if(!n)throw std::runtime_error("Executable PATH is absent");
++    std::vector<wchar_t> env(n);DWORD used=GetEnvironmentVariableW(L"PATH",env.data(),n);
++    if(used>=n || (!used && GetLastError()==ERROR_ENVVAR_NOT_FOUND))throw std::runtime_error("Executable PATH changed during resolution");
++    std::wstring path(env.data(),used);size_t start=0;
++    do {
++        auto end=path.find(L';',start);auto dir=path.substr(start,end==std::wstring::npos?end:end-start);
++        if(dir.size()>=2 && dir.front()==L'"' && dir.back()==L'"')dir=dir.substr(1,dir.size()-2);
++        auto p=absolute(dir.empty()?s:dir+L"/"+s);if(native(p))return p;
++        if(end==std::wstring::npos)break;start=end+1;
++    }while(true);
++    throw std::runtime_error("No supported native executable in explicit PATH search");
++}
++inline DWORD wait(HANDLE h) {
++    if(WaitForSingleObject(h,INFINITE)!=WAIT_OBJECT_0)fail("Wait for child");
++    DWORD code;if(!GetExitCodeProcess(h,&code))fail("Child exit status");return code;
++}
++struct Reaper {
++    std::mutex mutex;std::condition_variable cv;bool stopping=false;
++    std::vector<Handle> children;std::thread worker;
++    DWORD lastExit=STILL_ACTIVE; // Retain actual most recently reaped status.
++    Reaper():worker([this]{
++        std::unique_lock<std::mutex> lock(mutex);
++        while(!stopping){
++            for(auto it=children.begin();it!=children.end();) {
++                if(WaitForSingleObject(it->value,0)==WAIT_OBJECT_0) {
++                    DWORD code;if(GetExitCodeProcess(it->value,&code))lastExit=code;
++                    it=children.erase(it);
++                }else ++it;
++            }
++            cv.wait_for(lock,std::chrono::milliseconds(100));
++        }
++    }){}
++    ~Reaper(){{std::lock_guard<std::mutex> lock(mutex);stopping=true;}cv.notify_one();worker.join();}
++    void add(Handle &h){std::lock_guard<std::mutex> lock(mutex);children.push_back(std::move(h));cv.notify_one();}
++};
++inline Reaper &reaper(){static Reaper instance;return instance;}
++inline Handle launch(const std::vector<std::string> &argv,bool search,HANDLE input,HANDLE output) {
++    if(argv.empty())throw std::invalid_argument("Empty child argv");
++    auto image=resolve(argv[0],search);std::wstring command;
++    for(const auto &arg:argv){if(!command.empty())command+=L' ';command+=quote(wide(arg));}
++    if(command.size()>=32767)throw std::length_error("Windows child command exceeds 32767 characters");
++    std::vector<Handle> owned;std::vector<HANDLE> allowed;
++    auto duplicate=[&](HANDLE h)->HANDLE {
++        if(!h || h==INVALID_HANDLE_VALUE)return nullptr;
++        HANDLE dup;if(!DuplicateHandle(GetCurrentProcess(),h,GetCurrentProcess(),&dup,0,TRUE,DUPLICATE_SAME_ACCESS))fail("Duplicate standard handle");
++        Handle guard(dup);owned.push_back(std::move(guard));allowed.push_back(dup);return dup;
++    };
++    STARTUPINFOEXW si{};si.StartupInfo.cb=sizeof(si);si.StartupInfo.dwFlags=STARTF_USESTDHANDLES;
++    si.StartupInfo.hStdInput=duplicate(input?input:GetStdHandle(STD_INPUT_HANDLE));
++    si.StartupInfo.hStdOutput=duplicate(output?output:GetStdHandle(STD_OUTPUT_HANDLE));
++    si.StartupInfo.hStdError=duplicate(GetStdHandle(STD_ERROR_HANDLE));
++    SIZE_T bytes=0;std::vector<unsigned char> storage;
++    struct Attributes {LPPROC_THREAD_ATTRIBUTE_LIST value=nullptr;~Attributes(){if(value)DeleteProcThreadAttributeList(value);}} attributes;
++    if(!allowed.empty()) {
++        InitializeProcThreadAttributeList(nullptr,1,0,&bytes);storage.resize(bytes);
++        auto list=reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
++        if(!InitializeProcThreadAttributeList(list,1,0,&bytes))fail("Initialize handle allowlist");attributes.value=list;
++        if(!UpdateProcThreadAttribute(list,0,PROC_THREAD_ATTRIBUTE_HANDLE_LIST,allowed.data(),allowed.size()*sizeof(HANDLE),nullptr,nullptr))fail("Restrict handle inheritance");
++        si.lpAttributeList=list;
++    }
++    PROCESS_INFORMATION pi{};
++    if(!CreateProcessW(image.c_str(),&command[0],nullptr,nullptr,!allowed.empty(),EXTENDED_STARTUPINFO_PRESENT,nullptr,nullptr,&si.StartupInfo,&pi))fail("CreateProcessW");
++    Handle thread(pi.hThread);return Handle(pi.hProcess);
++}
++inline DWORD run(const std::vector<std::string> &argv,bool synchronous) {
++    auto &owner=reaper(); // Create the reaper before any child can exist.
++    Handle child=launch(argv,false,nullptr,nullptr);
++    if(synchronous)return wait(child.value);
++    try{owner.add(child);}catch(...){wait(child.value);throw;}
++    return STILL_ACTIVE;
++}
++inline std::pair<DWORD,std::string> exchange(const std::vector<std::string> &argv,const std::string &xml) {
++    HANDLE a,b;if(!CreatePipe(&a,&b,nullptr,0))fail("Child stdin pipe");Handle childIn(a),writeEnd(b);
++    if(!CreatePipe(&a,&b,nullptr,0))fail("Child stdout pipe");Handle readEnd(a),childOut(b);
++    // Serialize XML before calling here; no post-launch data-model exceptions.
++    Handle child=launch(argv,true,childIn.value,childOut.value);childIn.reset();childOut.reset();
++    std::exception_ptr writerError,readerError;std::string result;
++    std::thread writer;
++    try {
++        writer=std::thread([&]{
++            try{size_t offset=0;while(offset<xml.size()){
++                DWORD sent=0;DWORD chunk=static_cast<DWORD>((std::min)(xml.size()-offset,size_t(65536)));
++                if(!WriteFile(writeEnd.value,xml.data()+offset,chunk,&sent,nullptr))fail("Write child XML");
++                if(!sent)throw std::runtime_error("Zero-byte child XML write");offset+=sent;
++            }}catch(...){writerError=std::current_exception();}writeEnd.reset(); // EOF on all writer paths
++        });
++        try{char buffer[512];DWORD n;for(;;){
++            if(!ReadFile(readEnd.value,buffer,sizeof(buffer),&n,nullptr)){if(GetLastError()==ERROR_BROKEN_PIPE)break;fail("Read child XML");}
++            if(!n)break;result.append(buffer,n);
++        }}catch(...){readerError=std::current_exception();}
++    }catch(...){readerError=std::current_exception();writeEnd.reset();}
++    readEnd.reset();if(writer.joinable())writer.join();
++    DWORD code=wait(child.value);
++    if(writerError)std::rethrow_exception(writerError);if(readerError)std::rethrow_exception(readerError);
++    return {code,std::move(result)};
++}
++}}}
++#endif

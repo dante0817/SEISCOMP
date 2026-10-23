@@ -1,0 +1,76 @@
+diff --git a/src/system/apps/seiscomp/seiscomp-control.py b/src/system/apps/seiscomp/seiscomp-control.py
+--- a/src/system/apps/seiscomp/seiscomp-control.py
++++ b/src/system/apps/seiscomp/seiscomp-control.py
+@@ -362,8 +362,24 @@
+ # ------------------------------------------------------------------------------
+ def on_setup(args, flags):
+     if os.name == "nt":
+-        error("Windows setup requires reviewed module configuration adapters; no changes made")
+-        return 1
++        # Only this original handler has a reviewed filesystem-only write path.
++        # Interactive kernel setup lacks a matching setup schema; require stdin.
++        if args != ["kernel"] or set(flags) != {"stdin"}:
++            error("Windows setup supports only explicit '--stdin setup kernel'; other handlers require configuration/DB/service adapters")
++            return 1
++        selected = [mod for mod in config_mods if mod.name == "kernel"]
++        if len(selected) != 1:
++            error("Exactly one kernel configuration handler is required")
++            return 1
++        cfg = seiscomp.config.Config()
++        if not cfg.readConfig("-"):
++            error("invalid configuration from stdin")
++            return 1
++        try:
++            return 0 if selected[0].setup(cfg) == 0 else 1
++        except Exception as exc:
++            error(f"Kernel configuration setup failed: {exc}")
++            return 1
+     # pylint: disable=C0415,W0621
+     import seiscomp.setup
+ 
+@@ -940,9 +956,6 @@
+         if args[0] == "crontab":
+             error("Windows scheduling requires a separate Task Scheduler adapter")
+             return 1
+-        if args[0] == "variables":
+-            error("Windows print variables requires the separately qualified _system binding")
+-            return 1
+ 
+     if args[0] == "crontab":
+         path = os.path.join(env.SEISCOMP_ROOT, "bin", "seiscomp")
+@@ -1089,7 +1102,7 @@
+ 
+ def on_update_config(args, _):
+     if os.name == "nt":
+-        error("Windows update-config requires reviewed binding/database/module adapters; no changes made")
++        error("Windows update-config requires qualified module actions: trunk/access/scinv/scevent reach DB or service helpers; default template/kernel update handlers have no configuration write action")
+         return 1
+     kernelModsStarted = False
+ 
+diff --git a/src/system/apps/seiscomp/kernel.py b/src/system/apps/seiscomp/kernel.py
+--- a/src/system/apps/seiscomp/kernel.py
++++ b/src/system/apps/seiscomp/kernel.py
+@@ -14,13 +14,21 @@
+         cfgfile = os.path.join(self.env.SEISCOMP_ROOT, "etc", self.name + ".cfg")
+ 
+         cfg = seiscomp.config.Config()
+-        cfg.readConfig(cfgfile)
++        if os.name == "nt":
++            if not cfg.readConfig(cfgfile) and os.path.exists(cfgfile):
++                return 1
++        else:
++            cfg.readConfig(cfgfile)
+         try:
+             cfg.setString("organization", setup_config.getString(
+                 "kernel.global.organization"))
+         except:
+             cfg.remove("organization")
+ 
+-        cfg.writeConfig()
++        if os.name == "nt":
++            if not cfg.writeConfig(cfgfile):
++                return 1
++        else:
++            cfg.writeConfig()
+ 
+         return 0

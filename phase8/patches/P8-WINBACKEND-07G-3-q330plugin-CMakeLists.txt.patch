@@ -1,0 +1,14 @@
+--- a/src/base/seedlink/plugins/q330plugin/CMakeLists.txt
++++ b/src/base/seedlink/plugins/q330plugin/CMakeLists.txt
+@@ -21,7 +21,10 @@
+ 	SET(PLATFORM ${PLATFORM} -DLINUX -Dlinux)
+ ENDIF(LINUX)
+ 
+-ADD_DEFINITIONS(${OPTIONS} ${PLATFORM} -Wno-incompatible-pointer-types)
++ADD_DEFINITIONS(${OPTIONS} ${PLATFORM})
++IF(NOT MSVC)
++  ADD_DEFINITIONS(-Wno-incompatible-pointer-types)
++ENDIF()
+ 
+ 
+ ADD_EXECUTABLE(q330_plugin ${Q330PLUGIN_SOURCES} ${LIB330_SOURCES})

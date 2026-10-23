@@ -1,0 +1,40 @@
+--- a/src/base/common/libs/seiscomp/qc/qcprocessor.h
++++ b/src/base/common/libs/seiscomp/qc/qcprocessor.h
+@@ -39,7 +39,11 @@
+ 
+ 
+ DEFINE_SMARTPOINTER(QcProcessorObserver);
++#ifdef _WIN32
++class SC_SYSTEM_CLIENT_API QcProcessorObserver: public Core::BaseObject {
++#else
+ class QcProcessorObserver: public Core::BaseObject {
++#endif
+ 	DECLARE_SC_CLASS(QcProcessorObserver);
+ 
+ 	public:
+--- a/src/base/trunk/apps/processing/scqc/seiscomp/plugins/qc/qcplugin.h
++++ b/src/base/trunk/apps/processing/scqc/seiscomp/plugins/qc/qcplugin.h
+@@ -21,6 +21,11 @@
+ #include <seiscomp/core/plugin.h>
+ #include <seiscomp/utils/timer.h>
+ #include <seiscomp/plugins/qc/api.h>
++#ifdef _WIN32
++// MSVC instantiates exported QcPlugin members; QcBuffer must be complete for
++// boost::intrusive_ptr to find the original BaseObject reference-count hooks.
++#include <seiscomp/plugins/qc/qcbuffer.h>
++#endif
+ #include <seiscomp/datamodel/waveformquality.h>
+ 
+ #include <queue>
+@@ -64,7 +69,11 @@
+ 
+ DEFINE_SMARTPOINTER(QcPlugin);
+ 
++#ifdef _WIN32
++class SC_QCPLUGIN_API QcPlugin : public Processing::QcProcessorObserver {
++#else
+ class QcPlugin : public Processing::QcProcessorObserver {
++#endif
+ 	DECLARE_SC_CLASS(QcPlugin)
+ 
+ 	public:

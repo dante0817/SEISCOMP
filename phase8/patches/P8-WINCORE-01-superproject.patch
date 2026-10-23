@@ -1,0 +1,155 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b83c673..6f5f217 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -30,8 +30,15 @@ ADD_DEFINITIONS(-DSC_ALL_SHARED)
+ IF (WIN32)
+ 	ADD_DEFINITIONS(-D_USE_MATH_DEFINES)
+ 	ADD_DEFINITIONS(-DNOMINMAX)
++	# Keep windows.h from importing legacy Winsock 1 declarations.
++	ADD_DEFINITIONS(-DWIN32_LEAN_AND_MEAN)
+ ENDIF (WIN32)
+ 
++IF (MSVC)
++	# Enable standard C++ tokens and reject MSVC-only language extensions.
++	ADD_COMPILE_OPTIONS(/permissive-)
++ENDIF (MSVC)
++
+ # Find needed packages
+ FIND_PACKAGE(LibXml2 REQUIRED)
+ 
+@@ -186,6 +193,14 @@ IF (CMAKE_COMPILER_IS_GNUCC)
+ 	ENDIF ()
+ ENDIF (CMAKE_COMPILER_IS_GNUCC)
+ 
++# The common sources use C++17 library types (e.g. std::optional and
++# std::string_view) on every platform. The GCC branch above already enables
++# this standard; select it explicitly for the native MSVC build as well.
++IF (MSVC)
++	SET(CMAKE_CXX_STANDARD 17)
++	SET(CMAKE_CXX_STANDARD_REQUIRED ON)
++ENDIF ()
++
+ # Set the platform specific suffix for dynamic libraries
+ ADD_DEFINITIONS(
+ 	-DSHARED_LIBRARY_SUFFIX="${CMAKE_SHARED_LIBRARY_SUFFIX}"
+diff --git a/cmake/SeisComP.cmake b/cmake/SeisComP.cmake
+index 9dbd459..5ec3c5f 100644
+--- a/cmake/SeisComP.cmake
++++ b/cmake/SeisComP.cmake
+@@ -56,6 +56,31 @@ ENDMACRO ()
+ 
+ MACRO (SC_ADD_VERSION _package _name)
+ 	INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
++	IF(WIN32)
++		EXECUTE_PROCESS(WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
++			COMMAND git log -1 --format=%ad --date=format:%Y -- .
++			OUTPUT_VARIABLE BUILD_YEAR OUTPUT_STRIP_TRAILING_WHITESPACE)
++		EXECUTE_PROCESS(WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
++			COMMAND git log -1 --format=%ad --date=format:%j -- .
++			OUTPUT_VARIABLE BUILD_DAY_STR OUTPUT_STRIP_TRAILING_WHITESPACE)
++		STRING(REGEX REPLACE "^0+" "" BUILD_DAY "${BUILD_DAY_STR}")
++		EXECUTE_PROCESS(WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
++			COMMAND git log -1 --format=%h -- .
++			OUTPUT_VARIABLE BUILD_HASH OUTPUT_STRIP_TRAILING_WHITESPACE)
++
++		SET(${_name}_VERSION ${CMAKE_CURRENT_BINARY_DIR}/version.h)
++		FILE(WRITE ${${_name}_VERSION}
++"#define ${_package}_VERSION ${BUILD_YEAR}.${BUILD_DAY_STR}#${BUILD_HASH}\n"
++"#define ${_package}_BUILD_YEAR ${BUILD_YEAR}\n"
++"#define ${_package}_BUILD_DAY ${BUILD_DAY}\n"
++"#define STR_VALUE_0(X) #X\n"
++"#define STR_VALUE(X) STR_VALUE_0(X)\n"
++"#define ${_package}_VERSION_NAME STR_VALUE(${_package}_VERSION)\n")
++		ADD_CUSTOM_TARGET(${_name}_version DEPENDS ${${_name}_VERSION})
++		ADD_DEPENDENCIES(${_name} ${_name}_version)
++		SET(${_package}_SOURCES ${${_package}_SOURCES} ${${_name}_VERSION})
++		SC_ADD_CHANGELOG(${_name})
++	ELSE()
+ 
+ 	# Read build year from current source directory
+ 	EXECUTE_PROCESS (
+@@ -105,6 +130,7 @@ MACRO (SC_ADD_VERSION _package _name)
+ 	SET(${_package}_SOURCES ${${_package}_SOURCES} ${${_name}_VERSION})
+ 
+ 	SC_ADD_CHANGELOG(${_name})
++	ENDIF()
+ ENDMACRO ()
+ 
+ MACRO (SC_ADD_SUBDIRS)
+diff --git a/src/system/libs/seiscomp/config/config.cpp b/src/system/libs/seiscomp/config/config.cpp
+index 8b1fff2..9c6922f 100644
+--- a/src/system/libs/seiscomp/config/config.cpp
++++ b/src/system/libs/seiscomp/config/config.cpp
+@@ -28,31 +28,37 @@
+ #include <climits>
+ #include <cstdlib>
+ #include <unordered_set>
+-#include <unistd.h>
+ 
+ #if WIN32
+ 
+ #include <direct.h>
+-#define PATH_MAX MAX_PATH
++#define PATH_MAX 260
++#define getcwd _getcwd
++#define chdir _chdir
+ 
+ char *realpath(const char *relPath, char *absPath) {
+ 	return _fullpath(absPath, relPath, PATH_MAX);
+ }
+ 
++#else
++
++#include <unistd.h>
++
+ #endif
+ 
+ 
++std::string homeDir() {
+ #ifndef WIN32
+-const char *homeDir() {
+ 	const char *dir = getenv("HOME");
+ 	if ( !dir )
+-		dir = ".";
++		return ".";
++	return dir;
+ #else
+-	char dir[MAX_PATH];
+-	if ( SHGetFolderPath(NULL, CSIDL_LOCAL_APPDATA, NULL, SHGFP_TYPE_CURRENT, dir) != S_OK )
+-		dir = ".";
++	const char *dir = getenv("USERPROFILE");
++	if ( dir && *dir )
++		return dir;
++	return ".";
+ #endif
+-	return dir;
+ }
+ 
+ 
+@@ -962,7 +968,8 @@ bool Config::reference(const std::string &name,
+ 		std::string content;
+ 		content.resize(length);
+ 		ifs.seekg(0, std::ios_base::beg);
+-		if ( !ifs.read(content.data(), content.length()) ) {
++		if ( !content.empty()
++		  && !ifs.read(&content[0], static_cast<std::streamsize>(content.length())) ) {
+ 			if ( errmsg ) {
+ 				*errmsg = "Reference file '" + filename + "' could not be read";
+ 			}
+diff --git a/src/system/libs/seiscomp/config/log.h b/src/system/libs/seiscomp/config/log.h
+index b6cec7c..fdc7bbe 100644
+--- a/src/system/libs/seiscomp/config/log.h
++++ b/src/system/libs/seiscomp/config/log.h
+@@ -26,6 +26,11 @@
+ #include <fmt/printf.h>
+ #include <cstdio>
+ 
++// Windows.h defines ERROR as a numeric macro, colliding with this enum.
++#ifdef ERROR
++#undef ERROR
++#endif
++
+ 
+ namespace Seiscomp {
+ namespace Config {

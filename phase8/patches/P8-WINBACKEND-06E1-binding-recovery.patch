@@ -1,0 +1,165 @@
+diff --git a/src/base/common/libs/seiscomp/core/datetime.h b/src/base/common/libs/seiscomp/core/datetime.h
+--- a/src/base/common/libs/seiscomp/core/datetime.h
++++ b/src/base/common/libs/seiscomp/core/datetime.h
+@@ -573,6 +573,9 @@
+ };
+ 
+ 
++#ifdef WIN32
++SC_SYSTEM_CORE_API
++#endif
+ std::ostream &operator<<(std::ostream &os, const Time &time);
+ 
+ 
+diff --git a/src/base/common/libs/seiscomp/core/typedarray.cpp b/src/base/common/libs/seiscomp/core/typedarray.cpp
+--- a/src/base/common/libs/seiscomp/core/typedarray.cpp
++++ b/src/base/common/libs/seiscomp/core/typedarray.cpp
+@@ -568,6 +568,15 @@
+ IMPLEMENT_TEMPLATE_RTTI_METHODS(TypedArray, "TypedArray")
+ IMPLEMENT_TEMPLATE_RTTI_METHODS(NumericArray, "NumericArray")
+ 
++#ifdef WIN32
++// Export the original inline template RTTI methods used by the SWIG surface.
++template SC_SYSTEM_CORE_API const Seiscomp::Core::RTTI& NumericArray<char>::TypeInfo();
++template SC_SYSTEM_CORE_API const Seiscomp::Core::RTTI& NumericArray<std::int32_t>::TypeInfo();
++template SC_SYSTEM_CORE_API const Seiscomp::Core::RTTI& NumericArray<float>::TypeInfo();
++template SC_SYSTEM_CORE_API const Seiscomp::Core::RTTI& NumericArray<double>::TypeInfo();
++#endif
++
++
+ template SC_SYSTEM_CORE_API Array::DataType TypedArray<char>::ArrayType;
+ template SC_SYSTEM_CORE_API Array::DataType TypedArray<std::int32_t>::ArrayType;
+ template SC_SYSTEM_CORE_API Array::DataType TypedArray<float>::ArrayType;
+diff --git a/src/base/common/libs/seiscomp/system/schema.h b/src/base/common/libs/seiscomp/system/schema.h
+--- a/src/base/common/libs/seiscomp/system/schema.h
++++ b/src/base/common/libs/seiscomp/system/schema.h
+@@ -125,7 +125,11 @@
+ 		std::vector<SchemaStructExtentPtr> structExtents;
+ };
+ 
+-struct SchemaStructExtent : SchemaParameters {
++struct
++#ifdef WIN32
++SC_SYSTEM_CORE_API
++#endif
++SchemaStructExtent : SchemaParameters {
+ 	DECLARE_SC_CLASS(SchemaStructExtent);
+ 
+ 	void serialize(Archive& ar) override;
+diff --git a/src/base/common/libs/swig/logging_python_wrap.cxx b/src/base/common/libs/swig/logging_python_wrap.cxx
+--- a/src/base/common/libs/swig/logging_python_wrap.cxx
++++ b/src/base/common/libs/swig/logging_python_wrap.cxx
+@@ -5864,6 +5864,7 @@
+   return SWIG_Python_InitShadowInstance(args);
+ }
+ 
++#ifndef WIN32
+ SWIGINTERN PyObject *_wrap_new_SyslogOutput__SWIG_0(PyObject *self, Py_ssize_t nobjs, PyObject **SWIGUNUSEDPARM(swig_obj)) {
+   PyObject *resultobj = 0;
+   Seiscomp::Logging::SyslogOutput *result = 0 ;
+@@ -6130,6 +6131,8 @@
+ SWIGINTERN PyObject *SyslogOutput_swiginit(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
+   return SWIG_Python_InitShadowInstance(args);
+ }
++
++#endif
+ 
+ static PyMethodDef SwigMethods[] = {
+ 	 { "debug", _wrap_debug, METH_VARARGS, NULL},
+@@ -6174,6 +6177,7 @@
+ 	 { "delete_FileRotatorOutput", _wrap_delete_FileRotatorOutput, METH_O, NULL},
+ 	 { "FileRotatorOutput_swigregister", FileRotatorOutput_swigregister, METH_O, NULL},
+ 	 { "FileRotatorOutput_swiginit", FileRotatorOutput_swiginit, METH_VARARGS, NULL},
++#ifndef WIN32
+ 	 { "new_SyslogOutput", _wrap_new_SyslogOutput, METH_VARARGS, NULL},
+ 	 { "delete_SyslogOutput", _wrap_delete_SyslogOutput, METH_O, NULL},
+ 	 { "SyslogOutput_facility", _wrap_SyslogOutput_facility, METH_O, NULL},
+@@ -6182,6 +6186,7 @@
+ 	 { "SyslogOutput_close", _wrap_SyslogOutput_close, METH_O, NULL},
+ 	 { "SyslogOutput_swigregister", SyslogOutput_swigregister, METH_O, NULL},
+ 	 { "SyslogOutput_swiginit", SyslogOutput_swiginit, METH_VARARGS, NULL},
++#endif
+ 	 { NULL, NULL, 0, NULL }
+ };
+ 
+@@ -6200,9 +6205,11 @@
+ static void *_p_Seiscomp__Logging__FileRotatorOutputTo_p_Seiscomp__Logging__Output(void *x, int *SWIGUNUSEDPARM(newmemory)) {
+     return (void *)((Seiscomp::Logging::Output *) (Seiscomp::Logging::FileOutput *) ((Seiscomp::Logging::FileRotatorOutput *) x));
+ }
++#ifndef WIN32
+ static void *_p_Seiscomp__Logging__SyslogOutputTo_p_Seiscomp__Logging__Output(void *x, int *SWIGUNUSEDPARM(newmemory)) {
+     return (void *)((Seiscomp::Logging::Output *)  ((Seiscomp::Logging::SyslogOutput *) x));
+ }
++#endif
+ static swig_type_info _swigt__p_Seiscomp__Logging__Channel = {"_p_Seiscomp__Logging__Channel", "Seiscomp::Logging::Channel *", 0, 0, (void*)0, 0};
+ static swig_type_info _swigt__p_Seiscomp__Logging__FdOutput = {"_p_Seiscomp__Logging__FdOutput", "Seiscomp::Logging::FdOutput *", 0, 0, (void*)0, 0};
+ static swig_type_info _swigt__p_Seiscomp__Logging__FileOutput = {"_p_Seiscomp__Logging__FileOutput", "Seiscomp::Logging::FileOutput *", 0, 0, (void*)0, 0};
+@@ -6227,7 +6234,11 @@
+ static swig_cast_info _swigc__p_Seiscomp__Logging__FdOutput[] = {  {&_swigt__p_Seiscomp__Logging__FdOutput, 0, 0, 0},{0, 0, 0, 0}};
+ static swig_cast_info _swigc__p_Seiscomp__Logging__FileOutput[] = {  {&_swigt__p_Seiscomp__Logging__FileOutput, 0, 0, 0},  {&_swigt__p_Seiscomp__Logging__FileRotatorOutput, _p_Seiscomp__Logging__FileRotatorOutputTo_p_Seiscomp__Logging__FileOutput, 0, 0},{0, 0, 0, 0}};
+ static swig_cast_info _swigc__p_Seiscomp__Logging__FileRotatorOutput[] = {  {&_swigt__p_Seiscomp__Logging__FileRotatorOutput, 0, 0, 0},{0, 0, 0, 0}};
+-static swig_cast_info _swigc__p_Seiscomp__Logging__Output[] = {  {&_swigt__p_Seiscomp__Logging__Output, 0, 0, 0},  {&_swigt__p_Seiscomp__Logging__FdOutput, _p_Seiscomp__Logging__FdOutputTo_p_Seiscomp__Logging__Output, 0, 0},  {&_swigt__p_Seiscomp__Logging__FileOutput, _p_Seiscomp__Logging__FileOutputTo_p_Seiscomp__Logging__Output, 0, 0},  {&_swigt__p_Seiscomp__Logging__FileRotatorOutput, _p_Seiscomp__Logging__FileRotatorOutputTo_p_Seiscomp__Logging__Output, 0, 0},  {&_swigt__p_Seiscomp__Logging__SyslogOutput, _p_Seiscomp__Logging__SyslogOutputTo_p_Seiscomp__Logging__Output, 0, 0},{0, 0, 0, 0}};
++static swig_cast_info _swigc__p_Seiscomp__Logging__Output[] = {  {&_swigt__p_Seiscomp__Logging__Output, 0, 0, 0},  {&_swigt__p_Seiscomp__Logging__FdOutput, _p_Seiscomp__Logging__FdOutputTo_p_Seiscomp__Logging__Output, 0, 0},  {&_swigt__p_Seiscomp__Logging__FileOutput, _p_Seiscomp__Logging__FileOutputTo_p_Seiscomp__Logging__Output, 0, 0},  {&_swigt__p_Seiscomp__Logging__FileRotatorOutput, _p_Seiscomp__Logging__FileRotatorOutputTo_p_Seiscomp__Logging__Output, 0, 0},  
++#ifndef WIN32
++{&_swigt__p_Seiscomp__Logging__SyslogOutput, _p_Seiscomp__Logging__SyslogOutputTo_p_Seiscomp__Logging__Output, 0, 0},
++#endif
++{0, 0, 0, 0}};
+ static swig_cast_info _swigc__p_Seiscomp__Logging__SyslogOutput[] = {  {&_swigt__p_Seiscomp__Logging__SyslogOutput, 0, 0, 0},{0, 0, 0, 0}};
+ static swig_cast_info _swigc__p_char[] = {  {&_swigt__p_char, 0, 0, 0},{0, 0, 0, 0}};
+ static swig_cast_info _swigc__p_std__string[] = {  {&_swigt__p_std__string, 0, 0, 0},{0, 0, 0, 0}};
+diff --git a/src/base/common/libs/swig/logging.py b/src/base/common/libs/swig/logging.py
+--- a/src/base/common/libs/swig/logging.py
++++ b/src/base/common/libs/swig/logging.py
+@@ -195,26 +195,29 @@
+ 
+ # Register FileRotatorOutput in _logging:
+ _logging.FileRotatorOutput_swigregister(FileRotatorOutput)
+-class SyslogOutput(Output):
+-    thisown = property(lambda x: x.this.own(), lambda x, v: x.this.own(v), doc="The membership flag")
+-    __repr__ = _swig_repr
+-
+-    def __init__(self, *args):
+-        _logging.SyslogOutput_swiginit(self, _logging.new_SyslogOutput(*args))
+-    __swig_destroy__ = _logging.delete_SyslogOutput
+-
+-    def facility(self):
+-        return _logging.SyslogOutput_facility(self)
+-
+-    def open(self, ident, facility):
+-        return _logging.SyslogOutput_open(self, ident, facility)
+-
+-    def isOpen(self):
+-        return _logging.SyslogOutput_isOpen(self)
+-
+-    def close(self):
+-        return _logging.SyslogOutput_close(self)
+-
+-# Register SyslogOutput in _logging:
+-_logging.SyslogOutput_swigregister(SyslogOutput)
+-
++# SyslogOutput is absent from the original native Windows provider.
++import os as _logging_os
++if _logging_os.name != "nt":
++    class SyslogOutput(Output):
++        thisown = property(lambda x: x.this.own(), lambda x, v: x.this.own(v), doc="The membership flag")
++        __repr__ = _swig_repr
++
++        def __init__(self, *args):
++            _logging.SyslogOutput_swiginit(self, _logging.new_SyslogOutput(*args))
++        __swig_destroy__ = _logging.delete_SyslogOutput
++
++        def facility(self):
++            return _logging.SyslogOutput_facility(self)
++
++        def open(self, ident, facility):
++            return _logging.SyslogOutput_open(self, ident, facility)
++
++        def isOpen(self):
++            return _logging.SyslogOutput_isOpen(self)
++
++        def close(self):
++            return _logging.SyslogOutput_close(self)
++
++    # Register SyslogOutput in _logging:
++    _logging.SyslogOutput_swigregister(SyslogOutput)
++

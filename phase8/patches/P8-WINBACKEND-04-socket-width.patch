@@ -1,0 +1,11 @@
+--- a/libs/3rd-party/libslink/slplatform.h
++++ b/libs/3rd-party/libslink/slplatform.h
+@@ -133,7 +133,7 @@
+ #endif
+ 
+ /* Use int for SOCKET if platform includes have not defined it */
+-#ifndef SOCKET
++#if !defined(SLP_WIN) && !defined(SOCKET)
+   #define SOCKET int
+ #endif
+ 

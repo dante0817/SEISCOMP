@@ -1,0 +1,184 @@
+--- /dev/null
++++ b/phase8/database-qualification07c/qualify.cpp
+@@ -0,0 +1,163 @@
++// Offline qualification driver. Prepared/compiled only in 07C; execution requires
++// separate operator approval of the staged runtime environment.
++#define WIN32_LEAN_AND_MEAN
++#define NOMINMAX
++#include <windows.h>
++#include <filesystem>
++#include <fstream>
++#include <iostream>
++#include <sstream>
++#include <stdexcept>
++#include <seiscomp/core/plugin.h>
++#include <seiscomp/io/database.h>
++#include <seiscomp/datamodel/databasearchive.h>
++#include <seiscomp/datamodel/pick.h>
++#include <seiscomp/datamodel/origin.h>
++#include <seiscomp/datamodel/timequantity.h>
++#include <seiscomp/datamodel/realquantity.h>
++#include <seiscomp/datamodel/waveformstreamid.h>
++
++namespace fs = std::filesystem;
++using namespace Seiscomp;
++namespace DM = Seiscomp::DataModel;
++void require(bool v, const char *message) {
++    if (!v) throw std::runtime_error(message);
++}
++void passed(const char *name) { std::cout << "PASS " << name << std::endl; }
++fs::path stageRoot() {
++    wchar_t file[32768]; DWORD n = GetModuleFileNameW(nullptr, file, 32768);
++    require(n > 0 && n < 32768, "executable path unavailable");
++    return fs::path(file).parent_path().parent_path();
++}
++void load(const fs::path &path, const char *factory) {
++    // Absolute path and restricted DLL search. Module deliberately remains
++    // loaded until process exit: original static factories must not outlive it.
++    HMODULE module = LoadLibraryExW(path.c_str(), nullptr,
++        LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
++    require(module != nullptr, "plugin LoadLibraryExW failed");
++    auto entry = reinterpret_cast<Core::Plugin::CreateFunc>(
++        GetProcAddress(module, "createSCPlugin"));
++    require(entry != nullptr, "createSCPlugin export missing");
++    Core::PluginPtr descriptor = entry();
++    require(descriptor != nullptr, "plugin descriptor construction failed");
++    IO::DatabaseInterfacePtr driver = IO::DatabaseInterface::Create(factory);
++    require(driver != nullptr, "original database factory registration missing");
++    passed(factory);
++}
++void checkLoadedProviders(const fs::path &root, bool requireAll) {
++    std::ifstream list(root/"manifests"/"private-dll-names.txt");
++    require(list.good(), "private DLL manifest missing");
++    std::string name;
++    while (std::getline(list, name)) {
++        if (name.empty()) continue;
++        fs::path expected = root/"bin"/name;
++        HMODULE module = GetModuleHandleW(expected.filename().c_str());
++        if (!module && !requireAll) continue;
++        require(module != nullptr, "expected private DLL not loaded");
++        wchar_t actual[32768]; DWORD n = GetModuleFileNameW(module, actual, 32768);
++        require(n > 0 && n < 32768, "loaded DLL identity unavailable");
++        require(fs::equivalent(expected, fs::path(actual)), "loaded private DLL path differs from staged provider");
++        std::wcout << L"MODULE " << actual << std::endl;
++    }
++    passed("loaded_private_provider_paths");
++}
++std::string scalar(IO::DatabaseInterface *db, const char *sql) {
++    require(db->beginQuery(sql), "beginQuery failed");
++    if (!db->fetchRow()) { db->endQuery(); throw std::runtime_error("row missing"); }
++    const auto *value = static_cast<const char *>(db->getRowField(0));
++    std::string result = value ? std::string(value, db->getRowFieldSize(0)) : "";
++    db->endQuery(); return result;
++}
++struct Disconnect {
++    IO::DatabaseInterface *db;
++    ~Disconnect() { if (db) { db->endQuery(); db->disconnect(); } }
++};
++void sqlite(const fs::path &root) {
++    // Only this fixed disposable path is admitted. Existing files are rejected.
++    fs::path file = root / "work" / "qualification.sqlite";
++    require(fs::is_directory(file.parent_path()), "stage work directory missing");
++    HANDLE h = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
++                           FILE_ATTRIBUTE_NORMAL, nullptr);
++    require(h != INVALID_HANDLE_VALUE, "test database exists or cannot be created");
++    CloseHandle(h);
++    IO::DatabaseInterfacePtr db = IO::DatabaseInterface::Create("sqlite3");
++    require(db != nullptr, "sqlite3 factory unavailable");
++    Disconnect cleanup{db.get()};
++    std::string path = file.generic_string();
++    require(db->connect(path.c_str()), "disposable SQLite connect failed");
++    std::ifstream input(root / "schemas" / "sqlite3.sql", std::ios::binary);
++    require(input.good(), "original schema missing");
++    std::ostringstream script; script << input.rdbuf();
++    require(db->execute(script.str().c_str()), "original schema initialization failed");
++    require(scalar(db.get(), "SELECT value FROM Meta WHERE name='Schema-Version'")
++            == "0.14.0", "original schema version differs");
++    passed("sqlite_schema_0.14.0");
++    db->start();
++    require(db->execute("INSERT INTO Meta(name,value) VALUES('P8Rollback','discard')"), "rollback insert failed");
++    db->rollback();
++    require(scalar(db.get(), "SELECT COUNT(*) FROM Meta WHERE name='P8Rollback'") == "0", "rollback persisted a row");
++    db->start();
++    require(db->execute("INSERT INTO Meta(name,value) VALUES('P8Commit','persist')"), "commit insert failed");
++    db->commit();
++    require(scalar(db.get(), "SELECT value FROM Meta WHERE name='P8Commit'") == "persist", "commit failed");
++    passed("transactions");
++    DM::PublicObject::SetRegistrationEnabled(false);
++    {
++        DM::DatabaseArchive archive(db.get());
++        require(!archive.hasError(), "DatabaseArchive schema check failed");
++        DM::PickPtr pick = DM::Pick::Create("p8-07c/pick");
++        require(pick != nullptr, "Pick allocation failed");
++        pick->setTime(DM::TimeQuantity(Core::Time(2020,1,2,3,4,5,125000)));
++        pick->setWaveformID(DM::WaveformStreamID("ZZ","TEST","00","BHZ",""));
++        pick->setMethodID("P8-07C-disposable");
++        DM::OriginPtr origin = DM::Origin::Create("p8-07c/origin");
++        require(origin != nullptr, "Origin allocation failed");
++        origin->setTime(pick->time());
++        origin->setLatitude(DM::RealQuantity(12.5));
++        origin->setLongitude(DM::RealQuantity(123.25));
++        origin->setMethodID("P8-07C-disposable");
++        db->start();
++        DM::DatabaseObjectWriter writer(archive);
++        require(writer(pick.get(), "EventParameters"), "original Pick write failed");
++        require(writer(origin.get(), "EventParameters"), "original Origin write failed");
++        db->commit();
++    }
++    db->disconnect(); require(!db->isConnected(), "disconnect failed");
++    require(db->connect(path.c_str()), "reopen failed");
++    {
++        // New archive, no global PublicObject registration: force database read.
++        DM::DatabaseArchive archive(db.get());
++        require(!archive.hasError(), "reopened archive invalid");
++        DM::PublicObjectPtr a = archive.getObject(DM::Pick::TypeInfo(), "p8-07c/pick");
++        DM::PublicObjectPtr b = archive.getObject(DM::Origin::TypeInfo(), "p8-07c/origin");
++        auto *pick = DM::Pick::Cast(a.get()); auto *origin = DM::Origin::Cast(b.get());
++        require(pick && origin, "original objects missing after reopen");
++        require(pick->publicID() == "p8-07c/pick" && pick->methodID() == "P8-07C-disposable", "Pick fields differ");
++        require(pick->time().value() == Core::Time(2020,1,2,3,4,5,125000), "Pick time differs");
++        require(pick->waveformID().stationCode() == "TEST", "Pick waveform differs");
++        require(origin->latitude().value() == 12.5 && origin->longitude().value() == 123.25, "Origin coordinates differ");
++    }
++    passed("Pick_Origin_roundtrip_reopen");
++    require(!db->execute("INSERT INTO P8DeliberatelyAbsentTable VALUES(1)"), "invalid SQL unexpectedly succeeded");
++    require(scalar(db.get(), "SELECT 1") == "1", "connection unusable after SQL failure");
++    db->disconnect();
++    require(!db->connect((root/"work"/"absent"/"missing.sqlite").generic_string().c_str()), "missing database unexpectedly opened");
++    passed("errors_cleanup");
++}
++int wmain(int argc, wchar_t **argv) {
++    try {
++        require(argc == 2, "usage: dbqualify.exe --plugins | --sqlite");
++        std::wstring mode(argv[1]);
++        require(mode == L"--plugins" || mode == L"--sqlite", "unsupported mode; PostgreSQL connections are not implemented/admitted in this harness");
++        require(SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
++            LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_USER_DIRS), "loader policy failed");
++        auto root = stageRoot();
++        load(root/"bin"/"dbsqlite3.dll", "sqlite3");
++        if (mode == L"--plugins") load(root/"bin"/"dbpostgresql.dll", "postgresql");
++        checkLoadedProviders(root, mode == L"--plugins");
++        if (mode == L"--sqlite") sqlite(root);
++        passed("qualification_complete"); return 0;
++    } catch (const std::exception &e) {
++        std::cerr << "FAIL " << e.what() << std::endl; return 1;
++    }
++}
+--- /dev/null
++++ b/phase8/database-qualification07c/CMakeLists.txt
+@@ -0,0 +1,15 @@
++cmake_minimum_required(VERSION 3.20)
++project(SeisComPDatabaseQualification07C LANGUAGES CXX)
++set(CMAKE_CXX_STANDARD 17)
++set(CMAKE_CXX_STANDARD_REQUIRED ON)
++set(SC_ROOT "Y:/OFFICE/IPP/2026/PROG/SEISCOMP/SeisComP_Phase5A_AI_Coder_Pack/phase8/native-working-copy")
++set(SC_BUILD "Y:/OFFICE/IPP/2026/PROG/SEISCOMP/SeisComP_Phase5A_AI_Coder_Pack/phase8/build/vs2022-native-after-sqlite-nohypo71")
++include("${SC_ROOT}/cmake/SeisComP.cmake")
++set(SC3_PACKAGE_SHARE_DIR share)
++add_library(seiscomp_core SHARED IMPORTED GLOBAL)
++set_target_properties(seiscomp_core PROPERTIES IMPORTED_LOCATION "${SC_BUILD}/lib/Release/seiscomp_core.dll" IMPORTED_IMPLIB "${SC_BUILD}/lib/Release/seiscomp_core.lib")
++include_directories("${SC_ROOT}/src/base/common/libs" "${SC_BUILD}/src/base/common/libs" "${SC_ROOT}/src/system/libs" "${SC_BUILD}/src/system/libs" "${SC_ROOT}/src/system/libs/3rd-party/fmt/include" "C:/vcpkg/installed/x64-windows/include")
++add_compile_definitions(WIN32 SC_ALL_SHARED NOMINMAX WIN32_LEAN_AND_MEAN BOOST_ALL_NO_LIB FMT_HEADER_ONLY _USE_MATH_DEFINES)
++
++add_executable(dbqualify qualify.cpp)
++target_link_libraries(dbqualify PRIVATE seiscomp_core)

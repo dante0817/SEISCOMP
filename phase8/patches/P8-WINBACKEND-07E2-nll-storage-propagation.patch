@@ -1,0 +1,136 @@
+--- a/src/base/contrib-sed/libs/3rd-party/nll/NLLocLib.c
++++ b/src/base/contrib-sed/libs/3rd-party/nll/NLLocLib.c
+@@ -107,6 +107,13 @@
+ 
+ 
+ #include "GridLib.h"
++#ifdef _WIN32
++#include <stdint.h>
++/* Distinct from the original nonfatal insufficient-pair return (-1.0).
++ * B starts at 2; all search offsets together total less than 2.5, so a
++ * calculated B cannot equal -2. No shared mutable failure status is needed. */
++#define NLL_VPVS_STORAGE_FAILURE (-2.0)
++#endif
+ #include "ran1/ran1.h"
+ #include "velmod.h"
+ #include "GridMemLib.h"
+@@ -536,6 +543,10 @@
+     // determine azimuth gaps
+     double gap_secondary;
+     Hypocenter.gap = CalcAzimuthGap(Arrival, NumArrivalsLocation, &gap_secondary);
++#ifdef _WIN32
++    if (Hypocenter.gap < 0.0)
++        return (clean_memory(EXIT_ERROR_LOCATE));
++#endif
+     Hypocenter.gap_secondary = gap_secondary;
+ 
+     // re-sort arrivals by distance
+@@ -665,7 +676,12 @@
+             CalculateMagnitude(&Hypocenter, Arrival, NumArrivals,
+                 Component, NumCompDesc, Magnitude + n);
+         /* calculate estimated VpVs ratio */
++#ifdef _WIN32
++        if (CalculateVpVsEstimate(&Hypocenter, Arrival, NumArrivals) == NLL_VPVS_STORAGE_FAILURE)
++            return (clean_memory(EXIT_ERROR_LOCATE));
++#else
+         CalculateVpVsEstimate(&Hypocenter, Arrival, NumArrivals);
++#endif
+         /* save location */
+         if ((istat = SaveLocation(&Hypocenter, ngrid, fn_loc_obs, fnout, numArrivalsReject, "grid", 1, &Gauss)) < 0) {
+             nll_puterr("ERROR: saving location.");
+@@ -12732,7 +12748,21 @@
+ 
+     int narr, naz;
+     //double az_last, az, gap, gap_max = -1.0;
++#ifdef _WIN32
++    double *azimuths;
++    if (MAX_NUM_ARRIVALS <= 0 || num_arrivals < 0 || num_arrivals > MAX_NUM_ARRIVALS
++            || (size_t) MAX_NUM_ARRIVALS > SIZE_MAX / sizeof(*azimuths)) {
++        nll_puterr("ERROR: CalcAzimuthGap: invalid azimuths size.");
++        return (-1.0);
++    }
++    azimuths = malloc((size_t) MAX_NUM_ARRIVALS * sizeof(*azimuths));
++    if (azimuths == NULL) {
++        nll_puterr("ERROR: CalcAzimuthGap: allocating azimuths.");
++        return (-1.0);
++    }
++#else
+     double azimuths[MAX_NUM_ARRIVALS];
++#endif
+ 
+     /* load azimuths to working array */
+     naz = 0;
+@@ -12768,6 +12798,9 @@
+ 
+     *pgap_secondary = gap_secondary_max;
+ 
++#ifdef _WIN32
++    free(azimuths);
++#endif
+     return (gap_primary_max);
+ 
+     /*
+@@ -12914,15 +12947,36 @@
+ 
+     int narr, npair;
+     int k;
++#ifdef _WIN32
++    double *p_time = NULL, *p_error = NULL, *s_time = NULL, *s_error = NULL, *weight = NULL;
++    double p_time_wt, p_time_cent, s_time_wt, s_time_cent, weight_sum;
++#else
+     double p_time[MAX_NUM_ARRIVALS], p_time_wt;
+     double p_time_cent, p_error[MAX_NUM_ARRIVALS];
+     double s_time[MAX_NUM_ARRIVALS], s_time_wt;
+     double s_time_cent, s_error[MAX_NUM_ARRIVALS];
+     double weight[MAX_NUM_ARRIVALS], weight_sum;
++#endif
+     double B, Btest, Bmin, dB, Tmin, T, temp;
+     double tsp, tsp_min_max_diff;
+     double tsp_min = VERY_LARGE_DOUBLE;
+     double tsp_max = -VERY_LARGE_DOUBLE;
++
++#ifdef _WIN32
++    if (MAX_NUM_ARRIVALS <= 0 || narrivals < 0 || narrivals > MAX_NUM_ARRIVALS
++            || (size_t) MAX_NUM_ARRIVALS > SIZE_MAX / sizeof(double))
++        goto nll_storage_failure;
++    p_time = malloc((size_t) MAX_NUM_ARRIVALS * sizeof(*p_time));
++    if (p_time == NULL) goto nll_storage_failure;
++    p_error = malloc((size_t) MAX_NUM_ARRIVALS * sizeof(*p_error));
++    if (p_error == NULL) goto nll_storage_failure;
++    s_time = malloc((size_t) MAX_NUM_ARRIVALS * sizeof(*s_time));
++    if (s_time == NULL) goto nll_storage_failure;
++    s_error = malloc((size_t) MAX_NUM_ARRIVALS * sizeof(*s_error));
++    if (s_error == NULL) goto nll_storage_failure;
++    weight = malloc((size_t) MAX_NUM_ARRIVALS * sizeof(*weight));
++    if (weight == NULL) goto nll_storage_failure;
++#endif
+ 
+     //printf("CALCULATING VpVs\n");
+ 
+@@ -12958,6 +13012,9 @@
+     if (npair < 2) {
+         phypo->VpVs = -1.0;
+         phypo->nVpVs = npair;
++#ifdef _WIN32
++        free(weight); free(s_error); free(s_time); free(p_error); free(p_time);
++#endif
+         return (-1.0);
+     }
+ 
+@@ -13011,7 +13068,16 @@
+     phypo->VpVs = B;
+     phypo->nVpVs = npair;
+ 
++#ifdef _WIN32
++    free(weight); free(s_error); free(s_time); free(p_error); free(p_time);
++#endif
+     return (B);
++#ifdef _WIN32
++nll_storage_failure:
++    free(weight); free(s_error); free(s_time); free(p_error); free(p_time);
++    nll_puterr("ERROR: CalculateVpVsEstimate: invalid size or allocation failure.");
++    return (NLL_VPVS_STORAGE_FAILURE);
++#endif
+ 
+ }
+ 

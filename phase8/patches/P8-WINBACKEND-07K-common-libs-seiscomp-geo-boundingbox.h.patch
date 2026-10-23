@@ -1,0 +1,12 @@
+--- a/src/base/common/libs/seiscomp/geo/boundingbox.h
++++ b/src/base/common/libs/seiscomp/geo/boundingbox.h
+@@ -139,6 +139,9 @@
+ #include <seiscomp/geo/boundingbox.ipp>
+ 
+ 
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ std::ostream &operator<<(std::ostream &os, const GeoBoundingBox &box);
+ 
+ template <>

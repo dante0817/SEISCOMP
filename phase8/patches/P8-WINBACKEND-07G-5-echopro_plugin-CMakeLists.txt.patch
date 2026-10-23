@@ -1,0 +1,18 @@
+--- a/src/base/seedlink/plugins/echopro_plugin/CMakeLists.txt
++++ b/src/base/seedlink/plugins/echopro_plugin/CMakeLists.txt
+@@ -1,6 +1,6 @@
+ SET(ECHOPROPLUGIN_SOURCES
+ 	echopro_plugin.c
+-	../plugin.c
++	../../libs/plugin/plugin.c
+ )
+ 
+ INCLUDE_DIRECTORIES(.)
+@@ -10,3 +10,7 @@
+ TARGET_LINK_LIBRARIES(echopro_plugin m)
+ 
+ INSTALL(TARGETS echopro_plugin RUNTIME DESTINATION ${SEEDLINK_PLUGIN_OUTPUT_DIR})
++
++IF(WIN32)
++ TARGET_LINK_LIBRARIES(echopro_plugin slplugin)
++ENDIF()

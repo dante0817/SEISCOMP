@@ -1,0 +1,35 @@
+--- a/src/base/seedlink/plugins/scream_plugin/util.c
++++ b/src/base/seedlink/plugins/scream_plugin/util.c
+@@ -40,18 +40,32 @@
+ /* Mar 2004  - Modified by Reinoud Sleeman           */
+ /*             for the SCREAM plugin in SeedLink     */
+ 
++#ifndef _WIN32
+ #include <unistd.h>
++#endif
+ #include "project.h"
+ 
+ int
++#ifdef _WIN32
++complete_read (SOCKET fd, char *buf, int n)
++#else
+ complete_read (int fd, char *buf, int n)
++#endif
+ {
+   int c = 0;
+   int r;
+ 
+   while (n)
+     {
++#ifdef _WIN32
++      r = recv (fd, buf, n, 0);
++      if (r == SOCKET_ERROR) {
++        int error = WSAGetLastError();
++        fprintf(stderr, "SCREAM recv failed: Winsock error %d\n", error);
++      }
++#else
+       r = read (fd, buf, n);
++#endif
+       if (r < 0)
+         return r;
+       if (!r)

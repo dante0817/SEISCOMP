@@ -1,0 +1,10 @@
+--- a/src/base/seedlink/plugins/mseedscan_plugin/CMakeLists.txt
++++ b/src/base/seedlink/plugins/mseedscan_plugin/CMakeLists.txt
+@@ -13,3 +13,7 @@
+ TARGET_LINK_LIBRARIES(mseedscan_plugin slplugin)
+ 
+ INSTALL(TARGETS mseedscan_plugin RUNTIME DESTINATION ${SEEDLINK_PLUGIN_OUTPUT_DIR})
++
++IF(WIN32)
++ TARGET_SOURCES(mseedscan_plugin PRIVATE windows_regex.cpp)
++ENDIF()

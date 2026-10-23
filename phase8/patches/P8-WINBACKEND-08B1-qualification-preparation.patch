@@ -1,0 +1,565 @@
+--- /dev/null
++++ b/phase8/qualification08b1/admission.py
+@@ -0,0 +1,59 @@
++"""Fail-closed receipt checks. A receipt records human admission; it does not create isolation."""
++from pathlib import Path
++import json
++import os
++import subprocess
++from evidence import digest, verify_files
++
++def facts():
++    # Inspection only, no ping, DNS, sockets, service changes or test connections.
++    command = "$ErrorActionPreference='Stop'; @{uuid=(Get-CimInstance Win32_ComputerSystemProduct).UUID; adapters=@(Get-NetAdapter -IncludeHidden | Where-Object {$_.Status -eq 'Up'} | Select-Object Name,InterfaceDescription); disks=@(Get-CimInstance Win32_LogicalDisk | Select-Object DeviceID,DriveType,FileSystem)} | ConvertTo-Json -Depth 6 -Compress"
++    powershell = Path(os.environ['SystemRoot'])/'System32/WindowsPowerShell/v1.0/powershell.exe'
++    return json.loads(subprocess.check_output([str(powershell),'-NoProfile','-NonInteractive','-Command',command], text=True, timeout=30))
++
++def admit(bundle, receipt_path, receipt_sha, approval):
++    bundle = Path(bundle).resolve(); receipt_path = Path(receipt_path).resolve()
++    if digest(receipt_path) != receipt_sha:
++        raise RuntimeError('Receipt hash mismatch')
++    receipt = json.loads(receipt_path.read_text(encoding='utf-8-sig'))
++    required = ['disposable_vm', 'network_disconnected_verified', 'no_host_shares_or_profile',
++                'filesystem_acl_verified', 'guest_os_vc_exports_verified', 'writable_work_verified',
++                'separate_operator_execution_approval']
++    if receipt.get('status') != 'ADMITTED' or any(receipt.get(k) is not True for k in required):
++        raise RuntimeError('Boundary has not been admitted')
++    if not approval or approval != receipt.get('approval_id'):
++        raise RuntimeError('Separate operator approval ID missing or differs')
++    if str(bundle) != receipt.get('guest_bundle_root'):
++        raise RuntimeError('Wrong guest payload location')
++    actual = facts()
++    if actual['uuid'] == receipt['prohibited_host_uuid'] or actual['uuid'] != receipt['guest_uuid']:
++        raise RuntimeError('Wrong computer; the development host is prohibited')
++    if actual['adapters']:
++        raise RuntimeError('Guest reports an active network adapter')
++    if any(int(d['DriveType']) == 4 for d in actual['disks']):
++        raise RuntimeError('Mapped/network drive visible in guest')
++    if not any(d['DeviceID'].lower() == bundle.drive.lower() and int(d['DriveType']) == 3 and d['FileSystem'] == 'NTFS' for d in actual['disks']):
++        raise RuntimeError('Payload is not on a fixed NTFS guest volume')
++    # Operator-supplied actual host/guest inspection and ACL evidence must remain present/hash-identical.
++    if not receipt.get('isolation_evidence') or not receipt.get('os_module_hashes'):
++        raise RuntimeError('Missing isolation evidence or guest OS loader boundary')
++    for rel, h in receipt['isolation_evidence'].items():
++        p = (bundle/rel).resolve()
++        if not p.is_relative_to(bundle) or digest(p) != h:
++            raise RuntimeError('Isolation evidence missing or differs: '+rel)
++    plan = json.loads((bundle/'probes/deployment-plan.json').read_text())
++    if receipt.get('deployment_plan_sha256') != digest(bundle/'probes/deployment-plan.json'):
++        raise RuntimeError('Receipt does not admit this deployment plan')
++    for sub in ['unified-native','database-native','python-home']:
++        allowed = ['work/qualification.sqlite'+s for s in ['', '-journal', '-wal', '-shm']] if sub == 'database-native' else []
++        verify_files(bundle/sub, plan['manifests'][sub], allowed)
++    for rel, h in receipt['probe_hashes'].items():
++        if digest(bundle/'probes'/rel) != h:
++            raise RuntimeError('Probe source differs: '+rel)
++    required_probes = {'probe.py','run-owned.py','admission.py','evidence.py','import-plan.json','deployment-plan.json'}
++    if not required_probes.issubset(receipt['probe_hashes']):
++        raise RuntimeError('Receipt does not pin all runtime probe sources')
++    for path, h in receipt['os_module_hashes'].items():
++        if digest(path) != h:
++            raise RuntimeError('Guest runtime identity differs: '+path)
++    return receipt, plan, actual
+--- /dev/null
++++ b/phase8/qualification08b1/cleanup-fixed.py
+@@ -0,0 +1,42 @@
++"""PREPARED ONLY. Exact four-file cleanup after admitted SQLite evidence review."""
++import argparse
++import json
++from pathlib import Path
++import sys
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from admission import admit
++from evidence import digest
++
++if __name__ == '__main__':
++    p = argparse.ArgumentParser()
++    for name in ['bundle','receipt','receipt-sha256','approval-id']:
++        p.add_argument('--'+name, required=True)
++    p.add_argument('--confirm-four-file-cleanup', action='store_true', required=True)
++    a = p.parse_args(); root = Path(a.bundle).resolve()
++    receipt, plan, facts = admit(root, a.receipt, a.receipt_sha256, a.approval_id)
++    if digest(__file__) != receipt['probe_hashes']['cleanup-fixed.py']:
++        raise RuntimeError('Cleanup source is not admitted')
++    result = json.loads((root/'evidence/sqlite/result.json').read_text())
++    if result['receipt_sha256'] != a.receipt_sha256:
++        raise RuntimeError('SQLite evidence belongs to a different admission')
++    work = (root/'database-native/work').resolve()
++    paths = [work/('qualification.sqlite'+s) for s in ['', '-journal', '-wal', '-shm']]
++    records = []
++    # Verify the complete intended removal set before any removal. No recursion or glob deletion.
++    for path in paths:
++        if path.exists():
++            if path.is_symlink() or path.resolve().parent != work:
++                raise RuntimeError('Cleanup path escaped fixed database work directory')
++            h = digest(path); rel = path.relative_to(root).as_posix()
++            if result['database_artifacts'].get(rel) != h:
++                raise RuntimeError('Database artifact changed or was not captured: '+rel)
++            records.append(dict(path=rel, sha256=h))
++    output = root/'evidence/sqlite/cleanup.json'
++    if output.exists():
++        raise RuntimeError('Refuse to overwrite cleanup evidence')
++    output.write_text(json.dumps(dict(status='PRE_DELETE_VERIFIED',files=records),indent=2)+'\n')
++    for record in records:
++        (root/record['path']).unlink()
++    if any(path.exists() for path in paths):
++        raise RuntimeError('Cleanup incomplete')
++    output.write_text(json.dumps(dict(status='CLEANUP_COMPLETE',files=records),indent=2)+'\n')
+--- /dev/null
++++ b/phase8/qualification08b1/evidence.py
+@@ -0,0 +1,61 @@
++"""Source-only runtime evidence helpers. No SeisComP imports here."""
++import ctypes
++from ctypes import wintypes as W
++import hashlib
++import json
++from pathlib import Path
++import time
++
++def digest(path):
++    return hashlib.sha256(Path(path).read_bytes()).hexdigest().upper()
++
++def emit(kind, **value):
++    print(json.dumps(dict(kind=kind, monotonic=time.monotonic(), **value), sort_keys=True), flush=True)
++
++def loaded_modules(process_handle=None):
++    """Enumerate actual module handles; fail if the snapshot is incomplete."""
++    k = ctypes.WinDLL('kernel32', use_last_error=True)
++    p = ctypes.WinDLL('psapi', use_last_error=True)
++    k.GetCurrentProcess.restype = W.HANDLE
++    p.EnumProcessModulesEx.argtypes = [W.HANDLE, ctypes.POINTER(W.HMODULE), W.DWORD, ctypes.POINTER(W.DWORD), W.DWORD]
++    p.GetModuleFileNameExW.argtypes = [W.HANDLE, W.HMODULE, W.LPWSTR, W.DWORD]
++    handle = process_handle if process_handle is not None else k.GetCurrentProcess()
++    modules = (W.HMODULE * 4096)(); needed = W.DWORD()
++    if not p.EnumProcessModulesEx(handle, modules, ctypes.sizeof(modules), ctypes.byref(needed), 3):
++        raise ctypes.WinError(ctypes.get_last_error())
++    if needed.value > ctypes.sizeof(modules):
++        raise RuntimeError('Module snapshot exceeds capacity')
++    result = []
++    for module in modules[:needed.value // ctypes.sizeof(W.HMODULE)]:
++        path = ctypes.create_unicode_buffer(32768)
++        n = p.GetModuleFileNameExW(handle, module, path, len(path))
++        if not n or n >= len(path)-1:
++            raise ctypes.WinError(ctypes.get_last_error())
++        file = Path(path.value).resolve()
++        result.append(dict(path=str(file), sha256=digest(file)))
++    return sorted(result, key=lambda row: row['path'].lower())
++
++def verify_files(root, expected_manifest, allowed_extra=()):
++    root = Path(root).resolve(); manifest = root/'SHA256SUMS.json'
++    if digest(manifest) != expected_manifest:
++        raise RuntimeError('Manifest identity differs: '+str(root))
++    files = json.loads(manifest.read_text(encoding='utf-8'))
++    actual = {p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file() and p != manifest}
++    if not set(files).issubset(actual) or actual-set(files)-set(allowed_extra):
++        raise RuntimeError('Unexpected or missing deployment files: '+str(actual.symmetric_difference(files)))
++    for rel, expected in files.items():
++        file = (root/rel).resolve()
++        if not file.is_relative_to(root) or digest(file) != expected:
++            raise RuntimeError('File identity differs: '+rel)
++    return files
++
++def verify_loaded(rows, bundle, external):
++    """Every observed image must match a pinned payload or admitted guest OS file."""
++    expected = dict(external)
++    for sub in ['unified-native','database-native','python-home']:
++        root = bundle/sub
++        for rel, h in json.loads((root/'SHA256SUMS.json').read_text()).items():
++            expected[str((root/rel).resolve()).lower()] = h
++    for row in rows:
++        if expected.get(str(Path(row['path']).resolve()).lower()) != row['sha256']:
++            raise RuntimeError('Unadmitted loaded module: '+row['path'])
+--- /dev/null
++++ b/phase8/qualification08b1/probe.py
+@@ -0,0 +1,123 @@
++"""PREPARED / NOT RUN in08B1. Only an admitted guest with separate approval may use this."""
++import argparse
++import gc
++import importlib
++import json
++import math
++import os
++from pathlib import Path
++import struct
++import sys
++import traceback
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from admission import admit
++from evidence import digest, emit, loaded_modules, verify_loaded
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument('--mode', choices=['imports','tau-default','tau-explicit'], required=True)
++    for name in ['bundle','receipt','receipt-sha256','approval-id']:
++        parser.add_argument('--'+name, required=True)
++    args = parser.parse_args(); bundle = Path(args.bundle).resolve()
++    receipt, plan, actual = admit(bundle, args.receipt, args.receipt_sha256, args.approval_id)
++    root = bundle/'unified-native'; pyhome = bundle/'python-home'
++    if sys.version_info[:3] != (3,10,11) or struct.calcsize('P') != 8:
++        raise RuntimeError('Original CPython3.10.11 x64 required')
++    if Path(sys.executable).resolve() != pyhome/'python.exe':
++        raise RuntimeError('Wrong external interpreter path')
++    if digest(sys.executable) != plan['python_exe_sha256']:
++        raise RuntimeError('Wrong external interpreter bytes')
++    if not sys.flags.isolated or not sys.flags.no_site or not sys.dont_write_bytecode:
++        raise RuntimeError('Require original interpreter -I -B -S')
++    # Keep directory handles alive until process exit. No global environment/registry change.
++    directories = [os.add_dll_directory(str(p)) for p in [root/'bin', pyhome, pyhome/'DLLs']]
++    sys.path.insert(0, str(root/'lib/python'))
++    emit('PYTHON', version=sys.version, executable=sys.executable, sha256=digest(sys.executable), sys_path=sys.path)
++    inventory = json.loads((bundle/'probes/import-plan.json').read_text())
++    for entry in inventory['modules']:
++        try:
++            module = importlib.import_module(entry['module'])
++            native_name = ('seiscomp.datamodel.' if entry['target'] in ['_datamodel','_strongmotion'] else 'seiscomp.')+entry['target']
++            native = importlib.import_module(native_name)
++            assert Path(module.__file__).resolve() == root/entry['install_python']
++            assert Path(native.__file__).resolve() == root/entry['install_extension']
++            assert digest(native.__file__) == entry['sha256']
++            for interface in entry['expected_interfaces']:
++                assert hasattr(module, interface), interface
++            for dependency in entry['imports']:
++                assert dependency in sys.modules, dependency
++            loaded = loaded_modules(); verify_loaded(loaded, bundle, receipt['os_module_hashes'])
++            assert any(Path(row['path']).name.lower() == 'python310.dll' and row['sha256'] == plan['python_dll_sha256'] for row in loaded)
++            emit('IMPORT', target=entry['target'], module=entry['module'], status='PASS',
++                 python_path=module.__file__, native_path=native.__file__, native_sha256=digest(native.__file__),
++                 interfaces=entry['expected_interfaces'], loaded_modules=loaded)
++        except Exception as error:
++            emit('IMPORT', target=entry['target'], status='FAIL', exception=repr(error),
++                 exception_type=type(error).__name__, winerror=getattr(error,'winerror',None),
++                 loader_message=str(error), traceback=traceback.format_exc())
++            raise  # No dependent import/query after a failed prerequisite.
++    if args.mode != 'imports':
++        import seiscomp.seismology as seismology
++        import seiscomp.system as system
++        if args.mode == 'tau-default':
++            assert 'SEISCOMP_LIBTAU_TABLE_DIR' not in os.environ
++            assert Path(system.Environment.Instance().shareDir()).resolve() == root/'share'
++        else:
++            os.environ['SEISCOMP_LIBTAU_TABLE_DIR'] = (root/'share/ttt').as_posix()+'/'
++        resources = {p.name:digest(p) for p in (root/'share/ttt').glob('*') if p.name in ['iasp91.hed','iasp91.tbl','ak135.hed','ak135.tbl']}
++        assert len(resources) == 4
++        table = seismology.TravelTimeTableInterface.Create('libtau')
++        assert table is not None and table.thisown, 'Original libtau factory/owned SWIG object required'
++        emit('TAU_FACTORY', factory='libtau', discovery=args.mode, resources=resources)
++        # Exact original signatures: phase, lat/lon/depth, receiver lat/lon/elevation, ellc.
++        # Fixed geometric engineering queries; no observed earthquake, parity or accuracy claim.
++        for model in ['iasp91','ak135','iasp91']:
++            assert table.setModel(model) and table.model() == model
++            for phase in ['P','S']:
++                value = table.compute(phase, 0.0, 0.0, 10.0, 0.0, 30.0, 0.0, 1)
++                fields = {name:getattr(value,name) for name in ['time','dtdd','dtdh','dddp','takeoff']}
++                assert all(math.isfinite(x) for x in fields.values()) and fields['time'] > 0
++                assert value.phase and value.phase[0].upper() == phase
++                emit('TAU_QUERY', model=model, requested_phase=phase, actual_phase=value.phase,
++                     args=[0,0,10,0,30,0,1], values=fields, status='PASS')
++            for name, argv in [('invalid_phase',('P8_NO_SUCH_PHASE',0.,0.,10.,0.,30.,0.,1)),
++                               ('invalid_depth',('P',0.,0.,801.,0.,30.,0.,1))]:
++                try:
++                    table.compute(*argv)
++                except RuntimeError as error:
++                    emit('TAU_EXPECTED_ERROR', case=name, exception=repr(error), status='PASS')
++                else:
++                    raise RuntimeError('Original Tau accepted '+name)
++        assert table.setModel('') and table.model() == ''  # Original initPath closes initialized files.
++        del table; gc.collect()
++        # Missing named files only: originals remain untouched; no malformed binary ingestion.
++        missing = seismology.TravelTimeTableInterface.Create('libtau')
++        try:
++            missing.setModel('p8_08b1_absent_model')
++        except RuntimeError as error:
++            emit('TAU_EXPECTED_ERROR', case='missing_model', exception=repr(error), status='PASS')
++        else:
++            raise RuntimeError('Missing model unexpectedly loaded')
++        del missing; gc.collect()
++        import ctypes
++        from ctypes import wintypes as W
++        k = ctypes.WinDLL('kernel32', use_last_error=True)
++        k.CreateFileW.argtypes = [W.LPCWSTR,W.DWORD,W.DWORD,ctypes.c_void_p,W.DWORD,W.DWORD,W.HANDLE]
++        k.CreateFileW.restype = W.HANDLE
++        k.CloseHandle.argtypes = [W.HANDLE]
++        for name in resources:
++            # Read-only exclusive opens prove no reader file handle remains; no table is modified.
++            handle = k.CreateFileW(str(root/'share/ttt'/name),0x80000000,0,None,3,0x80,None)
++            if handle == W.HANDLE(-1).value:
++                raise ctypes.WinError(ctypes.get_last_error())
++            assert k.CloseHandle(handle)
++        emit('TAU_CLEANUP', state='setModel-empty, owned SWIG destruction, exclusive read-only resource reopens completed', status='PASS')
++    loaded = loaded_modules(); verify_loaded(loaded, bundle, receipt['os_module_hashes'])
++    emit('COMPLETE', mode=args.mode, status='PASS', loaded_modules=loaded, numerical_parity='NOT_RUN')
++
++if __name__ == '__main__':
++    try:
++        main()
++    except Exception as error:
++        emit('FAIL', exception=repr(error), traceback=traceback.format_exc())
++        sys.exit(1)
+--- /dev/null
++++ b/phase8/qualification08b1/README.md
+@@ -0,0 +1,124 @@
++# 08B1 qualification preparation â€” execution NOT RUN
++
++The local preparation root is `C:/Users/dantesoneja/AppData/Local/SeisComP_08B1_20261024`.
++It is on fixed NTFS. It contains a byte-identical revision3 copy, a separate flat
++07C harness deployment, the original external CPython runtime/standard library,
++source-only probes, work directories and individual SHA-256 manifests.
++**It is not an admitted runtime environment. Do not launch these probes on this host.**
++
++08B1 sections B/H explicitly authorize preparation only. Separate human approval
++of a concrete admitted boundary is required for every native extension/plugin/Tau/DB run.
++The supplied admission receipt deliberately says NOT_ADMITTED and has no approval ID.
++Changing that field is not evidence of isolation or a substitute for operator approval.
++
++## Proposed boundary for operator review
++
++Use a disposable x64 Windows VM with its own local NTFS disk and throwaway account.
++No production profiles, shared folders, mapped drives, host-drive redirection,
++clipboard/file transfer redirection, credentials, live inventory or waveform data.
++No services, network DB, GUI, broker, controller or acquisition executable is admitted.
++Host networking must remain unchanged. An administrator must provide the VM itself;
++this batch did not create/start a VM, attach disks, alter NICs/firewalls/ACLs or request elevation.
++
++Transfer the immutable preparation payload through an operator-approved offline
++method. A temporary read-only delivery image must be detached before execution;
++a writable host mapping is not acceptable. Suggested guest root `C:/P8-08B1` with
++`unified-native`, `database-native`, `python-home`, `probes`, `work`, `evidence`.
++Retain each internal layout and manifest. Paths in provenance JSON refer to source
++evidence, not executable dependencies on Y:. No controller/front-end is used:
++the probe invokes the exact original external `python.exe` copy directly. This avoids
++silently changing the frontend's compiled Python home.
++
++Before approval, preserve actual host Hyper-V VM ID/checkpoint/disk/NIC evidence,
++show no virtual adapters connected to any switch (prefer no VM NICs), and verify
++inside the guest that no active adapter, route to production, shared drive/profile or
++host redirection remains. Do not test this with ping or a database/network connection.
++Guest UUID must differ from the development host UUID and match the receipt.
++Record the account, effective filesystem access/ACLs, fixed NTFS volume, writable
++work paths and immutable payload policy. Host facts are in the batch evidence;
++Get-VM currently fails with an authorization-policy permission error.
++
++Verify every manifest and AMD64 PE identity inside the guest. Pin actual guest OS/VC
++runtime paths/versions/hashes, normal/delay imports, API-set and forwarder closure
++against that guest. Host System32 14.50 and Python-bundled 14.29 exports were inspected
++without loading; those checks do not prove a future guest's runtime. Python's
++application-local vcruntime files are retained byte-for-byte. No dependency upgrade
++or silent replacement is proposed. No differing private DLL basename occurs within
++either SeisComP deployment; Python/OS runtime choices must be admitted explicitly.
++
++The operator's receipt must pin the exact deployment plan, all probe files, isolation
++evidence and guest OS loader boundary; supply a separate explicit approval ID and
++admit only imports, the two Tau modes, plugin registration and disposable SQLite.
++The receipt checker rechecks guest identity, active adapters, network drives, NTFS,
++all payload hashes and actual OS runtime hashes before launch. It does not establish
++VM isolation itself; human inspection/approval remains required. Missing evidence,
++false fields, unknown DLLs or a failed check must stop execution. Do not weaken gates
++to make a test pass. Unsigned script policy is not bypassed.
++
++## Prepared focused sequence
++
++Only after that admission and separate authorization, invoke the exact original
++external CPython with `-I -B -S` to run `probes/run-owned.py`, one mode at a time.
++Each invocation requires `--bundle <guest-root> --receipt <admitted-receipt.json>
++--receipt-sha256 <operator-pinned-hash> --approval-id <separate-human-approval-id>`.
++The initial NOT_ADMITTED receipt is intentionally unusable.
++
++| Mode | Prerequisite | Actual original path prepared |
++|---|---|---|
++| imports | Admitted boundary | Twelve package/native imports in original dependency order; interface existence, paths, hashes and actual loaded modules |
++| tau-default | Imports PASS in same boundary | Environment shareDir discovery, original libtau factory, iasp91â†’ak135â†’iasp91 |
++| tau-explicit | Imports PASS in same boundary | Exact SEISCOMP_LIBTAU_TABLE_DIR with trailing separator; same original factory/reader |
++| plugins | Imports PASS in same boundary | Unchanged 07C --plugins, both createSCPlugin registrations/factories; no DB connection |
++| sqlite | Imports and plugins PASS | Unchanged 07C --sqlite, original schema0.14.0, commit/rollback, Pick/Origin, reconnect/new archive/readback, invalid SQL/missing-file/disconnect |
++
++Tau queries use `compute(phase,0,0,10,0,30,0,1)` for P/S, record actual returned
++phase/time/derivatives/takeoff and require finite positive travel times. These fixed
++coordinates are engineering inputs, not an observed event or Linux parity test.
++Negative cases: nonexistent phase, depth801 (original range0.01..800), nonexistent
++model filename; no corrupt or edited scientific tables. Model switching and
++setModel-empty/destruction are followed by exclusive read-only resource reopens
++to observe file-handle cleanup. Source references: original libtau.cpp:90â€“156,
++ttt.cpp:218 onward, seismology.i %exception/%newobject and retained generated API.
++No scientific implementation or public interface is changed.
++
++The new runner/probes are **syntax-checked source, not runtime-qualified software**.
++Runner captures exact argv/cwd/environment, stdout/stderr, actual child exit and
++timestamped loaded-module snapshots. A one-process Windows job is assigned to the
++exact created handle immediately after launch, forbids children, has a120-second
++wall deadline and kill-on-job-close. If assignment fails, only that just-created
++child handle is stopped. There is a short creation-to-assignment interval; these
++reviewed probes and unchanged harness contain no process-spawn operation. No PID
++enumeration, broad termination, controller change or service policy is involved.
++Abort/timeout is a failed qualification, even if an earlier check printed PASS.
++Runtime behavior of this new orchestration must itself be reviewed in the admitted VM.
++
++Python records import exceptions/tracebacks and winerror when the exception supplies
++one; no stale GetLastError is presented as a loader error. It records actual loaded
++module paths/hashes after each import and at completion; unknown loader images fail.
++Original intermodule imports and meaningful existing interfaces are source-derived
++in import-plan.json. No Application instance/network object is constructed. Optional
++NumPy/zmq/jwt/Twisted/zope/requests/nettab/plugin packages remain separate exclusions;
++no site-packages, pip initialization or package installation is used.
++
++DB observation joins actual harness MODULE lines to external module snapshots/hashes.
++Missing loader coverage fails qualification even if exit0. Transient module events
++between samples are not claimed as complete history. The unchanged07C harness prints
++a generic LoadLibraryEx failure; if encountered, retain exact exit/logs and propose
++focused in-process loader diagnostics rather than inventing an absent Win32 code.
++It has no PostgreSQL connection mode. Registration success cannot qualify a PG server.
++
++## Evidence and cleanup
++
++Fresh per-mode evidence directories are mandatory; existing outputs are rejected.
++SQLite requires a fresh database work directory and uses original CREATE_NEW.
++Capture database artifacts/hash after disconnect and before cleanup; failures retain
++all evidence and DB files. The prepared cleanup script removes only the four original
++fixed qualification.sqlite files after evidence/hash verification and explicit cleanup
++instruction in the admitted boundary. No recursive deletion or VM destruction is
++performed automatically. Revert/delete the disposable VM only after operator evidence
++export/review. Final evidence transfer is an operator step, not a host share left live.
++
++All actual import/Tau/SQLite/plugin/loader/cleanup results in08B1 are NOT_RUN.
++Backend count remains101/120; all prior stages and three historical custody exceptions
++are preserved. Continue genuine core-processing resource/fixture completeness after
++the scoped isolated qualification; no controller expansion or operational usability claim.
+--- /dev/null
++++ b/phase8/qualification08b1/run-owned.py
+@@ -0,0 +1,138 @@
++"""PREPARED ONLY. Bounded, owned test runner; receipt is mandatory and initially NOT_ADMITTED.
++
++No controller/application launch, network test or package installation. The job contains
++only the exact child handle created here; no enumeration-based process termination.
++"""
++import argparse
++import ctypes
++from ctypes import wintypes as W
++import datetime
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++import time
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from admission import admit
++from evidence import digest, loaded_modules, verify_loaded
++
++class BASIC(ctypes.Structure):
++    _fields_ = [('PerProcessUserTimeLimit',ctypes.c_longlong),('PerJobUserTimeLimit',ctypes.c_longlong),
++                ('LimitFlags',W.DWORD),('MinimumWorkingSetSize',ctypes.c_size_t),
++                ('MaximumWorkingSetSize',ctypes.c_size_t),('ActiveProcessLimit',W.DWORD),
++                ('Affinity',ctypes.c_size_t),('PriorityClass',W.DWORD),('SchedulingClass',W.DWORD)]
++class IO(ctypes.Structure):
++    _fields_ = [(n,ctypes.c_ulonglong) for n in ['ReadOperationCount','WriteOperationCount','OtherOperationCount','ReadTransferCount','WriteTransferCount','OtherTransferCount']]
++class EXTENDED(ctypes.Structure):
++    _fields_ = [('BasicLimitInformation',BASIC),('IoInfo',IO),('ProcessMemoryLimit',ctypes.c_size_t),
++                ('JobMemoryLimit',ctypes.c_size_t),('PeakProcessMemoryUsed',ctypes.c_size_t),('PeakJobMemoryUsed',ctypes.c_size_t)]
++
++def run(args):
++    bundle = Path(args.bundle).resolve()
++    receipt, plan, host = admit(bundle, args.receipt, args.receipt_sha256, args.approval_id)
++    if args.mode != 'imports':
++        pre = json.loads((bundle/'evidence/imports/result.json').read_text())
++        if pre['qualification'] != 'PASS' or pre['receipt_sha256'] != args.receipt_sha256:
++            raise RuntimeError('Imports prerequisite has not passed for this admitted boundary')
++    if args.mode == 'sqlite':
++        pre = json.loads((bundle/'evidence/plugins/result.json').read_text())
++        if pre['qualification'] != 'PASS' or pre['receipt_sha256'] != args.receipt_sha256:
++            raise RuntimeError('Plugin prerequisite has not passed')
++    out = bundle/'evidence'/args.mode
++    out.mkdir()  # Refuse to overwrite old results or silently rerun against existing DB.
++    root = bundle/'unified-native'
++    if args.mode in ['plugins','sqlite']:
++        argv = [str(bundle/'database-native/bin/dbqualify.exe'),'--'+args.mode]
++        cwd = bundle/'database-native/work'
++        if any(cwd.iterdir()):
++            raise RuntimeError('Database work directory is not fresh')
++    else:
++        argv = [str(bundle/'python-home/python.exe'),'-I','-B','-S',str(bundle/'probes/probe.py'),
++                '--mode',args.mode,'--bundle',str(bundle),'--receipt',args.receipt,
++                '--receipt-sha256',args.receipt_sha256,'--approval-id',args.approval_id]
++        cwd = bundle/'work'/args.mode
++    cwd.mkdir(parents=True, exist_ok=True)
++    # Construct a fresh child environment; never inherit profiles, endpoint variables or global PATH.
++    systemroot = os.environ['SystemRoot']
++    env = dict(SystemRoot=systemroot, WINDIR=systemroot,
++               PATH=str((bundle/'database-native/bin') if args.mode in ['plugins','sqlite'] else root/'bin')+';'+systemroot+'/System32',
++               TEMP=str(bundle/'work/temp'), TMP=str(bundle/'work/temp'),
++               USERPROFILE=str(bundle/'work/profile'), HOME=str(bundle/'work/profile'),
++               APPDATA=str(bundle/'work/profile/AppData/Roaming'), LOCALAPPDATA=str(bundle/'work/profile/AppData/Local'),
++               SEISCOMP_ROOT=str(root), SEISCOMP_LOCAL_CONFIG=str(bundle/'work/config'), PYTHONDONTWRITEBYTECODE='1')
++    for name in ['USERPROFILE','APPDATA','LOCALAPPDATA']:
++        Path(env[name]).mkdir(parents=True, exist_ok=True)
++    k = ctypes.WinDLL('kernel32', use_last_error=True)
++    k.CreateJobObjectW.argtypes=[ctypes.c_void_p,W.LPCWSTR]; k.CreateJobObjectW.restype=W.HANDLE
++    k.SetInformationJobObject.argtypes=[W.HANDLE,ctypes.c_int,ctypes.c_void_p,W.DWORD]
++    k.AssignProcessToJobObject.argtypes=[W.HANDLE,W.HANDLE]
++    k.TerminateJobObject.argtypes=[W.HANDLE,W.UINT]
++    k.CloseHandle.argtypes=[W.HANDLE]
++    job = k.CreateJobObjectW(None,None)
++    if not job:
++        raise ctypes.WinError(ctypes.get_last_error())
++    limits = EXTENDED(); limits.BasicLimitInformation.LimitFlags=0x2000|0x8  # KILL_ON_JOB_CLOSE | ACTIVE_PROCESS
++    limits.BasicLimitInformation.ActiveProcessLimit=1  # These original fixtures must not spawn children.
++    if not k.SetInformationJobObject(job,9,ctypes.byref(limits),ctypes.sizeof(limits)):
++        k.CloseHandle(job); raise ctypes.WinError(ctypes.get_last_error())
++    command = dict(argv=argv, cwd=str(cwd), environment=env, deadline_seconds=120,
++                   utc=datetime.datetime.now(datetime.timezone.utc).isoformat(), receipt_sha256=args.receipt_sha256,
++                   policy='one exact owned child; job limit1; close/timeout terminates this job only')
++    (out/'command.json').write_text(json.dumps(command,indent=2)+'\n')
++    process = None; snapshots=[]; observed={}; observation_errors=[]; failure=None; timed_out=False
++    try:
++        with (out/'stdout.log').open('wb') as stdout, (out/'stderr.log').open('wb') as stderr:
++            process = subprocess.Popen(argv,cwd=cwd,env=env,stdin=subprocess.DEVNULL,
++                stdout=stdout,stderr=stderr,creationflags=subprocess.CREATE_NO_WINDOW)
++            if not k.AssignProcessToJobObject(job,W.HANDLE(int(process._handle))):
++                error=ctypes.WinError(ctypes.get_last_error())
++                process.kill(); process.wait(timeout=10)  # Exact handle only if job assignment failed.
++                raise error
++            start=time.monotonic()
++            while process.poll() is None:
++                try:
++                    rows=loaded_modules(W.HANDLE(int(process._handle)))
++                    verify_loaded(rows,bundle,receipt['os_module_hashes'])
++                    for row in rows: observed[row['path'].lower()]=row
++                    snapshots.append(dict(elapsed=time.monotonic()-start,modules=rows))
++                except OSError as error:
++                    observation_errors.append(dict(elapsed=time.monotonic()-start,error=repr(error)))
++                except Exception as error:
++                    failure=repr(error); k.TerminateJobObject(job,125); break
++                if time.monotonic()-start > 120:
++                    timed_out=True; k.TerminateJobObject(job,124); break
++                time.sleep(0.02)
++            process.wait(timeout=10)
++    finally:
++        k.CloseHandle(job)
++        if process is not None and process.poll() is None:
++            process.wait(timeout=10)
++    text=(out/'stdout.log').read_text(encoding='utf-8',errors='replace')
++    if args.mode in ['plugins','sqlite']:
++        paths=[line[len('MODULE '):].strip() for line in text.splitlines() if line.startswith('MODULE ')]
++        required={'seiscomp_core.dll','seiscomp_config.dll','dbsqlite3.dll'}
++        if args.mode=='plugins': required.add('dbpostgresql.dll')
++        seen={Path(p).name.lower() for p in paths}
++        coverage=required.issubset(seen) and all(str(Path(p).resolve()).lower() in observed for p in paths)
++        complete='PASS qualification_complete' in text
++    else:
++        events=[json.loads(line) for line in text.splitlines() if line.startswith('{')]
++        coverage=any(x.get('kind')=='COMPLETE' and x.get('loaded_modules') for x in events)
++        complete=any(x.get('kind')=='COMPLETE' and x.get('status')=='PASS' for x in events)
++    artifacts={str(p.relative_to(bundle)):digest(p) for p in (bundle/'database-native/work').glob('qualification.sqlite*') if p.is_file()}
++    qualification='PASS' if process.returncode==0 and complete and coverage and not failure and not timed_out else 'FAIL'
++    result=dict(mode=args.mode,actual_exit_code=process.returncode,qualification=qualification, receipt_sha256=args.receipt_sha256,
++                timed_out=timed_out,observation_failure=failure,actual_loader_evidence_complete=coverage,
++                database_artifacts=artifacts,cleanup='NOT_RUN; retain database/logs; fixed-file cleanup only after evidence review')
++    (out/'loaded-modules.json').write_text(json.dumps(dict(snapshots=snapshots,errors=observation_errors),indent=2)+'\n')
++    (out/'exit_code.txt').write_text(str(process.returncode)+'\n')
++    (out/'result.json').write_text(json.dumps(result,indent=2)+'\n')
++    print(json.dumps(result,indent=2))
++    return 0 if qualification=='PASS' else 1
++
++if __name__=='__main__':
++    parser=argparse.ArgumentParser()
++    parser.add_argument('--mode',choices=['imports','tau-default','tau-explicit','plugins','sqlite'],required=True)
++    for name in ['bundle','receipt','receipt-sha256','approval-id']: parser.add_argument('--'+name,required=True)
++    sys.exit(run(parser.parse_args()))

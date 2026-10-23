@@ -1,0 +1,1744 @@
+diff --git a/apps/seedlink/CMakeLists.txt b/apps/seedlink/CMakeLists.txt
+--- a/apps/seedlink/CMakeLists.txt
++++ b/apps/seedlink/CMakeLists.txt
+@@ -21,7 +21,9 @@
+ # Uncomment the following to enable file descriptor reallocation.
+ # This is needed for large servers (number of stations multiplied by
+ # the number of simultaneous connections is larger than 1000).
+-SET(OPTIONS ${OPTIONS} -DFD_REALLOC)
++IF (NOT WIN32)
++ SET(OPTIONS ${OPTIONS} -DFD_REALLOC)
++ENDIF ()
+ IF(LINUX)
+ 	SET(OPTIONS ${OPTIONS} -DLINUX)
+ ENDIF()
+@@ -52,3 +54,8 @@
+ 
+ FILE(GLOB descs "${CMAKE_CURRENT_SOURCE_DIR}/descriptions/*.xml")
+ INSTALL(FILES ${descs} DESTINATION ${SC3_PACKAGE_APP_DESC_DIR})
++
++IF (WIN32)
++ FIND_PACKAGE(Boost REQUIRED COMPONENTS regex)
++ TARGET_LINK_LIBRARIES(seedlink Boost::regex seedlink_native slink)
++ENDIF ()
+diff --git a/apps/seedlink/iosystem.cc b/apps/seedlink/iosystem.cc
+--- a/apps/seedlink/iosystem.cc
++++ b/apps/seedlink/iosystem.cc
+@@ -25,6 +25,30 @@
+ #include <cstring>
+ #include <cerrno>
+ 
++#ifdef _WIN32
++#include "native_io.h"
++#include "native_directory.h"
++#include <io.h>
++#include <direct.h>
++#define read _read
++#define write _write
++#define open _open
++#define close _close
++#define lseek _lseek
++#define fstat _fstat
++#define stat _stat
++#define mkdir(path,mode) _mkdir(path)
++#ifndef S_ISREG
++#define S_ISREG(mode) (((mode)&_S_IFMT)==_S_IFREG)
++#endif
++#define S_IRUSR _S_IREAD
++#define S_IWUSR _S_IWRITE
++#define S_IRGRP 0
++#define S_IROTH 0
++#define SHUT_RDWR SD_BOTH
++#define SHUT_RD SD_RECEIVE
++#define F_OK 0
++#else
+ #include <unistd.h>
+ #include <fcntl.h>
+ #include <dirent.h>
+@@ -34,6 +58,7 @@
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
++#endif
+ 
+ #ifdef TCPWRAP
+ extern "C" {
+@@ -95,6 +120,22 @@
+ // If macro FD_REALLOC is defined, then file descriptors are moved above
+ // FD_SETSIZE.
+ 
++#ifdef _WIN32
++typedef SOCKET NativeSocket;
++inline ssize_t socket_receive(SOCKET fd,void *data,size_t size){auto r=SeedlinkNative::receive(SeedlinkNative::Socket(fd),data,size);if(r.state==SeedlinkNative::State::Data || r.state==SeedlinkNative::State::EndOfStream)return ssize_t(r.bytes);errno=SeedlinkNative::error_to_errno(r.error);return -1;}
++inline ssize_t socket_transmit(SOCKET fd,const void *data,size_t size){auto r=SeedlinkNative::transmit(SeedlinkNative::Socket(fd),data,size);if(r.state==SeedlinkNative::State::Data || r.state==SeedlinkNative::State::EndOfStream)return ssize_t(r.bytes);errno=SeedlinkNative::error_to_errno(r.error);return -1;}
++
++inline int xopen(const char *path,int flags){return _open(path,flags|_O_BINARY|_O_NOINHERIT);}
++inline int xcreat(const char *path,int){return _open(path,_O_CREAT|_O_TRUNC|_O_WRONLY|_O_BINARY|_O_NOINHERIT,_S_IREAD|_S_IWRITE);}
++inline int xclose(int fd){return _close(fd);}
++inline int xclose(SOCKET fd){return closesocket(fd);}
++inline SOCKET xsocket(int domain,int type,int protocol){
++ static int started=slp_sockstartup();if(started<0)throw LibraryError("Winsock startup failed");
++ return WSASocketW(domain,type,protocol,nullptr,0,WSA_FLAG_OVERLAPPED|WSA_FLAG_NO_HANDLE_INHERIT);
++}
++inline SOCKET xaccept(SOCKET listener,struct sockaddr *address,int *length){SOCKET fd=accept(listener,address,length);if(fd!=INVALID_SOCKET)SetHandleInformation(reinterpret_cast<HANDLE>(fd),HANDLE_FLAG_INHERIT,0);return fd;}
++#else
++typedef int NativeSocket;
+ inline int _fdrealloc(int fd)
+   {
+ #ifdef FD_REALLOC
+@@ -179,6 +220,8 @@
+ 
+     return fd;
+   }
++
++#endif
+ 
+ //*****************************************************************************
+ // Sequence
+@@ -803,7 +846,7 @@
+   friend class Connection;
+   friend class StationConnection;
+   private:
+-    const int clientfd;
++    const NativeSocket clientfd;
+     const string host;
+     const int port;
+     const bool window_extraction;
+@@ -820,7 +863,7 @@
+     string ws_buf;
+ 
+     ConnectionState(const string &host_init, int port_init, bool rlog,
+-      const Stream &logs, int clientfd_init, bool window_extraction_init):
++      const Stream &logs, NativeSocket clientfd_init, bool window_extraction_init):
+       ConnectionStateBase(logs, rlog), clientfd(clientfd_init),
+       host(host_init), port(port_init),
+       window_extraction(window_extraction_init), multi(false),
+@@ -898,7 +941,13 @@
+ 
+     while (nleft > 0)
+       {
+-        if ((nwritten = write(clientfd, ptr, nleft)) <= 0)
++        if ((nwritten = 
++#ifdef _WIN32
++          socket_transmit(clientfd, ptr, nleft)
++#else
++          write(clientfd, ptr, nleft)
++#endif
++) <= 0)
+             return nwritten;
+ 
+         nleft -= nwritten;
+@@ -2029,7 +2078,7 @@
+       bool rlog, int info_level_init, bool window_extraction, bool websocket,
+       rc_ptr<MasterMonitor> monitor_init,
+       map<StationDescriptor, rc_ptr<StationIO> > &stations_init,
+-      const Stream &logs, int fd):
++      const Stream &logs, NativeSocket fd):
+       cx(host, port, rlog, logs, fd, window_extraction), ipaddr(ipaddr_init),
+       default_network_id(default_network_id_init), info_level(info_level_init),
+       monitor(monitor_init), stations(stations_init), cmdwp(0), invalid(false),
+@@ -2175,7 +2224,13 @@
+ bool Connection::input()
+   {
+     int bytes_read;
+-    if((bytes_read = read(cx.clientfd, &cmdbuf[cmdwp], CMDLEN - cmdwp)) <= 0)
++    if((bytes_read = 
++#ifdef _WIN32
++      socket_receive(cx.clientfd, &cmdbuf[cmdwp], CMDLEN-cmdwp)
++#else
++      read(cx.clientfd, &cmdbuf[cmdwp], CMDLEN-cmdwp)
++#endif
++) <= 0)
+         return true;
+ 
+     bool disconnect = false;
+@@ -2498,7 +2553,7 @@
+     fds.clear_read(cx.clientfd);
+     fds.clear_write(cx.clientfd);
+     shutdown(cx.clientfd, SHUT_RDWR);
+-    close(cx.clientfd);
++    xclose(cx.clientfd);
+   }
+ 
+ //*****************************************************************************
+@@ -2520,7 +2575,7 @@
+     bool untrusted_window_extraction;
+     bool trusted_websocket;
+     bool untrusted_websocket;
+-    int listenfd;
++    NativeSocket listenfd;
+     struct timeval timeout;
+     struct timeval throttle;
+     Timer th_timer;
+@@ -2619,20 +2674,24 @@
+ 
+ void ConnectionManagerImpl::client_connect()
+   {
+-    int clientfd = -1;
++    NativeSocket clientfd = NativeSocket(-1);
+     struct sockaddr_in inet_addr;
+ 
+ #if defined(__GNU_LIBRARY__) && __GNU_LIBRARY__ < 2
++    int len;
++#else
++#ifdef _WIN32
+     int len;
+ #else
+     socklen_t len;
+ #endif
++#endif
+ 
+     len = sizeof(inet_addr);
+ 
+     try
+       {
+-        if((clientfd = xaccept(listenfd, (struct sockaddr *) &inet_addr, &len)) < 0)
++        if((clientfd = xaccept(listenfd, (struct sockaddr *) &inet_addr, &len)) == NativeSocket(-1))
+           {
+             logs(LOG_NOTICE) << "socket error: " << strerror(errno) << endl;
+             return;
+@@ -2641,7 +2700,7 @@
+     catch(FDSetsizeExceeded &e)
+       {
+         logs(LOG_ERR) << "cannot accept connection: " << e.message << endl;
+-        close(clientfd);
++        xclose(clientfd);
+         return;
+       }
+ 
+@@ -2659,12 +2718,12 @@
+       {
+         logs(LOG_WARNING) << host << ":" << port << " : not allowed" << endl;
+         shutdown(clientfd, SHUT_RDWR);
+-        close(clientfd);
++        xclose(clientfd);
+         return;
+       }
+ #else
+     int optval = 1;
+-    N(setsockopt(clientfd, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval)));
++    N(setsockopt(clientfd, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<const char*>(&optval), sizeof(optval)));
+     const char* host = inet_ntoa(inet_addr.sin_addr);
+ #endif
+ 
+@@ -2673,7 +2732,7 @@
+         logs(LOG_NOTICE) << host << ":" << port << " : maximum number of "
+           "connections (" << max_conn << ") exceeded" << endl;
+         shutdown(clientfd, SHUT_RDWR);
+-        close(clientfd);
++        xclose(clientfd);
+         return;
+       }
+ 
+@@ -2693,7 +2752,7 @@
+                   "connections per IP (" << max_conn_per_ip << ") exceeded" << endl;
+ 
+             shutdown(clientfd, SHUT_RDWR);
+-            close(clientfd);
++            xclose(clientfd);
+             return;
+           }
+       }
+@@ -2777,10 +2836,14 @@
+ 
+ void ConnectionManagerImpl::start(int port)
+   {
++#ifdef _WIN32
++    listenfd=xsocket(PF_INET,SOCK_STREAM,0);if(listenfd==INVALID_SOCKET)throw LibraryError("native listener creation failed");
++#else
+     N(listenfd = xsocket(PF_INET, SOCK_STREAM, 0));
++#endif
+ 
+     int optval = 1;
+-    N(setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)));
++    N(setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&optval), sizeof(optval)));
+ 
+     struct sockaddr_in inet_addr;
+     inet_addr.sin_family = AF_INET;
+@@ -2851,7 +2914,7 @@
+         connections.pop_front();
+       }
+ 
+-    close(listenfd);
++    xclose(listenfd);
+   }
+ 
+ void ConnectionManagerImpl::save_state()
+diff --git a/apps/seedlink/iosystem.h b/apps/seedlink/iosystem.h
+--- a/apps/seedlink/iosystem.h
++++ b/apps/seedlink/iosystem.h
+@@ -20,7 +20,16 @@
+ #include <cstdlib>
+ 
+ #include <sys/types.h>
++#ifdef _WIN32
++#include "native_io.h"
++#include <set>
++#include <climits>
++#include <vector>
++#include <algorithm>
++#include <map>
++#else
+ #include <sys/time.h>
++#endif
+ 
+ // fix broken FD_ZERO
+ #ifdef FD_ZERO_BUG
+@@ -147,6 +156,41 @@
+ // Fdset
+ //*****************************************************************************
+ 
++#ifdef _WIN32
++class Fdset {
++ std::set<SOCKET> reads,writes,writes2,active_read,active_write;
++ std::map<HANDLE,SeedlinkNative::PipeView> pipes;
++ std::set<HANDLE> active_pipes;
++ int last_status=0;
++public:
++ void set_read(SOCKET fd){reads.insert(fd);} void set_write(SOCKET fd){writes.insert(fd);writes2.insert(fd);}
++ void set_write2(SOCKET fd){writes2.insert(fd);} void clear_read(SOCKET fd){reads.erase(fd);}
++ void clear_write(SOCKET fd){writes.erase(fd);writes2.erase(fd);} void clear_write2(SOCKET fd){writes.erase(fd);}
++ void set_read(SeedlinkNative::PipeView pipe){pipes[pipe.value]=pipe;}
++ void clear_read(SeedlinkNative::PipeView pipe){pipes.erase(pipe.value);active_pipes.erase(pipe.value);}
++ bool isactive_read(SeedlinkNative::PipeView pipe)const{return active_pipes.count(pipe.value)!=0;}
++ bool isactive_read(SOCKET fd)const{return active_read.count(fd)!=0;}
++ bool isactive_write(SOCKET fd)const{return active_write.count(fd)!=0;}
++ void sync(){writes=writes2;}
++ int status(){return last_status;}
++ int select(timeval *timeout){
++  ULONGLONG end=timeout?GetTickCount64()+ULONGLONG(timeout->tv_sec)*1000+(timeout->tv_usec+999)/1000:ULLONG_MAX;
++  for(;;){
++   active_read.clear();active_write.clear();active_pipes.clear();
++   std::map<SOCKET,short> requested;for(auto fd:reads)requested[fd]|=POLLRDNORM;for(auto fd:writes)requested[fd]|=POLLWRNORM;
++   std::vector<WSAPOLLFD> poll;for(auto e:requested)poll.push_back({e.first,e.second,0});
++   for(auto e:pipes)if(SeedlinkNative::pipe_ready(e.second))active_pipes.insert(e.first);
++   ULONGLONG now=GetTickCount64();int wait=int(std::min<ULONGLONG>(end>now?end-now:0,10));if(!active_pipes.empty())wait=0;
++   if(!poll.empty()){
++    if(WSAPoll(poll.data(),ULONG(poll.size()),wait)==SOCKET_ERROR){errno=SeedlinkNative::error_to_errno(WSAGetLastError());return last_status=-1;}
++    for(auto e:poll){if(e.revents&(POLLRDNORM|POLLHUP|POLLERR|POLLNVAL))active_read.insert(e.fd);if(e.revents&(POLLWRNORM|POLLHUP|POLLERR|POLLNVAL))active_write.insert(e.fd);}
++   }else if(active_pipes.empty() && wait)Sleep(wait);
++   last_status=int(active_read.size()+active_write.size()+active_pipes.size());
++   if(last_status || GetTickCount64()>=end)return last_status;
++  }
++ }
++};
++#else
+ class Fdset
+   {
+   private:
+@@ -241,6 +285,11 @@
+         return select_status;
+       }
+   };
++
++#endif
++#ifdef _WIN32
++extern Fdset fds;
++#endif
+ 
+ //*****************************************************************************
+ // ConnectionHandler
+diff --git a/apps/seedlink/monitor.cc b/apps/seedlink/monitor.cc
+--- a/apps/seedlink/monitor.cc
++++ b/apps/seedlink/monitor.cc
+@@ -24,10 +24,20 @@
+ #include <cerrno>
+ 
+ #include <time.h>
++#ifdef _WIN32
++#include "native_regex.h"
++#else
+ #include <regex.h>
++#endif
+ #include <sys/types.h>
++#ifndef _WIN32
+ #include <sys/time.h>
++#endif
++#ifdef _WIN32
++#include <winsock2.h>
++#else
+ #include <netinet/in.h>
++#endif
+ 
+ #include <libxml/xmlIO.h>
+ #include <libxml/tree.h>
+@@ -40,6 +50,9 @@
+ #include "monitor.h"
+ #include "cppstreams.h"
+ #include "utils.h"
++#ifdef _WIN32
++#include "native_io.h"
++#endif
+ #include "descriptor.h"
+ #include "buffer.h"
+ #include "mseed.h"
+@@ -70,8 +83,13 @@
+ 
+ INT_TIME get_real_time()
+   {
++#ifdef _WIN32
++    sl_timeval tv;
++    SeedlinkNative::wall_time(tv.tv_sec,tv.tv_usec);
++#else
+     struct timeval tv;
+     N(gettimeofday(&tv, NULL));
++#endif
+     time_t t = tv.tv_sec;
+     tm* ptm = gmtime(&t);
+ 
+diff --git a/apps/seedlink/mseed.cc b/apps/seedlink/mseed.cc
+--- a/apps/seedlink/mseed.cc
++++ b/apps/seedlink/mseed.cc
+@@ -15,7 +15,11 @@
+ #include <cstdio>
+ #include <cstdlib>
+ 
++#ifdef _WIN32
++#include <winsock2.h>
++#else
+ #include <netinet/in.h>
++#endif
+ 
+ #include "qtime.h"
+ 
+diff --git a/apps/seedlink/seedlink.cc b/apps/seedlink/seedlink.cc
+--- a/apps/seedlink/seedlink.cc
++++ b/apps/seedlink/seedlink.cc
+@@ -23,16 +23,30 @@
+ #include <csignal>
+ #include <cerrno>
+ 
++#ifdef _WIN32
++#include "native_io.h"
++#include "native_log.h"
++#include <io.h>
++#include <direct.h>
++#define write _write
++#define open _open
++#define close _close
++#define STDOUT_FILENO 1
++#define mkdir(path,mode) _mkdir(path)
++#else
+ #include <unistd.h>
++#endif
+ #include <fcntl.h>
+ #include <time.h>
+ 
++#ifndef _WIN32
+ #include <syslog.h>
+ #include <sys/time.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <sys/wait.h>
+ #include <sys/resource.h>
++#endif
+ #ifdef LINUX
+ #include <sys/prctl.h>
+ #endif
+@@ -88,6 +102,24 @@
+ using namespace SProc;
+ 
+ namespace {
++#ifdef _WIN32
++static char *optarg=nullptr;static int option_index=1,option_offset=1;
++static int getopt(int argc,char **argv,const char *options){
++ if(option_index>=argc)return EOF;
++ char *arg=argv[option_index];if(arg[0]!='-' || !arg[1])return EOF;
++ if(!strcmp(arg,"--")){++option_index;return EOF;}
++ int c=arg[option_offset++];const char *spec=strchr(options,c);
++ if(!spec){if(!arg[option_offset]){++option_index;option_offset=1;}return '?';}
++ if(spec[1]==':'){
++  if(arg[option_offset])optarg=arg+option_offset;
++  else if(option_index+1<argc)optarg=argv[++option_index];
++  else {++option_index;option_offset=1;return '?';}
++  ++option_index;option_offset=1;
++ }else if(!arg[option_offset]){++option_index;option_offset=1;}
++ return c;
++}
++#endif
++
+ 
+ const int         MAX_FILTER_LENGTH = 10000;
+ const char *const LOG_STREAM        = "LOG";
+@@ -281,7 +313,12 @@
+   {
+   private:
+     const string cmdline;
++#ifdef _WIN32
++    SeedlinkNative::ProcessChannel process;
++    int pid;
++#else
+     pid_t pid;
++#endif
+     int parent_fd;
+     bool child_active;
+     bool sigterm_sent;
+@@ -310,7 +347,11 @@
+       {
+         if(pid > 0)
+           {
++#ifdef _WIN32
++            process.force_stop();
++#else
+             kill(pid, SIGKILL);
++#endif
+             sigkill_sent = true;
+           }
+       }
+@@ -329,7 +370,11 @@
+ 
+     ~Plugin()
+       {
++#ifdef _WIN32
++        if(process.input().value!=INVALID_HANDLE_VALUE)IOSystem_private::fds.clear_read(process.input());
++#else
+         if(parent_fd >= 0) close(parent_fd);
++#endif
+       }
+ 
+     void start();
+@@ -340,7 +385,11 @@
+       {
+         if(pid > 0)
+           {
++#ifdef _WIN32
++            process.request_stop();
++#else
+             kill(pid, SIGTERM);
++#endif
+             sigterm_sent = true;
+           }
+ 
+@@ -359,14 +408,21 @@
+         return child_active;
+       }
+ 
+-    int fd()
+-      {
+-        return parent_fd;
+-      }
++#ifdef _WIN32
++    SeedlinkNative::PipeView fd(){return process.input();}
++#else
++    int fd(){return parent_fd;}
++#endif
+   };
+ 
+ void Plugin::start()
+   {
++#ifdef _WIN32
++    if(process.input().value!=INVALID_HANDLE_VALUE)IOSystem_private::fds.clear_read(process.input());
++    process.start(cmdline,name);
++    pid=1;read_timer.reset();read_state=ReadInit;sigterm_sent=false;sigkill_sent=false;
++    data_available=false;shutdown_requested=false;
++#else
+     int pipe_fd[2];
+ 
+     if(parent_fd >= 0) close(parent_fd);
+@@ -418,10 +474,16 @@
+     logs(LOG_ERR) << string() + "cannot execute shell '" + SHELL + "' "
+       "(" + strerror(errno) + ")" << endl;
+     exit(0);
++#endif
+   }
+ 
+ bool Plugin::check_child()
+   {
++#ifdef _WIN32
++    if(process.running())return true;
++    if(process.exit_code()!=0)logs(LOG_WARNING)<<"["<<name<<"] native plugin exit "<<process.exit_code()<<endl;
++    pid=0;return false;
++#else
+     int status, completed;
+ 
+     if(pid <= 0) return false;
+@@ -452,6 +514,7 @@
+ 
+     pid = 0;
+     return false;
++#endif
+   }
+ 
+ bool Plugin::read_helper()
+@@ -467,7 +530,14 @@
+         read_state = ReadHeader;
+       }
+ 
++#ifdef _WIN32
++    auto result=SeedlinkNative::read_some(process.input(),ptr,nleft,0);
++    if(result.state==SeedlinkNative::State::Data)nread=int(result.bytes);
++    else if(result.state==SeedlinkNative::State::EndOfStream)nread=0;
++    else {nread=-1;errno=(result.state==SeedlinkNative::State::WouldBlock)?EAGAIN:SeedlinkNative::error_to_errno(result.error);}
++#else
+     nread = ::read(parent_fd, ptr, nleft);
++#endif
+ 
+     if(nread == 0)
+       {
+@@ -504,6 +574,15 @@
+ 
+     if(read_state == ReadHeader && nleft == 0)
+       {
++#ifdef _WIN32
++        // Validate the sample count before multiplication; never overflow the byte count.
++        if((header_buf.packtype == PluginRawDataTimePacket || header_buf.packtype == PluginRawDataPacket) &&
++          (header_buf.data_size < 0 || header_buf.data_size > PLUGIN_MAX_DATA_BYTES / 4))
++          {
++            logs(LOG_ERR) << "[" << name << "] invalid raw sample count (" << header_buf.data_size << ")" << endl;
++            return false;
++          }
++#endif
+         if(header_buf.packtype == PluginRawDataTimePacket ||
+           header_buf.packtype == PluginRawDataPacket)
+             data_bytes = header_buf.data_size << 2;
+@@ -1618,6 +1697,20 @@
+ 
+ bool run_check(const string &lockfile)
+   {
++#ifdef _WIN32
++    static SeedlinkNative::Handle lock_owner;
++    SeedlinkNative::Handle candidate(CreateFileA(lockfile.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr));
++    if(!candidate)throw SeedlinkCannotOpenFile(lockfile);
++    OVERLAPPED offset{};
++    if(!LockFileEx(candidate.get(),LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY,0,MAXDWORD,MAXDWORD,&offset)){
++      if(GetLastError()==ERROR_LOCK_VIOLATION)return true;
++      throw SeedlinkLibraryError("cannot lock native lockfile");
++    }
++    LARGE_INTEGER begin{};if(!SetFilePointerEx(candidate.get(),begin,nullptr,FILE_BEGIN)||!SetEndOfFile(candidate.get()))throw SeedlinkLibraryError("cannot truncate native lockfile");
++    std::string pid=std::to_string(GetCurrentProcessId())+"\n";DWORD count;
++    if(!WriteFile(candidate.get(),pid.data(),DWORD(pid.size()),&count,nullptr)||count!=pid.size())throw SeedlinkLibraryError("cannot write native lockfile");
++    lock_owner=std::move(candidate);return false;
++#else
+     int fd, val;
+     char buf[10];
+     struct flock lock;
+@@ -1650,6 +1743,7 @@
+     N(fcntl(fd, F_SETFD, val));
+ 
+     return 0;
++#endif
+   }
+ 
+ //*****************************************************************************
+@@ -2040,9 +2134,14 @@
+ int main(int argc, char **argv)
+ try
+   {
++#ifdef _WIN32
++    if(!SetPriorityClass(GetCurrentProcess(),HIGH_PRIORITY_CLASS))logs(LOG_WARNING)<<"Could not set native process priority"<<endl;
++#else
+     setpriority(PRIO_PROCESS, 0, -20);
+     seteuid(getuid());
+     setegid(getgid());
++
++#endif
+ 
+ #if defined(__GNU_LIBRARY__) || defined(__GLIBC__)
+     struct option ops[] =
+@@ -2079,6 +2178,10 @@
+           }
+       }
+ 
++#ifdef _WIN32
++    signal(SIGINT,int_handler);signal(SIGTERM,int_handler);
++    if(daemon_mode)throw SeedlinkError("POSIX daemon mode is unavailable on Windows; configure a native service host explicitly");
++#else
+     struct sigaction sa;
+     sa.sa_handler = int_handler;
+     sa.sa_flags = SA_RESTART;
+@@ -2106,6 +2209,8 @@
+         daemon_init = true;
+       }
+ 
++#endif
++
+     redirect_ostream(cout, LogFunc(), LOG_INFO);
+     redirect_ostream(cerr, LogFunc(), LOG_ERR);
+     redirect_ostream(clog, LogFunc(), LOG_ERR);
+diff --git a/apps/seedlink/steim1.cc b/apps/seedlink/steim1.cc
+--- a/apps/seedlink/steim1.cc
++++ b/apps/seedlink/steim1.cc
+@@ -15,7 +15,11 @@
+ #include <iomanip>
+ #include <algorithm>
+ 
++#ifdef _WIN32
++#include <winsock2.h>
++#else
+ #include <netinet/in.h>
++#endif
+ 
+ #include "cppstreams.h"
+ #include "steim1.h"
+diff --git a/apps/seedlink/steim1.h b/apps/seedlink/steim1.h
+--- a/apps/seedlink/steim1.h
++++ b/apps/seedlink/steim1.h
+@@ -32,11 +32,19 @@
+ // Steim1Frame
+ //*****************************************************************************
+ 
++#ifdef _MSC_VER
++#pragma pack(push,1)
++#endif
+ struct Steim1Frame
+   {
+     u_int32_t nibble_word;
+     u_int32_t sample_word[15];
+   } PACKED;
++#ifdef _MSC_VER
++#pragma pack(pop)
++static_assert(sizeof(Steim1Frame)==64,"unchanged Steim frame size");
++static_assert(alignof(Steim1Frame)==1,"unchanged packed Steim frame alignment");
++#endif
+ 
+ //*****************************************************************************
+ // Steim1Encoder
+diff --git a/apps/seedlink/steim2.cc b/apps/seedlink/steim2.cc
+--- a/apps/seedlink/steim2.cc
++++ b/apps/seedlink/steim2.cc
+@@ -15,7 +15,11 @@
+ #include <iomanip>
+ #include <algorithm>
+ 
++#ifdef _WIN32
++#include <winsock2.h>
++#else
+ #include <netinet/in.h>
++#endif
+ 
+ #include "cppstreams.h"
+ #include "steim2.h"
+diff --git a/apps/seedlink/steim2.h b/apps/seedlink/steim2.h
+--- a/apps/seedlink/steim2.h
++++ b/apps/seedlink/steim2.h
+@@ -32,11 +32,19 @@
+ // Steim2Frame
+ //*****************************************************************************
+ 
++#ifdef _MSC_VER
++#pragma pack(push,1)
++#endif
+ struct Steim2Frame
+   {
+     u_int32_t nibble_word;
+     u_int32_t sample_word[15];
+   } PACKED;
++#ifdef _MSC_VER
++#pragma pack(pop)
++static_assert(sizeof(Steim2Frame)==64,"unchanged Steim frame size");
++static_assert(alignof(Steim2Frame)==1,"unchanged packed Steim frame alignment");
++#endif
+ 
+ //*****************************************************************************
+ // Steim2Encoder
+diff --git a/libs/plugin/CMakeLists.txt b/libs/plugin/CMakeLists.txt
+--- a/libs/plugin/CMakeLists.txt
++++ b/libs/plugin/CMakeLists.txt
+@@ -15,3 +15,11 @@
+ INCLUDE_DIRECTORIES(../3rd-party/qlib2)
+ 
+ ADD_LIBRARY(slplugin STATIC ${SLPLUGIN_SOURCES})
++
++IF (WIN32)
++ TARGET_LINK_LIBRARIES(slplugin PUBLIC seedlink_native)
++ENDIF ()
++
++IF (WIN32)
++ TARGET_SOURCES(slplugin PRIVATE packet_abi_win.cc)
++ENDIF ()
+diff --git a/libs/plugin/packet_abi_win.cc b/libs/plugin/packet_abi_win.cc
+new file mode 100644
+--- /dev/null
++++ b/libs/plugin/packet_abi_win.cc
+@@ -0,0 +1,17 @@
++// Compile-only checks against the unchanged packet declaration, not runtime parity.
++#include "plugin.h"
++#include <cstddef>
++#include <cstdint>
++static_assert(sizeof(int32_t)==4,"32-bit sample width");
++static_assert(sizeof(ptime)==24,"ptime source layout");
++static_assert(sizeof(PluginPacketHeader)==60,"unchanged packet header size");
++static_assert(offsetof(PluginPacketHeader,station)==4,"station offset");
++static_assert(offsetof(PluginPacketHeader,channel)==14,"channel offset");
++static_assert(offsetof(PluginPacketHeader,pt)==24,"time offset");
++static_assert(offsetof(PluginPacketHeader,data_size)==56,"payload byte/count offset");
++
++#include "../3rd-party/libslink/libslink.h"
++#include <type_traits>
++static_assert(sizeof(SLCD::link)==sizeof(void*),"SLCD socket storage must retain pointer width");
++static_assert(std::is_same<decltype(SLCD::link),SOCKET>::value,"SLCD owns a native SOCKET, not a CRT descriptor");
++static_assert(sizeof(SLpacket)==SLHEADSIZE+SLRECSIZE,"SeedLink record framing");
+diff --git a/libs/plugin/plugin.c b/libs/plugin/plugin.c
+--- a/libs/plugin/plugin.c
++++ b/libs/plugin/plugin.c
+@@ -17,6 +17,9 @@
+ #ifdef _WIN32
+ #include <io.h>
+ #include <BaseTsd.h>
++extern long long sl_native_packet_write(int,const void*,size_t);
++extern int sl_native_plugin_bootstrap(void);
++extern int sl_native_send_packet(const void*,size_t,const void*,int);
+ typedef SSIZE_T ssize_t;
+ #else
+ #include <unistd.h>
+@@ -275,6 +278,9 @@
+ int send_packet(const struct PluginPacketHeader *head, const void *dataptr,
+   int data_bytes)
+   {
++#ifdef _WIN32
++    return sl_native_send_packet(head,sizeof(*head),dataptr,data_bytes);
++#else
+     int r;
+     
+     if((r = writen(PLUGIN_FD, head, sizeof(struct PluginPacketHeader))) <= 0)
+@@ -284,6 +290,7 @@
+         return r;
+ 
+     return data_bytes;
++#endif
+   }
+ 
+ ssize_t writen(int fd, const void *vptr, size_t n)
+@@ -295,7 +302,7 @@
+     while (nleft > 0)
+       {
+         #ifdef _WIN32
+-        nwritten = _write(fd, ptr, (unsigned int)nleft);
++        nwritten = (ssize_t)sl_native_packet_write(fd, ptr, nleft);
+         #else
+         nwritten = write(fd, ptr, nleft);
+         #endif
+diff --git a/libs/plugin/plugin.h b/libs/plugin/plugin.h
+--- a/libs/plugin/plugin.h
++++ b/libs/plugin/plugin.h
+@@ -64,6 +64,10 @@
+     
+ #ifdef __cplusplus
+ extern "C" {
++#ifdef _WIN32
++int sl_native_plugin_bootstrap(void);
++int sl_native_plugin_stop_requested(void);
++#endif
+ #endif
+ 
+ int send_raw3(const char *station, const char *channel, const struct ptime *pt,
+diff --git a/libs/slutils/BOOST_LICENSE_1_0.txt b/libs/slutils/BOOST_LICENSE_1_0.txt
+new file mode 100644
+--- /dev/null
++++ b/libs/slutils/BOOST_LICENSE_1_0.txt
+@@ -0,0 +1,23 @@
++Boost Software License - Version 1.0 - August 17th, 2003
++
++Permission is hereby granted, free of charge, to any person or organization
++obtaining a copy of the software and accompanying documentation covered by
++this license (the "Software") to use, reproduce, display, distribute,
++execute, and transmit the Software, and to prepare derivative works of the
++Software, and to permit third-parties to whom the Software is furnished to
++do so, all subject to the following:
++
++The copyright notices in the Software and this entire statement, including
++the above license grant, this restriction and the following disclaimer,
++must be included in all copies of the Software, in whole or in part, and
++all derivative works of the Software, unless such copies or derivative
++works are solely in the form of machine-executable object code generated by
++a source language processor.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
++SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
++FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
++ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++DEALINGS IN THE SOFTWARE.
+diff --git a/libs/slutils/CMakeLists.txt b/libs/slutils/CMakeLists.txt
+--- a/libs/slutils/CMakeLists.txt
++++ b/libs/slutils/CMakeLists.txt
+@@ -37,3 +37,13 @@
+ 
+ ADD_FLEX_FILES(SLUTILS_SOURCES conf_ini.l)
+ ADD_LIBRARY(slutils STATIC ${SLUTILS_SOURCES})
++
++IF (WIN32)
++ FIND_PACKAGE(Boost REQUIRED COMPONENTS regex)
++ ADD_LIBRARY(seedlink_native STATIC native_io_win.cc boost_posix_api.cpp)
++ TARGET_COMPILE_DEFINITIONS(seedlink_native PUBLIC BOOST_REGEX_STATIC_LINK)
++ TARGET_LINK_LIBRARIES(seedlink_native PUBLIC ws2_32 shell32 Boost::regex)
++ TARGET_COMPILE_DEFINITIONS(seedlink_native PRIVATE _WIN32_WINNT=0x0602 NOMINMAX WIN32_LEAN_AND_MEAN)
++ TARGET_LINK_LIBRARIES(slutils PUBLIC seedlink_native)
++ TARGET_COMPILE_DEFINITIONS(slutils PRIVATE YY_NO_UNISTD_H)
++ENDIF ()
+diff --git a/libs/slutils/NATIVE_WINDOWS_TRANSPORT.md b/libs/slutils/NATIVE_WINDOWS_TRANSPORT.md
+new file mode 100644
+--- /dev/null
++++ b/libs/slutils/NATIVE_WINDOWS_TRANSPORT.md
+@@ -0,0 +1,19 @@
++# Windows acquisition transport (P8-WINBACKEND-04)
++
++Implementation/build evidence only. No application or service has been executed. Linux retains its original process, descriptor and select paths.
++
++Windows plugin commands must use the explicit mapping `native:<Windows executable and quoted argv>`; the configured plugin name is appended as one argument. UTF-8 configuration is converted to UTF-16 and Windows argument quoting is applied. There is no shell fallback or translation of POSIX shell syntax. Existing shell scripts/configurations need explicit operator mapping to a supported native binary.
++
++CreateProcessW receives an inherited-handle whitelist: a byte-mode overlapped packet writer, cooperative stop event, synchronous stdout/stderr logging writer, and NUL stdin. The parent read endpoints are non-inheritable. A suspended child is assigned to a kill-on-close job before resume. Parent writer duplicates are closed immediately. Per-child environment variables SEISCOMP_PLUGIN_PIPE and SEISCOMP_PLUGIN_STOP encode uintptr_t-sized handles in decimal; these are bootstrap metadata, never packet bytes.
++
++Supported native child implementations are caps_plugin and fs_plugin. They call sl_native_plugin_bootstrap before acquisition. The bootstrap takes ownership of the packet handle through _open_osfhandle, duplicates it to child-local CRT FD 63, enables binary mode, clears handle inheritance, and registers that descriptor as an overlapped pipe. The temporary CRT descriptor is closed exactly once. Stop-event inheritance is also cleared. Packet helpers serialize the original header and payload under one mutex. No packet declaration, field encoding or sample algorithm is substituted.
++
++Arbitrary external plugins are unsupported until rebuilt with this bootstrap and cooperative-stop integration; merely compiling a legacy _write(63) call does not satisfy inheritance or ABI requirements. chain_plugin extensions also require separate FD 61 (commands) and FD 62 (incoming data) bindings; this single-output bootstrap does not claim that external contract.
++
++CRT file descriptors, pipe HANDLEs and Winsock SOCKETs have distinct typed endpoints. WSAPoll sees sockets only. PeekNamedPipe supplies byte-pipe readiness; overlapped operations resolve completion after CancelIoEx before stack OVERLAPPED/event/buffer lifetimes end. Result states distinguish bytes, temporary no-data, EOF, timeout and native errors. Timed writes retain a fresh timeout interval after each completed partial write, matching the upstream adapter. Unknown CRT pipe descriptors are rejected rather than sent through Winsock or silently treated as ready.
++
++Wall timestamps use signed 64-bit Unix seconds and microseconds derived from FILETIME; Timer formulas and scheduled increments remain unchanged. Blocking wait deadlines use GetTickCount64. Packet state holds partial header/payload reads until complete; sample counts are bounded before multiplication on Windows. Compile-time layout checks are source-derived engineering checks, not Linux-oracle or runtime ABI validation.
++
++Shutdown sets the separate stop event. CAPS checks it in its collection loop and bounded socket-read polling; FS checks between directory scans and during its polling wait, then flushes existing decoder channels. Existing parent shutdown timers control escalation. TerminateJobObject is forced shutdown, never a graceful-shutdown claim. Process/job ownership prevents orphaned descendants and packet writers on parent destruction. Name resolution/connect and lengthy scans can require bounded parent escalation; graceful behavior is not runtime qualified.
++
++Platform baseline is Windows 8 / Server 2012 API availability (_WIN32_WINNT=0x0602). Filesystem adapters currently use the Windows ANSI/CRT path APIs and do not establish Unicode or extended-length-path support. No dependency versions changed. Boost POSIX regex API implementation is the exact existing installed-version source with Boost Software License 1.0 included; no regex approximation was introduced.
+diff --git a/libs/slutils/big-endian.h b/libs/slutils/big-endian.h
+--- a/libs/slutils/big-endian.h
++++ b/libs/slutils/big-endian.h
+@@ -22,6 +22,12 @@
+ typedef unsigned char  u_int8_t;
+ typedef unsigned short u_int16_t;
+ typedef unsigned int   u_int32_t;
++#endif
++
++#ifdef _WIN32
++#ifndef IS_LITTLE_ENDIAN
++#define IS_LITTLE_ENDIAN
++#endif
+ #endif
+ 
+ /* Check for BSD-style BYTE_ORDER definition */
+diff --git a/libs/slutils/boost_posix_api.cpp b/libs/slutils/boost_posix_api.cpp
+new file mode 100644
+--- /dev/null
++++ b/libs/slutils/boost_posix_api.cpp
+@@ -0,0 +1,290 @@
++/*
++ *
++ * Copyright (c) 1998-2002
++ * John Maddock
++ *
++ * Use, modification and distribution are subject to the 
++ * Boost Software License, Version 1.0. (See accompanying file 
++ * LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
++ *
++ */
++ 
++ /*
++  *   LOCATION:    see http://www.boost.org for most recent version.
++  *   FILE:        posix_api.cpp
++  *   VERSION:     see <boost/version.hpp>
++  *   DESCRIPTION: Implements the Posix API wrappers.
++  */
++
++#define BOOST_REGEX_SOURCE
++
++#include <boost/regex.hpp>
++#include <boost/cregex.hpp>
++#include <cstdio>
++
++#ifndef BOOST_WORKAROUND
++#define BOOST_WORKAROUND(x, y) false
++#endif
++
++#ifndef BOOST_REGEX_STANDALONE
++#include <boost/core/snprintf.hpp>
++#else
++namespace boost { namespace core { using std::snprintf; } }
++#endif
++
++namespace boost{
++
++namespace{
++
++unsigned int magic_value = 25631;
++
++const char* names[] = {
++      "REG_NOERROR",
++      "REG_NOMATCH",
++      "REG_BADPAT",
++      "REG_ECOLLATE",
++      "REG_ECTYPE",
++      "REG_EESCAPE",
++      "REG_ESUBREG",
++      "REG_EBRACK",
++      "REG_EPAREN",
++      "REG_EBRACE",
++      "REG_BADBR",
++      "REG_ERANGE",
++      "REG_ESPACE",
++      "REG_BADRPT",
++      "REG_EEND",
++      "REG_ESIZE",
++      "REG_ERPAREN",
++      "REG_EMPTY",
++      "REG_ECOMPLEXITY",
++      "REG_ESTACK",
++      "REG_E_PERL",
++      "REG_E_UNKNOWN",
++};
++} // namespace
++
++typedef boost::basic_regex<char, c_regex_traits<char> > c_regex_type;
++
++#ifdef BOOST_MSVC
++#  pragma warning(push)
++#pragma warning(disable:26812)
++#endif
++BOOST_REGEX_DECL int BOOST_REGEX_CCALL regcompA(regex_tA* expression, const char* ptr, int f)
++{
++#ifndef BOOST_NO_EXCEPTIONS
++   try{
++#endif
++      expression->guts = new c_regex_type();
++#ifndef BOOST_NO_EXCEPTIONS
++   } catch(...)
++   {
++      expression->guts = 0;
++      return REG_ESPACE;
++   }
++#else
++   if(0 == expression->guts)
++      return REG_E_MEMORY;
++#endif
++   // set default flags:
++   unsigned flags = (f & REG_PERLEX) ? 0 : ((f & REG_EXTENDED) ? regex::extended : regex::basic);
++   expression->eflags = (f & REG_NEWLINE) ? match_not_dot_newline : match_default;
++   // and translate those that are actually set:
++
++   if(f & REG_NOCOLLATE)
++   {
++      flags |= regex::nocollate;
++#ifndef BOOST_REGEX_V3
++      flags &= ~regex::collate;
++#endif
++   }
++
++   if(f & REG_NOSUB)
++   {
++      //expression->eflags |= match_any;
++      flags |= regex::nosubs;
++   }
++
++   if(f & REG_NOSPEC)
++      flags |= regex::literal;
++   if(f & REG_ICASE)
++      flags |= regex::icase;
++   if(f & REG_ESCAPE_IN_LISTS)
++      flags &= ~regex::no_escape_in_lists;
++   if(f & REG_NEWLINE_ALT)
++      flags |= regex::newline_alt;
++
++   const char* p2;
++   if(f & REG_PEND)
++      p2 = expression->re_endp;
++   else p2 = ptr + std::strlen(ptr);
++
++   int result;
++
++#ifndef BOOST_NO_EXCEPTIONS
++   try{
++#endif
++      expression->re_magic = magic_value;
++      static_cast<c_regex_type*>(expression->guts)->set_expression(ptr, p2, flags);
++      expression->re_nsub = static_cast<c_regex_type*>(expression->guts)->mark_count();
++      result = static_cast<c_regex_type*>(expression->guts)->error_code();
++#ifndef BOOST_NO_EXCEPTIONS
++   } 
++   catch(const boost::regex_error& be)
++   {
++      result = be.code();
++   }
++   catch(...)
++   {
++      result = REG_E_UNKNOWN;
++   }
++#endif
++   if(result)
++      regfreeA(expression);
++   return result;
++
++}
++#ifdef BOOST_MSVC
++#  pragma warning(pop)
++#endif
++
++BOOST_REGEX_DECL regsize_t BOOST_REGEX_CCALL regerrorA(int code, const regex_tA* e, char* buf, regsize_t buf_size)
++{
++   std::size_t result = 0;
++   if(code & REG_ITOA)
++   {
++      code &= ~REG_ITOA;
++      if(code <= (int)REG_E_UNKNOWN)
++      {
++         result = std::strlen(names[code]) + 1;
++         if(buf_size >= result)
++            BOOST_REGEX_DETAIL_NS::strcpy_s(buf, buf_size, names[code]);
++         return result;
++      }
++      return result;
++   }
++   if(code == REG_ATOI)
++   {
++      char localbuf[5];
++      if(e == 0)
++         return 0;
++      for(int i = 0; i <= (int)REG_E_UNKNOWN; ++i)
++      {
++         if(std::strcmp(e->re_endp, names[i]) == 0)
++         {
++            //
++            // We're converting an integer i to a string, and since i <= REG_E_UNKNOWN
++            // a five character string is *always* large enough:
++            //
++            int r = (boost::core::snprintf)(localbuf, 5, "%d", i);
++            if(r < 0)
++               return 0; // sprintf failed
++            if(std::strlen(localbuf) < buf_size)
++               BOOST_REGEX_DETAIL_NS::strcpy_s(buf, buf_size, localbuf);
++            return std::strlen(localbuf) + 1;
++         }
++      }
++      int r = (boost::core::snprintf)(localbuf, 5, "%d", 0);
++      if(r < 0)
++         return 0; // sprintf failed
++      if(std::strlen(localbuf) < buf_size)
++         BOOST_REGEX_DETAIL_NS::strcpy_s(buf, buf_size, localbuf);
++      return std::strlen(localbuf) + 1;
++   }
++   if(code <= (int)REG_E_UNKNOWN)
++   {
++      std::string p;
++      if((e) && (e->re_magic == magic_value))
++         p = static_cast<c_regex_type*>(e->guts)->get_traits().error_string(static_cast< ::boost::regex_constants::error_type>(code));
++      else
++      {
++         p = BOOST_REGEX_DETAIL_NS::get_default_error_string(static_cast< ::boost::regex_constants::error_type>(code));
++      }
++      std::size_t len = p.size();
++      if(len < buf_size)
++      {
++         BOOST_REGEX_DETAIL_NS::strcpy_s(buf, buf_size, p.c_str());
++      }
++      return len + 1;
++   }
++   if(buf_size)
++      *buf = 0;
++   return 0;
++}
++
++BOOST_REGEX_DECL int BOOST_REGEX_CCALL regexecA(const regex_tA* expression, const char* buf, regsize_t n, regmatch_t* array, int eflags)
++{
++#ifdef BOOST_MSVC
++#pragma warning(push)
++#pragma warning(disable:4267)
++#endif
++   bool result = false;
++   match_flag_type flags = match_default | expression->eflags;
++   const char* end;
++   const char* start;
++   cmatch m;
++   
++   if(eflags & REG_NOTBOL)
++      flags |= match_not_bol;
++   if(eflags & REG_NOTEOL)
++      flags |= match_not_eol;
++   if(eflags & REG_STARTEND)
++   {
++      start = buf + array[0].rm_so;
++      end = buf + array[0].rm_eo;
++   }
++   else
++   {
++      start = buf;
++      end = buf + std::strlen(buf);
++   }
++
++#ifndef BOOST_NO_EXCEPTIONS
++   try{
++#endif
++   if(expression->re_magic == magic_value)
++   {
++      result = regex_search(start, end, m, *static_cast<c_regex_type*>(expression->guts), flags);
++   }
++   else
++      return result;
++#ifndef BOOST_NO_EXCEPTIONS
++   } catch(...)
++   {
++      return REG_E_UNKNOWN;
++   }
++#endif
++
++   if(result)
++   {
++      // extract what matched:
++      std::size_t i;
++      for(i = 0; (i < n) && (i < expression->re_nsub + 1); ++i)
++      {
++         array[i].rm_so = m[i].matched ? (m[i].first - buf) : -1;
++         array[i].rm_eo = m[i].matched ? (m[i].second - buf) : -1;
++      }
++      // and set anything else to -1:
++      for(i = expression->re_nsub + 1; i < n; ++i)
++      {
++         array[i].rm_so = -1;
++         array[i].rm_eo = -1;
++      }
++      return 0;
++   }
++   return REG_NOMATCH;
++#ifdef BOOST_MSVC
++#pragma warning(pop)
++#endif
++}
++
++BOOST_REGEX_DECL void BOOST_REGEX_CCALL regfreeA(regex_tA* expression)
++{
++   if(expression->re_magic == magic_value)
++   {
++      delete static_cast<c_regex_type*>(expression->guts);
++   }
++   expression->re_magic = 0;
++}
++
++} // namespace boost
+diff --git a/libs/slutils/byteorder_swap.h b/libs/slutils/byteorder_swap.h
+--- a/libs/slutils/byteorder_swap.h
++++ b/libs/slutils/byteorder_swap.h
+@@ -14,7 +14,12 @@
+ #ifndef BYTEORDER_SWAP_H
+ #define BYTEORDER_SWAP_H
+ 
++#ifdef _MSC_VER
++#pragma pack(push,1)
++#define PACKED
++#else
+ #define PACKED __attribute__ ((packed))
++#endif
+ 
+ namespace ByteOrderSwap {
+ 
+@@ -123,5 +128,8 @@
+ 
+ } // namespace ByteOrderSwap
+   
++#ifdef _MSC_VER
++#pragma pack(pop)
++#endif
+ #endif // BYTEORDER_SWAP_H
+ 
+diff --git a/libs/slutils/conf_xml.cc b/libs/slutils/conf_xml.cc
+--- a/libs/slutils/conf_xml.cc
++++ b/libs/slutils/conf_xml.cc
+@@ -25,7 +25,14 @@
+ #include <cstdlib>
+ #include <cstdarg>
+ 
++#ifdef _WIN32
++#include <io.h>
++#define close _close
++#define open _open
++#define read _read
++#else
+ #include <unistd.h>
++#endif
+ #include <fcntl.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+@@ -64,7 +71,11 @@
+ 
+     void open(const string &file_name)
+       {
+-        if((fd = ::open(file_name.c_str(), O_RDONLY)) < 0)
++        if((fd = ::open(file_name.c_str(), O_RDONLY
++#ifdef _WIN32
++          | _O_BINARY
++#endif
++          )) < 0)
+           throw CfgCannotOpenFile(file_name);
+       }
+ 
+diff --git a/libs/slutils/confattr.h b/libs/slutils/confattr.h
+--- a/libs/slutils/confattr.h
++++ b/libs/slutils/confattr.h
+@@ -21,7 +21,11 @@
+ #include <cstring>
+ 
+ #include <stdint.h>
++#ifdef _WIN32
++#include "native_regex.h"
++#else
+ #include <regex.h>
++#endif
+ 
+ #include "confbase.h"
+ 
+diff --git a/libs/slutils/cppstreams.h b/libs/slutils/cppstreams.h
+--- a/libs/slutils/cppstreams.h
++++ b/libs/slutils/cppstreams.h
+@@ -18,7 +18,11 @@
+ #include <streambuf>
+ #include <string>
+ 
++#ifdef _WIN32
++#include "native_log.h"
++#else
+ #include <syslog.h>
++#endif
+ 
+ #include "utils.h"
+ 
+diff --git a/libs/slutils/little-endian.h b/libs/slutils/little-endian.h
+--- a/libs/slutils/little-endian.h
++++ b/libs/slutils/little-endian.h
+@@ -22,6 +22,12 @@
+ typedef unsigned char  u_int8_t;
+ typedef unsigned short u_int16_t;
+ typedef unsigned int   u_int32_t;
++#endif
++
++#ifdef _WIN32
++#ifndef IS_LITTLE_ENDIAN
++#define IS_LITTLE_ENDIAN
++#endif
+ #endif
+ 
+ /* Check for BSD-style BYTE_ORDER definition */
+diff --git a/libs/slutils/native_directory.h b/libs/slutils/native_directory.h
+new file mode 100644
+--- /dev/null
++++ b/libs/slutils/native_directory.h
+@@ -0,0 +1,38 @@
++/* Native Windows filesystem operations for slarchive; Linux keeps its original APIs. */
++#ifndef SL_WIN_DIRECTORY_H
++#define SL_WIN_DIRECTORY_H
++#include <winsock2.h>
++#include <windows.h>
++#include <io.h>
++#include <direct.h>
++#include <fcntl.h>
++#include <stdlib.h>
++#include <string.h>
++#include <errno.h>
++
++#define DT_REG 8
++#define DT_LNK 10
++struct dirent {char d_name[MAX_PATH];unsigned char d_type;};
++typedef struct {HANDLE find;WIN32_FIND_DATAA data;int first;struct dirent entry;} DIR;
++static int slwin_directory_errno(DWORD error){switch(error){case ERROR_FILE_NOT_FOUND:case ERROR_PATH_NOT_FOUND:return ENOENT;case ERROR_ACCESS_DENIED:case ERROR_SHARING_VIOLATION:return EACCES;case ERROR_DIRECTORY:return ENOTDIR;case ERROR_NOT_ENOUGH_MEMORY:return ENOMEM;default:return EIO;}}
++static DIR *slwin_opendir(const char *path){
++ size_t len=strlen(path);char *search;DIR *dir;DWORD attrs=GetFileAttributesA(path);
++ if(attrs==INVALID_FILE_ATTRIBUTES){errno=slwin_directory_errno(GetLastError());return NULL;}
++ if(!(attrs&FILE_ATTRIBUTE_DIRECTORY)){errno=ENOTDIR;return NULL;}
++ search=(char*)malloc(len+3);if(!search){errno=ENOMEM;return NULL;}
++ memcpy(search,path,len);strcpy(search+len,"/*");dir=(DIR*)calloc(1,sizeof(DIR));if(!dir){free(search);errno=ENOMEM;return NULL;}
++ dir->find=FindFirstFileA(search,&dir->data);free(search);
++ if(dir->find==INVALID_HANDLE_VALUE){DWORD error=GetLastError();if(error==ERROR_FILE_NOT_FOUND)return dir;free(dir);errno=slwin_directory_errno(error);return NULL;}
++ dir->first=1;return dir;
++}
++static struct dirent *slwin_readdir(DIR *dir){
++ if(dir->find==INVALID_HANDLE_VALUE)return NULL;
++ if(!dir->first && !FindNextFileA(dir->find,&dir->data)){DWORD error=GetLastError();if(error!=ERROR_NO_MORE_FILES)errno=slwin_directory_errno(error);return NULL;}
++ dir->first=0;strcpy(dir->entry.d_name,dir->data.cFileName);dir->entry.d_type=(dir->data.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)?DT_LNK:((dir->data.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)?4:DT_REG);return &dir->entry;
++}
++static int slwin_closedir(DIR *dir){BOOL ok=dir->find==INVALID_HANDLE_VALUE?TRUE:FindClose(dir->find);DWORD error=ok?0:GetLastError();free(dir);if(!ok){errno=slwin_directory_errno(error);return -1;}return 0;}
++#define opendir slwin_opendir
++#define readdir slwin_readdir
++#define closedir slwin_closedir
++
++#endif
+diff --git a/libs/slutils/native_getopt.h b/libs/slutils/native_getopt.h
+new file mode 100644
+--- /dev/null
++++ b/libs/slutils/native_getopt.h
+@@ -0,0 +1,21 @@
++// Windows short-option parsing for native utility entry points. Linux uses libc.
++#pragma once
++#include <cstring>
++#include <cstdio>
++static char *optarg=nullptr;
++static int optind=1;
++static int sl_option_offset=1;
++static int getopt(int argc,char **argv,const char *options){
++ if(optind>=argc)return EOF;
++ char *arg=argv[optind];if(arg[0]!='-' || !arg[1])return EOF;
++ if(!strcmp(arg,"--")){++optind;return EOF;}
++ int c=arg[sl_option_offset++];const char *spec=strchr(options,c);
++ if(!spec){if(!arg[sl_option_offset]){++optind;sl_option_offset=1;}return '?';}
++ if(spec[1]==':'){
++  if(arg[sl_option_offset])optarg=arg+sl_option_offset;
++  else if(optind+1<argc)optarg=argv[++optind];
++  else{++optind;sl_option_offset=1;return '?';}
++  ++optind;sl_option_offset=1;
++ }else if(!arg[sl_option_offset]){++optind;sl_option_offset=1;}
++ return c;
++}
+diff --git a/libs/slutils/native_io.h b/libs/slutils/native_io.h
+new file mode 100644
+--- /dev/null
++++ b/libs/slutils/native_io.h
+@@ -0,0 +1,57 @@
++// Phase 8 native Windows acquisition I/O. AGPL-3.0, as the enclosing package.
++#pragma once
++#ifdef _WIN32
++#include <winsock2.h>
++#include <windows.h>
++#include <cstdint>
++#include <cstddef>
++#include <string>
++#include <vector>
++static_assert(sizeof(SOCKET)==sizeof(void*),"native SOCKET must retain pointer width");
++namespace SeedlinkNative {
++struct CrtDescriptor { explicit CrtDescriptor(int v): value(v) {} int value; };
++struct Socket { explicit Socket(SOCKET v): value(v) {} SOCKET value; };
++struct PipeView { HANDLE value; bool overlapped; };
++enum class State { Data, WouldBlock, EndOfStream, TimedOut, Failed };
++struct Result { State state; std::size_t bytes; DWORD error; bool crt_error=false; };
++class Handle {
++ HANDLE value_=INVALID_HANDLE_VALUE;
++public:
++ Handle()=default; explicit Handle(HANDLE h):value_(h){}
++ ~Handle(); Handle(const Handle&)=delete; Handle& operator=(const Handle&)=delete;
++ Handle(Handle&&) noexcept; Handle& operator=(Handle&&) noexcept;
++ HANDLE get() const {return value_;} HANDLE release(); void reset(HANDLE h=INVALID_HANDLE_VALUE);
++ explicit operator bool() const {return value_ && value_!=INVALID_HANDLE_VALUE;}
++};
++struct PipePair { Handle reader,writer; };
++PipePair create_pipe(bool writer_overlapped=true);
++Result read_some(PipeView pipe,void *data,std::size_t size,DWORD timeout_ms);
++Result write_all(PipeView pipe,const void *data,std::size_t size,DWORD interval_ms);
++Result read_some(CrtDescriptor fd,void *data,std::size_t size);
++Result write_all(CrtDescriptor fd,const void *data,std::size_t size);
++Result receive(Socket socket,void *data,std::size_t size);
++Result transmit(Socket socket,const void *data,std::size_t size);
++bool pipe_ready(PipeView pipe);
++int error_to_errno(DWORD error);
++void register_pipe(int descriptor,PipeView pipe);
++void unregister_pipe(int descriptor);
++Result read_descriptor(int descriptor,void *data,std::size_t size,DWORD timeout_ms);
++Result write_descriptor(int descriptor,const void *data,std::size_t size,DWORD timeout_ms);
++void wall_time(std::int64_t &seconds,long &microseconds);
++// Command mappings are explicit: native:<Windows executable and quoted argv>.
++class ProcessChannel {
++ Handle process_,job_,reader_,stop_,log_reader_;
++ void drain_logs() const;
++public:
++ ProcessChannel()=default; ~ProcessChannel();
++ ProcessChannel(const ProcessChannel&)=delete; ProcessChannel& operator=(const ProcessChannel&)=delete;
++ void start(const std::string &mapping,const std::string &name);
++ bool running() const; DWORD exit_code() const;
++ void request_stop(); void force_stop();
++ PipeView input() const {drain_logs();return {reader_.get(),true};}
++};
++}
++extern "C" int sl_native_plugin_bootstrap(void);
++extern "C" int sl_native_plugin_stop_requested(void);
++extern "C" long long sl_native_packet_write(int descriptor,const void *data,std::size_t size);
++#endif
+diff --git a/libs/slutils/native_io_win.cc b/libs/slutils/native_io_win.cc
+new file mode 100644
+--- /dev/null
++++ b/libs/slutils/native_io_win.cc
+@@ -0,0 +1,141 @@
++// Phase 8 Windows acquisition I/O; no POSIX emulation or packet transformations.
++#include "native_io.h"
++#include <io.h>
++#include <fcntl.h>
++#include <cerrno>
++#include <climits>
++#include <algorithm>
++#include <atomic>
++#include <map>
++#include <mutex>
++#include <stdexcept>
++#include <shellapi.h>
++namespace SeedlinkNative {
++Handle::~Handle(){reset();}
++Handle::Handle(Handle&& h) noexcept:value_(h.release()){}
++Handle& Handle::operator=(Handle&& h) noexcept {if(this!=&h)reset(h.release());return *this;}
++HANDLE Handle::release(){HANDLE h=value_;value_=INVALID_HANDLE_VALUE;return h;}
++void Handle::reset(HANDLE h){if(*this)CloseHandle(value_);value_=h;}
++static Result failure(DWORD e){return {State::Failed,0,e};}
++static void check(bool ok,const char *operation){if(!ok)throw std::runtime_error(std::string(operation)+" failed: "+std::to_string(GetLastError()));}
++PipePair create_pipe(bool writer_overlapped){
++ static std::atomic<unsigned long> serial{0};
++ std::wstring name=L"\\\\.\\pipe\\seiscomp-native-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(++serial)+L"-"+std::to_wstring(GetTickCount64());
++ PipePair pair;
++ pair.reader.reset(CreateNamedPipeW(name.c_str(),PIPE_ACCESS_INBOUND|FILE_FLAG_OVERLAPPED|FILE_FLAG_FIRST_PIPE_INSTANCE,PIPE_TYPE_BYTE|PIPE_READMODE_BYTE|PIPE_WAIT|PIPE_REJECT_REMOTE_CLIENTS,1,65536,65536,0,nullptr));
++ check(bool(pair.reader),"CreateNamedPipeW");
++ Handle event(CreateEventW(nullptr,TRUE,FALSE,nullptr));check(bool(event),"CreateEventW");
++ OVERLAPPED connect{};connect.hEvent=event.get();
++ BOOL linked=ConnectNamedPipe(pair.reader.get(),&connect);DWORD error=linked?ERROR_SUCCESS:GetLastError();
++ check(linked || error==ERROR_IO_PENDING || error==ERROR_PIPE_CONNECTED,"ConnectNamedPipe");
++ pair.writer.reset(CreateFileW(name.c_str(),GENERIC_WRITE,0,nullptr,OPEN_EXISTING,writer_overlapped?FILE_FLAG_OVERLAPPED:0,nullptr));
++ if(!pair.writer){if(error==ERROR_IO_PENDING){CancelIoEx(pair.reader.get(),&connect);DWORD n;GetOverlappedResult(pair.reader.get(),&connect,&n,TRUE);}check(false,"CreateFileW pipe");}
++ if(error==ERROR_IO_PENDING){DWORD n;check(GetOverlappedResult(pair.reader.get(),&connect,&n,TRUE)!=FALSE,"Connect completion");}
++ return pair;
++}
++static Result transfer(PipeView pipe,void *buffer,std::size_t size,DWORD timeout,bool writing){
++ if(!size)return {State::Data,0,0};
++ if(!pipe.overlapped)return failure(ERROR_INVALID_PARAMETER); // native pipe endpoints are explicitly overlapped
++ Handle event(CreateEventW(nullptr,TRUE,FALSE,nullptr));if(!event)return failure(GetLastError());
++ OVERLAPPED op{};op.hEvent=event.get();DWORD count=0;DWORD requested=DWORD(std::min<std::size_t>(size,MAXDWORD));
++ BOOL ok=writing?WriteFile(pipe.value,buffer,requested,&count,&op):ReadFile(pipe.value,buffer,requested,&count,&op);
++ if(ok)return {count?State::Data:State::EndOfStream,count,0};
++ DWORD error=GetLastError();
++ if(error==ERROR_BROKEN_PIPE || error==ERROR_HANDLE_EOF)return {State::EndOfStream,0,error};
++ if(error!=ERROR_IO_PENDING)return failure(error);
++ DWORD wait=WaitForSingleObject(event.get(),timeout);
++ if(wait!=WAIT_OBJECT_0){
++  DWORD wait_error=wait==WAIT_TIMEOUT?ERROR_TIMEOUT:GetLastError();
++  CancelIoEx(pipe.value,&op);
++  // Stack OVERLAPPED, event and caller buffer stay alive until completion is drained.
++  ok=GetOverlappedResult(pipe.value,&op,&count,TRUE);
++  if(ok && count)return {State::Data,count,0}; // completion won the cancellation race
++  if(wait==WAIT_TIMEOUT)return {timeout?State::TimedOut:State::WouldBlock,0,wait_error};
++  return failure(wait_error);
++ }
++ if(GetOverlappedResult(pipe.value,&op,&count,FALSE))return {count?State::Data:State::EndOfStream,count,0};
++ error=GetLastError();
++ if(error==ERROR_BROKEN_PIPE || error==ERROR_HANDLE_EOF)return {State::EndOfStream,0,error};
++ return failure(error);
++}
++Result read_some(PipeView p,void *data,std::size_t size,DWORD timeout){return transfer(p,data,size,timeout,false);}
++Result write_all(PipeView p,const void *data,std::size_t size,DWORD interval){
++ std::size_t done=0;auto bytes=static_cast<const char*>(data);
++ while(done<size){Result r=transfer(p,const_cast<char*>(bytes+done),size-done,interval,true);done+=r.bytes;
++  if(r.state!=State::Data)return {r.state,done,r.error};
++ }
++ return {State::Data,done,0};
++}
++Result read_some(CrtDescriptor fd,void *data,std::size_t size){int n=_read(fd.value,data,unsigned(std::min<std::size_t>(size,INT_MAX)));if(n<0)return {State::Failed,0,DWORD(errno),true};return {n?State::Data:State::EndOfStream,std::size_t(n),0};}
++Result write_all(CrtDescriptor fd,const void *data,std::size_t size){std::size_t done=0;while(done<size){int n=_write(fd.value,static_cast<const char*>(data)+done,unsigned(std::min<std::size_t>(size-done,INT_MAX)));if(n<0){if(errno==EINTR)continue;return {State::Failed,done,DWORD(errno),true};}if(!n)return {State::EndOfStream,done,ERROR_BROKEN_PIPE};done+=n;}return {State::Data,done,0};}
++Result receive(Socket s,void *data,std::size_t size){int n=recv(s.value,static_cast<char*>(data),int(std::min<std::size_t>(size,INT_MAX)),0);if(n==SOCKET_ERROR){DWORD e=WSAGetLastError();return {e==WSAEWOULDBLOCK?State::WouldBlock:State::Failed,0,e};}return {n?State::Data:State::EndOfStream,std::size_t(n),0};}
++Result transmit(Socket s,const void *data,std::size_t size){int n=send(s.value,static_cast<const char*>(data),int(std::min<std::size_t>(size,INT_MAX)),0);if(n==SOCKET_ERROR){DWORD e=WSAGetLastError();return {e==WSAEWOULDBLOCK?State::WouldBlock:State::Failed,0,e};}return {n?State::Data:State::EndOfStream,std::size_t(n),0};}
++bool pipe_ready(PipeView p){DWORD count=0;if(!PeekNamedPipe(p.value,nullptr,0,nullptr,&count,nullptr))return true;return count!=0;}
++int error_to_errno(DWORD e){switch(e){case ERROR_BROKEN_PIPE:case ERROR_NO_DATA:return EPIPE;case ERROR_OPERATION_ABORTED:return EINTR;case ERROR_TIMEOUT:return ETIMEDOUT;case ERROR_INVALID_HANDLE:return EBADF;case ERROR_ACCESS_DENIED:return EACCES;case WSAEWOULDBLOCK:return EAGAIN;case WSAEINTR:return EINTR;case WSAETIMEDOUT:return ETIMEDOUT;case WSAECONNRESET:return ECONNRESET;case WSAECONNABORTED:return ECONNABORTED;case WSAENOTSOCK:return EBADF;case WSAEACCES:return EACCES;default:return EIO;}}
++static std::mutex registry_mutex;static std::map<int,PipeView> pipes;
++void register_pipe(int fd,PipeView p){std::lock_guard<std::mutex> lock(registry_mutex);pipes[fd]=p;}
++void unregister_pipe(int fd){std::lock_guard<std::mutex> lock(registry_mutex);pipes.erase(fd);}
++static bool lookup(int fd,PipeView &p){std::lock_guard<std::mutex> lock(registry_mutex);auto i=pipes.find(fd);if(i==pipes.end())return false;p=i->second;return true;}
++Result read_descriptor(int fd,void *data,std::size_t size,DWORD t){PipeView p;if(lookup(fd,p))return read_some(p,data,size,t);if(GetFileType(reinterpret_cast<HANDLE>(_get_osfhandle(fd)))==FILE_TYPE_PIPE)return failure(ERROR_INVALID_PARAMETER);return read_some(CrtDescriptor(fd),data,size);}
++Result write_descriptor(int fd,const void *data,std::size_t size,DWORD t){PipeView p;if(lookup(fd,p))return write_all(p,data,size,t);if(GetFileType(reinterpret_cast<HANDLE>(_get_osfhandle(fd)))==FILE_TYPE_PIPE)return failure(ERROR_INVALID_PARAMETER);return write_all(CrtDescriptor(fd),data,size);}
++void wall_time(std::int64_t &seconds,long &microseconds){FILETIME ft;GetSystemTimePreciseAsFileTime(&ft);ULARGE_INTEGER n;n.LowPart=ft.dwLowDateTime;n.HighPart=ft.dwHighDateTime;std::int64_t ticks=std::int64_t(n.QuadPart)-116444736000000000LL;seconds=ticks/10000000;microseconds=long((ticks%10000000)/10);if(microseconds<0){--seconds;microseconds+=1000000;}}
++static std::wstring utf16(const std::string &s){if(s.empty())return {};int n=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s.data(),int(s.size()),nullptr,0);check(n>0,"UTF-8 command");std::wstring out(n,L'\0');check(MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s.data(),int(s.size()),&out[0],n)==n,"UTF-8 command");return out;}
++static std::wstring quote(const std::wstring &s){std::wstring out=L"\"";unsigned slashes=0;for(wchar_t ch:s){if(ch==L'\\'){++slashes;continue;}if(ch==L'\"')out.append(slashes*2+1,L'\\');else out.append(slashes,L'\\');slashes=0;out+=ch;}out.append(slashes*2,L'\\');return out+L"\"";}
++static std::vector<wchar_t> environment(HANDLE write,HANDLE stop){std::vector<std::wstring> entries;LPWCH block=GetEnvironmentStringsW();check(block!=nullptr,"GetEnvironmentStringsW");for(const wchar_t *p=block;*p;p+=wcslen(p)+1){std::wstring s(p);if(_wcsnicmp(s.c_str(),L"SEISCOMP_PLUGIN_PIPE=",21)!=0 && _wcsnicmp(s.c_str(),L"SEISCOMP_PLUGIN_STOP=",21)!=0)entries.push_back(s);}FreeEnvironmentStringsW(block);entries.push_back(L"SEISCOMP_PLUGIN_PIPE="+std::to_wstring(reinterpret_cast<uintptr_t>(write)));entries.push_back(L"SEISCOMP_PLUGIN_STOP="+std::to_wstring(reinterpret_cast<uintptr_t>(stop)));std::sort(entries.begin(),entries.end(),[](const std::wstring&a,const std::wstring&b){return _wcsicmp(a.c_str(),b.c_str())<0;});std::vector<wchar_t> out;for(auto &s:entries){out.insert(out.end(),s.begin(),s.end());out.push_back(0);}out.push_back(0);return out;}
++ProcessChannel::~ProcessChannel(){if(running() && job_)TerminateJobObject(job_.get(),ERROR_PROCESS_ABORTED);}
++void ProcessChannel::start(const std::string &mapping,const std::string &name){
++ if(running())throw std::runtime_error("plugin process already running");
++ if(mapping.rfind("native:",0)!=0)throw std::invalid_argument("Windows plugins require explicit native:<executable and argv> mapping; POSIX shell commands are unsupported");
++ std::wstring command=utf16(mapping.substr(7));int argc=0;LPWSTR *argv=CommandLineToArgvW(command.c_str(),&argc);if(!argv || argc==0)throw std::invalid_argument("empty native plugin mapping");
++ std::wstring executable=argv[0],encoded;for(int i=0;i<argc;++i){if(i)encoded+=L' ';encoded+=quote(argv[i]);}LocalFree(argv);encoded+=L" "+quote(utf16(name));
++ PipePair pair=create_pipe();PipePair logging=create_pipe(false);Handle stop(CreateEventW(nullptr,TRUE,FALSE,nullptr));check(bool(stop),"Create stop event");
++ check(SetHandleInformation(pair.writer.get(),HANDLE_FLAG_INHERIT,HANDLE_FLAG_INHERIT)!=FALSE,"pipe inheritance");check(SetHandleInformation(stop.get(),HANDLE_FLAG_INHERIT,HANDLE_FLAG_INHERIT)!=FALSE,"stop inheritance");
++ check(SetHandleInformation(logging.writer.get(),HANDLE_FLAG_INHERIT,HANDLE_FLAG_INHERIT)!=FALSE,"log inheritance");
++ SECURITY_ATTRIBUTES input_attributes{sizeof(SECURITY_ATTRIBUTES),nullptr,TRUE};
++ Handle input(CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&input_attributes,OPEN_EXISTING,0,nullptr));check(bool(input),"native null input");
++ HANDLE list[]={pair.writer.get(),stop.get(),logging.writer.get(),input.get()};SIZE_T size=0;InitializeProcThreadAttributeList(nullptr,1,0,&size);std::vector<unsigned char> storage(size);auto attrs=reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());check(InitializeProcThreadAttributeList(attrs,1,0,&size)!=FALSE,"attribute list");
++ struct Cleanup{LPPROC_THREAD_ATTRIBUTE_LIST p;~Cleanup(){DeleteProcThreadAttributeList(p);}} cleanup{attrs};check(UpdateProcThreadAttribute(attrs,0,PROC_THREAD_ATTRIBUTE_HANDLE_LIST,list,sizeof(list),nullptr,nullptr)!=FALSE,"handle whitelist");
++ STARTUPINFOEXW info{};info.StartupInfo.cb=sizeof(info);info.lpAttributeList=attrs;info.StartupInfo.dwFlags=STARTF_USESTDHANDLES;info.StartupInfo.hStdInput=input.get();info.StartupInfo.hStdOutput=logging.writer.get();info.StartupInfo.hStdError=logging.writer.get();PROCESS_INFORMATION child{};auto env=environment(pair.writer.get(),stop.get());std::vector<wchar_t> cmd(encoded.begin(),encoded.end());cmd.push_back(0);
++ Handle job(CreateJobObjectW(nullptr,nullptr));check(bool(job),"job");JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};limits.BasicLimitInformation.LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;check(SetInformationJobObject(job.get(),JobObjectExtendedLimitInformation,&limits,sizeof(limits))!=FALSE,"job limits");
++ check(CreateProcessW(executable.c_str(),cmd.data(),nullptr,nullptr,TRUE,CREATE_SUSPENDED|CREATE_NO_WINDOW|CREATE_UNICODE_ENVIRONMENT|EXTENDED_STARTUPINFO_PRESENT,env.data(),nullptr,&info.StartupInfo,&child)!=FALSE,"CreateProcessW");
++ Handle process(child.hProcess),thread(child.hThread);
++ if(!AssignProcessToJobObject(job.get(),process.get())){DWORD e=GetLastError();TerminateProcess(process.get(),e);WaitForSingleObject(process.get(),INFINITE);SetLastError(e);check(false,"job assignment");}
++ if(ResumeThread(thread.get())==DWORD(-1)){DWORD e=GetLastError();TerminateJobObject(job.get(),e);WaitForSingleObject(process.get(),INFINITE);SetLastError(e);check(false,"ResumeThread");}
++ check(SetHandleInformation(stop.get(),HANDLE_FLAG_INHERIT,0)!=FALSE,"parent stop inheritance");
++ pair.writer.reset();logging.writer.reset();log_reader_=std::move(logging.reader);reader_=std::move(pair.reader);stop_=std::move(stop);job_=std::move(job);process_=std::move(process);
++}
++void ProcessChannel::drain_logs() const {
++ if(!log_reader_)return;
++ for(unsigned i=0;i<16;++i){char buffer[4097];auto r=read_some(PipeView{log_reader_.get(),true},buffer,4096,0);if(r.state!=State::Data || !r.bytes)break;buffer[r.bytes]=0;OutputDebugStringA(buffer);fwrite(buffer,1,r.bytes,stderr);}
++}
++bool ProcessChannel::running()const{drain_logs();return process_ && WaitForSingleObject(process_.get(),0)==WAIT_TIMEOUT;}
++DWORD ProcessChannel::exit_code()const{DWORD code=0;if(process_)GetExitCodeProcess(process_.get(),&code);return code;}
++void ProcessChannel::request_stop(){if(stop_)check(SetEvent(stop_.get())!=FALSE,"plugin stop event");}
++void ProcessChannel::force_stop(){if(job_){check(TerminateJobObject(job_.get(),ERROR_PROCESS_ABORTED)!=FALSE,"plugin termination");if(process_){DWORD w=WaitForSingleObject(process_.get(),5000);if(w!=WAIT_OBJECT_0)throw std::runtime_error("plugin termination did not complete within five seconds");}}}
++}
++static INIT_ONCE bootstrap_once=INIT_ONCE_STATIC_INIT;static int bootstrap_error=0;static HANDLE stop_handle=nullptr;
++static BOOL CALLBACK bootstrap(PINIT_ONCE,void*,void**){
++ wchar_t value[64];DWORD n=GetEnvironmentVariableW(L"SEISCOMP_PLUGIN_PIPE",value,64);
++ if(!n || n>=64){bootstrap_error=EBADF;return TRUE;}
++ wchar_t *end=nullptr;unsigned long long raw=wcstoull(value,&end,10);HANDLE pipe=reinterpret_cast<HANDLE>(static_cast<uintptr_t>(raw));
++ if(!end || *end || GetFileType(pipe)!=FILE_TYPE_PIPE){bootstrap_error=EINVAL;return TRUE;}
++ int fd=_open_osfhandle(reinterpret_cast<intptr_t>(pipe),_O_WRONLY|_O_BINARY|_O_NOINHERIT);if(fd<0){bootstrap_error=errno;return TRUE;}
++ if(fd!=63){if(_dup2(fd,63)<0){bootstrap_error=errno;_close(fd);return TRUE;}_close(fd);}
++ if(_setmode(63,_O_BINARY)<0){bootstrap_error=errno;_close(63);return TRUE;}HANDLE writer=reinterpret_cast<HANDLE>(_get_osfhandle(63));if(!SetHandleInformation(writer,HANDLE_FLAG_INHERIT,0)){bootstrap_error=EINVAL;_close(63);return TRUE;}
++ n=GetEnvironmentVariableW(L"SEISCOMP_PLUGIN_STOP",value,64);
++ if(!n || n>=64){bootstrap_error=EBADF;_close(63);return TRUE;}
++ raw=wcstoull(value,&end,10);stop_handle=reinterpret_cast<HANDLE>(static_cast<uintptr_t>(raw));
++ if(!end || *end || WaitForSingleObject(stop_handle,0)==WAIT_FAILED || !SetHandleInformation(stop_handle,HANDLE_FLAG_INHERIT,0)){bootstrap_error=EINVAL;_close(63);return TRUE;}
++ SeedlinkNative::register_pipe(63,{writer,true});
++ return TRUE;
++}
++extern "C" int sl_native_plugin_bootstrap(){InitOnceExecuteOnce(&bootstrap_once,bootstrap,nullptr,nullptr);if(bootstrap_error){errno=bootstrap_error;return -1;}return 0;}
++extern "C" int sl_native_plugin_stop_requested(){if(!GetEnvironmentVariableW(L"SEISCOMP_PLUGIN_PIPE",nullptr,0))return 0;if(sl_native_plugin_bootstrap()<0)return -1;return stop_handle && WaitForSingleObject(stop_handle,0)==WAIT_OBJECT_0;}
++extern "C" long long sl_native_packet_write(int fd,const void *data,std::size_t size){if(sl_native_plugin_bootstrap()<0)return -1;auto r=SeedlinkNative::write_descriptor(fd,data,size,INFINITE);if(r.state==SeedlinkNative::State::Data)return static_cast<long long>(r.bytes);errno=SeedlinkNative::error_to_errno(r.error);return -1;}
++
++extern "C" int sl_native_send_packet(const void *header,size_t header_size,const void *payload,int payload_size){
++ static std::mutex packet_mutex;std::lock_guard<std::mutex> lock(packet_mutex);
++ if(sl_native_packet_write(63,header,header_size)<0)return -1;
++ if(payload && payload_size && sl_native_packet_write(63,payload,size_t(payload_size))<0)return -1;
++ return payload_size;
++}
+diff --git a/libs/slutils/native_log.h b/libs/slutils/native_log.h
+new file mode 100644
+--- /dev/null
++++ b/libs/slutils/native_log.h
+@@ -0,0 +1,21 @@
++// Native Windows logging sink; retains syslog priority and message text.
++#pragma once
++#include <windows.h>
++#include <cstdio>
++#include <cstdarg>
++#define LOG_EMERG 0
++#define LOG_ALERT 1
++#define LOG_CRIT 2
++#define LOG_ERR 3
++#define LOG_WARNING 4
++#define LOG_NOTICE 5
++#define LOG_INFO 6
++#define LOG_DEBUG 7
++#define LOG_PID 1
++#define LOG_CONS 2
++#define LOG_LOCAL0 (16<<3)
++inline void syslog(int priority,const char *format,...){
++ char message[8192];va_list args;va_start(args,format);vsnprintf(message,sizeof(message),format,args);va_end(args);
++ char output[8256];snprintf(output,sizeof(output),"[SeedLink priority=%d] %s\n",priority,message);
++ OutputDebugStringA(output);fputs(output,stderr);
++}
+diff --git a/libs/slutils/native_regex.h b/libs/slutils/native_regex.h
+new file mode 100644
+--- /dev/null
++++ b/libs/slutils/native_regex.h
+@@ -0,0 +1,11 @@
++// Existing installed Boost POSIX regex API; no regex-pattern rewriting.
++#pragma once
++#ifndef BOOST_REGEX_STATIC_LINK
++#define BOOST_REGEX_STATIC_LINK
++#endif
++#include <boost/regex.h>
++typedef boost::regex_tA regex_t;
++#define regcomp boost::regcompA
++#define regexec boost::regexecA
++#define regfree boost::regfreeA
++#define regerror boost::regerrorA
+diff --git a/libs/slutils/utils.cc b/libs/slutils/utils.cc
+--- a/libs/slutils/utils.cc
++++ b/libs/slutils/utils.cc
+@@ -11,7 +11,11 @@
+  * https://www.gnu.org/licenses/agpl-3.0.html.                             *
+  ***************************************************************************/
+ 
++#ifdef _WIN32
++#include "native_io.h"
++#else
+ #include <unistd.h>
++#endif
+ #include <sys/types.h>
+ 
+ #include "utils.h"
+@@ -25,6 +29,22 @@
+ // Read/Write
+ //*****************************************************************************
+ 
++#ifdef _WIN32
++static ssize_t native_result(const SeedlinkNative::Result &r){
++ using SeedlinkNative::State;
++ if(r.state==State::Data)return static_cast<ssize_t>(r.bytes);
++ if(r.state==State::EndOfStream || r.state==State::TimedOut)return 0;
++ errno=r.state==State::WouldBlock?EAGAIN:(r.crt_error?int(r.error):SeedlinkNative::error_to_errno(r.error));return -1;
++}
++ssize_t readn(int fd,void *buffer,size_t size){
++ size_t done=0;while(done<size){auto r=SeedlinkNative::read_descriptor(fd,static_cast<char*>(buffer)+done,size-done,INFINITE);if(r.state!=SeedlinkNative::State::Data)return native_result(r);done+=r.bytes;}return done;
++}
++ssize_t writen(int fd,const void *buffer,size_t size){return native_result(SeedlinkNative::write_descriptor(fd,buffer,size,INFINITE));}
++ssize_t writen_tmo(int fd,const void *buffer,size_t size,int timeout){
++ DWORD ms=timeout<0?INFINITE:DWORD(std::min<unsigned long long>(static_cast<unsigned long long>(timeout)*1000,MAXDWORD-1));
++ return native_result(SeedlinkNative::write_descriptor(fd,buffer,size,ms));
++}
++#else
+ ssize_t readn(int fd, void *vptr, size_t n)
+   {
+     ssize_t nread;
+@@ -102,6 +122,8 @@
+     return(n);
+   }
+ 
++#endif
++
+ //*****************************************************************************
+ // Timer
+ //*****************************************************************************
+@@ -110,9 +132,13 @@
+   {
+     if(iv_sec == 0 && iv_usec == 0) return false;
+ 
+-    timeval curtime;
+-
++    sl_timeval curtime;
++
++#ifdef _WIN32
++    SeedlinkNative::wall_time(curtime.tv_sec,curtime.tv_usec);
++#else
+     N(gettimeofday(&curtime, NULL));
++#endif
+     
+     if(curtime.tv_sec - lasttime.tv_sec > iv_sec + 1) return true;
+     else if(curtime.tv_sec - lasttime.tv_sec >= iv_sec)
+@@ -141,7 +167,11 @@
+   {
+     if(iv_sec == 0 && iv_usec == 0) return;
+ 
++#ifdef _WIN32
++    SeedlinkNative::wall_time(lasttime.tv_sec,lasttime.tv_usec);
++#else
+     N(gettimeofday(&lasttime, NULL));
++#endif
+   }
+ 
+ //*****************************************************************************
+@@ -153,7 +183,11 @@
+     if(fd < 0) return -1;
+     
+     int bytes_read;
++    #ifdef _WIN32
++    if((bytes_read = int(native_result(SeedlinkNative::read_descriptor(fd,&cmdbuf[cmdwp],cmdmaxlen-cmdwp,0)))) < 0)
++#else
+     if((bytes_read = read(fd, &cmdbuf[cmdwp], cmdmaxlen - cmdwp)) < 0)
++#endif
+       {
+         if(errno == EAGAIN)
+             return -1;
+diff --git a/libs/slutils/utils.h b/libs/slutils/utils.h
+--- a/libs/slutils/utils.h
++++ b/libs/slutils/utils.h
+@@ -23,7 +23,19 @@
+ #include <cstring>
+ #include <cerrno>
+ 
++#ifdef _WIN32
++#include <winsock2.h>
++#include <BaseTsd.h>
++#include <io.h>
++#include <cstdint>
++typedef SSIZE_T ssize_t;
++struct sl_timeval { std::int64_t tv_sec; long tv_usec; };
++#define strcasecmp _stricmp
++#define strncasecmp _strnicmp
++#else
+ #include <sys/time.h>
++typedef timeval sl_timeval;
++#endif
+ #include <sys/types.h>
+ 
+ namespace Utilities_private {
+@@ -275,7 +287,7 @@
+   {
+   private:
+     const int iv_sec, iv_usec;
+-    timeval lasttime;
++    sl_timeval lasttime;
+ 
+   public:
+     Timer(): iv_sec(0), iv_usec(0) {}

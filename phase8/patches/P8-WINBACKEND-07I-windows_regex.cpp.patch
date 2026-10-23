@@ -1,0 +1,34 @@
+--- /dev/null
++++ b/src/base/seedlink/plugins/mseedscan_plugin/windows_regex.cpp
+@@ -0,0 +1,31 @@
++// Reuse the already approved SeedLink Boost POSIX API, not a new engine.
++#include <cstddef>
++#include "windows_regex.h"
++#include <boost/cregex.hpp>
++#include <memory>
++#include <cstdio>
++#include <exception>
++extern "C" int ms_regcomp(ms_regex *out,const char *pattern,int) {
++    out->engine=nullptr;
++    try {
++        auto cleanup=[](boost::regex_tA *p){boost::regfreeA(p);delete p;};
++        std::unique_ptr<boost::regex_tA,decltype(cleanup)> re(new boost::regex_tA{},cleanup);
++        int code=boost::regcompA(re.get(),pattern,boost::REG_EXTENDED|boost::REG_NOSUB);
++        if(code) {
++            char message[256];boost::regerrorA(code,re.get(),message,sizeof(message));
++            std::fprintf(stderr,"Windows POSIX regex: %s\n",message);
++            return 2;
++        }
++        out->engine=re.release();return 0;
++    }catch(const std::exception &e){std::fprintf(stderr,"Windows POSIX regex: %s\n",e.what());return 2;}
++}
++extern "C" int ms_regexec(const ms_regex *re,const char *text,size_t,void*,int) {
++    try {
++        int code=boost::regexecA(static_cast<const boost::regex_tA*>(re->engine),text,0,nullptr,0);
++        return code==0?0:code==boost::REG_NOMATCH?1:2;
++    }catch(...){return 2;}
++}
++extern "C" void ms_regfree(ms_regex *re) {
++    auto value=static_cast<boost::regex_tA*>(re->engine);
++    if(value){boost::regfreeA(value);delete value;}re->engine=nullptr;
++}

@@ -1,0 +1,216 @@
+diff --git a/apps/utils/CMakeLists.txt b/apps/utils/CMakeLists.txt
+--- a/apps/utils/CMakeLists.txt
++++ b/apps/utils/CMakeLists.txt
+@@ -3,7 +3,10 @@
+ INCLUDE_DIRECTORIES(../../libs/3rd-party/libslink)
+ 
+ ADD_EXECUTABLE(load_timetable load_timetable.cc)
+-TARGET_LINK_LIBRARIES(load_timetable ${LIBXML2_LIBRARIES} slutils slink m)
++TARGET_LINK_LIBRARIES(load_timetable ${LIBXML2_LIBRARIES} slutils slink)
++IF (NOT WIN32)
++ TARGET_LINK_LIBRARIES(load_timetable m)
++ENDIF ()
+ 
+ INSTALL(TARGETS	load_timetable
+ 	RUNTIME DESTINATION ${SC3_PACKAGE_BIN_DIR})
+diff --git a/apps/utils/load_timetable.cc b/apps/utils/load_timetable.cc
+--- a/apps/utils/load_timetable.cc
++++ b/apps/utils/load_timetable.cc
+@@ -28,6 +28,9 @@
+ #include "libslink.h"
+ 
+ #include "qtime.h"
++#ifdef _WIN32
++#include "native_getopt.h"
++#endif
+ 
+ #define MYVERSION "1.0 (2019.199)"
+ 
+diff --git a/plugins/fs_plugin/fs_decode_mseed.cc b/plugins/fs_plugin/fs_decode_mseed.cc
+--- a/plugins/fs_plugin/fs_decode_mseed.cc
++++ b/plugins/fs_plugin/fs_decode_mseed.cc
+@@ -15,11 +15,17 @@
+ #include <map>
+ #include <cstdio>
+ 
++#ifdef _WIN32
++#include "fs_native.h"
++#else
+ #include <unistd.h>
++#endif
+ #include <fcntl.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#ifndef _WIN32
+ #include <netinet/in.h>
++#endif
+ 
+ #include "libslink.h"
+ 
+diff --git a/plugins/fs_plugin/fs_input_ddb.cc b/plugins/fs_plugin/fs_input_ddb.cc
+--- a/plugins/fs_plugin/fs_input_ddb.cc
++++ b/plugins/fs_plugin/fs_input_ddb.cc
+@@ -16,12 +16,20 @@
+ #include <cstdio>
+ #include <cstdlib>
+ 
++#ifdef _WIN32
++#include "fs_native.h"
++#else
+ #include <unistd.h>
++#endif
++#ifndef _WIN32
+ #include <dirent.h>
++#endif
+ #include <time.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#ifndef _WIN32
+ #include <regex.h>
++#endif
+ 
+ #include "cppstreams.h"
+ #include "fs_plugin.h"
+diff --git a/plugins/fs_plugin/fs_input_edr.cc b/plugins/fs_plugin/fs_input_edr.cc
+--- a/plugins/fs_plugin/fs_input_edr.cc
++++ b/plugins/fs_plugin/fs_input_edr.cc
+@@ -16,12 +16,20 @@
+ #include <cstdlib>
+ #include <cstdio>
+ 
++#ifdef _WIN32
++#include "fs_native.h"
++#else
+ #include <unistd.h>
++#endif
++#ifndef _WIN32
+ #include <dirent.h>
++#endif
+ #include <time.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#ifndef _WIN32
+ #include <regex.h>
++#endif
+ 
+ #include "cppstreams.h"
+ #include "fs_plugin.h"
+diff --git a/plugins/fs_plugin/fs_input_irae.cc b/plugins/fs_plugin/fs_input_irae.cc
+--- a/plugins/fs_plugin/fs_input_irae.cc
++++ b/plugins/fs_plugin/fs_input_irae.cc
+@@ -15,12 +15,20 @@
+ #include <map>
+ #include <cstdlib>
+ 
++#ifdef _WIN32
++#include "fs_native.h"
++#else
+ #include <unistd.h>
++#endif
++#ifndef _WIN32
+ #include <dirent.h>
++#endif
+ #include <time.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#ifndef _WIN32
+ #include <regex.h>
++#endif
+ 
+ #include "cppstreams.h"
+ #include "fs_plugin.h"
+diff --git a/plugins/fs_plugin/fs_native.h b/plugins/fs_plugin/fs_native.h
+new file mode 100644
+--- /dev/null
++++ b/plugins/fs_plugin/fs_native.h
+@@ -0,0 +1,27 @@
++// Windows file/pipe ownership remains distinct; decoder and ordering algorithms are unchanged.
++#pragma once
++#ifdef _WIN32
++#include "native_io.h"
++#include "native_directory.h"
++#include "native_regex.h"
++#include "native_getopt.h"
++#include "native_log.h"
++#include <sys/stat.h>
++#include <io.h>
++#include <fcntl.h>
++inline int fs_native_open(const char *path,int flags){return _open(path,flags|_O_BINARY|_O_NOINHERIT);}
++#define open fs_native_open
++#define read _read
++#define close _close
++#define lseek _lseek
++#define unlink _unlink
++#define mkdir(path,mode) _mkdir(path)
++#define stat _stat64
++#define fstat _fstat64
++#define STDOUT_FILENO 1
++#define write _write
++#ifndef S_ISDIR
++#define S_ISDIR(mode) (((mode)&_S_IFMT)==_S_IFDIR)
++#define S_ISREG(mode) (((mode)&_S_IFMT)==_S_IFREG)
++#endif
++#endif
+diff --git a/plugins/fs_plugin/fs_plugin.cc b/plugins/fs_plugin/fs_plugin.cc
+--- a/plugins/fs_plugin/fs_plugin.cc
++++ b/plugins/fs_plugin/fs_plugin.cc
+@@ -21,9 +21,17 @@
+ #include <csignal>
+ #include <cerrno>
+ 
++#ifdef _WIN32
++#include "fs_native.h"
++#else
+ #include <unistd.h>
++#endif
++#ifndef _WIN32
+ #include <syslog.h>
++#endif
++#ifndef _WIN32
+ #include <termios.h>
++#endif
+ #include <fcntl.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+@@ -567,6 +575,11 @@
+ 
+     plugin_name = string(argv[optind]);
+ 
++#ifdef _WIN32
++    if(daemon_mode)throw runtime_error("Windows FS plugin daemon mode requires a native service host");
++    if(sl_native_plugin_bootstrap()<0)throw runtime_error("Windows FS plugin FD 63 bootstrap failed");
++    signal(SIGINT,int_handler);signal(SIGTERM,int_handler);
++#else
+     struct sigaction sa;
+     sa.sa_handler = int_handler;
+     sa.sa_flags = SA_RESTART;
+@@ -586,6 +599,7 @@
+         daemon_init = true;
+       }
+ 
++#endif
+     redirect_ostream(cout, SystemLog(), LOG_INFO);
+     redirect_ostream(cerr, SystemLog(), LOG_ERR);
+     redirect_ostream(clog, SystemLog(), LOG_ERR);
+@@ -602,11 +616,20 @@
+       }
+ 
+     load_timestamp();
+-    while(!terminate_proc)
++    while(!terminate_proc
++#ifdef _WIN32
++      && sl_native_plugin_stop_requested()==0
++#endif
++    )
+       {
+         input->check_for_new_data(location, file_pattern);
+         save_timestamp();
++#ifdef _WIN32
++        ULONGLONG until=GetTickCount64()+ULONGLONG(polltime)*1000;
++        while(!terminate_proc && sl_native_plugin_stop_requested()==0){ULONGLONG now=GetTickCount64();if(now>=until)break;Sleep(DWORD(std::min<ULONGLONG>(200,until-now)));}
++#else
+         sleep(polltime);
++#endif
+       }
+ 
+     decoder->flush_channels();

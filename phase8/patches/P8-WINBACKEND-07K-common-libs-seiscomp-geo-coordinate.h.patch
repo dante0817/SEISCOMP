@@ -1,0 +1,30 @@
+--- a/src/base/common/libs/seiscomp/geo/coordinate.h
++++ b/src/base/common/libs/seiscomp/geo/coordinate.h
+@@ -65,6 +65,9 @@
+ //! Added with API 14.1
+ SC_SYSTEM_CORE_API bool contains(const GeoCoordinate &v, const GeoCoordinate *polygon, size_t sides);
+ //! Added with API 14.1
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ bool contains(const GeoCoordinate &v, const GeoCoordinate *polygon, size_t sides, double &area);
+ 
+ //! Added with API 14.1
+@@ -99,8 +102,17 @@
+ OStreamFormat<T> format(const T &ref) { return OStreamFormat<T>(ref); }
+ 
+ 
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ std::ostream &operator<<(std::ostream &os, const GeoCoordinate &);
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ std::ostream &operator<<(std::ostream &os, const formatted_lat &);
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ std::ostream &operator<<(std::ostream &os, const formatted_lon &);
+ 
+ template <typename T>

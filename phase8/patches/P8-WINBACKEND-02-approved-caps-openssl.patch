@@ -1,0 +1,13 @@
+--- a/plugins/caps_plugin/CMakeLists.txt
++++ b/plugins/caps_plugin/CMakeLists.txt
+@@ -37,8 +37,8 @@
+ 		slutils
+ 		mseed
+ 		${Boost_program_options_LIBRARY}
+-		${CRYPTO}
+-		${SSL}
++		OpenSSL::Crypto
++		OpenSSL::SSL
+ )
+ 
+ IF(Boost_system_FOUND)

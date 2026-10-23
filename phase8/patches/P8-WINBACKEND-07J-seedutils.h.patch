@@ -1,0 +1,31 @@
+--- a/src/base/seedlink/plugins/sockplugin/seedutils.h
++++ b/src/base/seedlink/plugins/sockplugin/seedutils.h
+@@ -7,7 +7,12 @@
+ 
+ #include <stdint.h>
+ 
++#ifdef _MSC_VER
++#pragma pack(push, 1)
++#define PACKED
++#else
+ #define PACKED __attribute__ ((packed))
++#endif
+ 
+ typedef struct s_btime {      /* RAW TIME IN FSDH */
+   uint16_t year;
+@@ -54,6 +59,15 @@
+   uint8_t reserved;
+ } PACKED t_blk_1000;
+ 
++#ifdef _MSC_VER
++#pragma pack(pop)
++static_assert(sizeof(t_btime) == 10, "MiniSEED time layout");
++static_assert(sizeof(t_dev_id) == 12, "MiniSEED device layout");
++static_assert(sizeof(t_fsdh_data) == 28, "MiniSEED fixed header layout");
++static_assert(sizeof(t_blk_head) == 4 && sizeof(t_blk_1000) == 8,
++              "MiniSEED blockette layout");
++#endif
++
+ 
+ /* Function declarations for routines in seedutil.c */
+ 

@@ -1,0 +1,8 @@
+--- a/src/base/contrib-sed/libs/CMakeLists.txt
++++ b/src/base/contrib-sed/libs/CMakeLists.txt
+@@ -1,4 +1,4 @@
+ SUBDIRS(seiscomp)
+-IF (SC_GLOBAL_PYTHON_WRAPPER)
++IF (SC_GLOBAL_PYTHON_WRAPPER OR (WIN32 AND SC_WINDOWS_CONTROLLER_ONLY))
+ 	SUBDIRS(swig)
+ ENDIF ()

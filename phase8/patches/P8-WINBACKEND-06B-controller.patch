@@ -1,0 +1,938 @@
+diff --git a/src/system/apps/utils/win32/native.h b/src/system/apps/utils/win32/native.h
+--- a/src/system/apps/utils/win32/native.h
++++ b/src/system/apps/utils/win32/native.h
+@@ -12,6 +12,9 @@
+ #include <stdio.h>
+ #include <wchar.h>
+ 
++#ifdef __cplusplus
++extern "C" {
++#endif
+ void sc_win_error(const wchar_t *operation, const wchar_t *path, DWORD error);
+ /* 0 acquired, 1 error/contended, 2 timed out. timeout_ms == 0 is infinite. */
+ int sc_win_lock(HANDLE file, int immediate, uint64_t timeout_ms);
+@@ -22,4 +25,7 @@
+ DWORD sc_win_wait(HANDLE object, uint64_t timeout_ms);
+ int sc_win_spawn(wchar_t **argv, PROCESS_INFORMATION *process);
+ void sc_win_reap(PROCESS_INFORMATION *process);
++#ifdef __cplusplus
++}
+ #endif
++#endif
+diff --git a/src/system/libs/python/seiscomp/CMakeLists.txt b/src/system/libs/python/seiscomp/CMakeLists.txt
+--- a/src/system/libs/python/seiscomp/CMakeLists.txt
++++ b/src/system/libs/python/seiscomp/CMakeLists.txt
+@@ -1,5 +1,8 @@
+ SET(PYTHON_PACKAGE_PATH ${SC3_PACKAGE_PYTHON_LIB_DIR}/seiscomp)
+ 
++IF(WIN32)
++	INSTALL(FILES __init__.py DESTINATION ${PYTHON_PACKAGE_PATH})
++ELSE()
+ IF( NOT _WIN32 AND NOT MACOSX )
+ 	INSTALL(
+ 		FILES __init__.py.unix
+@@ -11,6 +14,7 @@
+ 		DESTINATION ${PYTHON_PACKAGE_PATH}
+ 	)
+ ENDIF(NOT _WIN32 AND NOT MACOSX )
++ENDIF()
+ 
+ INSTALL(FILES
+ 	# Python file to be installed
+@@ -18,3 +22,7 @@
+ 	setup.py
+ 	shell.py
+ 	DESTINATION ${PYTHON_PACKAGE_PATH})
++
++IF(WIN32)
++	INSTALL(FILES windows.py DESTINATION ${PYTHON_PACKAGE_PATH})
++ENDIF()
+diff --git a/src/system/libs/python/seiscomp/kernel.py b/src/system/libs/python/seiscomp/kernel.py
+--- a/src/system/libs/python/seiscomp/kernel.py
++++ b/src/system/libs/python/seiscomp/kernel.py
+@@ -17,6 +17,8 @@
+ import string
+ import subprocess
+ import seiscomp.config
++if os.name == "nt":
++    from seiscomp import windows as _windows
+ 
+ 
+ class Template(string.Template):
+@@ -26,6 +28,8 @@
+ class Environment(seiscomp.config.Config):
+     def __init__(self, rootPath):
+         seiscomp.config.Config.__init__(self)
++        if os.name == "nt":
++            rootPath = os.path.abspath(rootPath)
+         self.SEISCOMP_ROOT = rootPath
+         try:
+             self.home_dir = os.environ["HOME"]
+@@ -36,6 +40,11 @@
+             self.local_config_dir = os.environ["SEISCOMP_LOCAL_CONFIG"]
+         except:
+             self.local_config_dir = os.path.join(self.home_dir, ".seiscomp")
++
++        if os.name == "nt":
++            self.home_dir = os.path.expanduser("~")
++            if "SEISCOMP_LOCAL_CONFIG" not in os.environ:
++                self.local_config_dir = os.path.join(self.home_dir, ".seiscomp")
+ 
+         self.root = rootPath
+         self.bin_dir = os.path.join(self.root, "bin")
+@@ -54,28 +63,31 @@
+ 
+         os.environ["SEISCOMP_ROOT"] = self.SEISCOMP_ROOT
+ 
+-        # Add LD_LIBRARY_PATH and PATH to OS environment
+-        LD_LIBRARY_PATH = os.path.join(self.SEISCOMP_ROOT, "lib")
+-        BIN_PATH = os.path.join(self.SEISCOMP_ROOT, "bin")
+-        SBIN_PATH = os.path.join(self.SEISCOMP_ROOT, "sbin")
+-        PATH = BIN_PATH + ":" + SBIN_PATH
+-        PYTHONPATH = os.path.join(self.SEISCOMP_ROOT, "lib", "python")
+-        try:
+-            LD_LIBRARY_PATH = os.environ["LD_LIBRARY_PATH"] + \
+-                ":" + LD_LIBRARY_PATH
+-        except:
+-            pass
+-        os.environ["LD_LIBRARY_PATH"] = LD_LIBRARY_PATH
+-        try:
+-            PATH = PATH + ":" + os.environ["PATH"]
+-        except:
+-            pass
+-        os.environ["PATH"] = PATH
+-        try:
+-            PYTHONPATH = os.environ["PYTHONPATH"] + ":" + PYTHONPATH
+-        except:
+-            pass
+-        os.environ["PYTHONPATH"] = PYTHONPATH
++        if os.name == "nt":
++            _windows.configure_environment(self)
++        else:
++            # Add LD_LIBRARY_PATH and PATH to OS environment
++            LD_LIBRARY_PATH = os.path.join(self.SEISCOMP_ROOT, "lib")
++            BIN_PATH = os.path.join(self.SEISCOMP_ROOT, "bin")
++            SBIN_PATH = os.path.join(self.SEISCOMP_ROOT, "sbin")
++            PATH = BIN_PATH + ":" + SBIN_PATH
++            PYTHONPATH = os.path.join(self.SEISCOMP_ROOT, "lib", "python")
++            try:
++                LD_LIBRARY_PATH = os.environ["LD_LIBRARY_PATH"] + \
++                    ":" + LD_LIBRARY_PATH
++            except:
++                pass
++            os.environ["LD_LIBRARY_PATH"] = LD_LIBRARY_PATH
++            try:
++                PATH = PATH + ":" + os.environ["PATH"]
++            except:
++                pass
++            os.environ["PATH"] = PATH
++            try:
++                PYTHONPATH = os.environ["PYTHONPATH"] + ":" + PYTHONPATH
++            except:
++                pass
++            os.environ["PYTHONPATH"] = PYTHONPATH
+ 
+         # Create required directories
+         try:
+@@ -178,10 +190,14 @@
+ 
+     # Returns the binary file path of a given module name
+     def binaryFile(self, module):
++        if os.name == "nt":
++            return _windows.executable(self, module)
+         # return os.path.join(self.root, "bin/" + module)
+         return module
+ 
+     def start(self, module, binary, params, nohup=False):
++        if os.name == "nt":
++            return _windows.start(self, module, binary, params)
+         cmd = binary + " " + params + " >" + self.logFile(module) + " 2>&1"
+         if nohup:
+             cmd = "nohup " + cmd + " &"
+@@ -191,6 +207,8 @@
+         return self.killWait(module, timeout)
+ 
+     def tryLock(self, module, timeout = None):
++        if os.name == "nt":
++            return _windows.lock_available(self.lockFile(module), timeout)
+         if timeout is None:
+             return subprocess.call("trylock " + self.lockFile(module), shell=True) == 0
+         else:
+@@ -202,6 +220,8 @@
+             return subprocess.call("waitlock %d \"%s\"" % (timeoutSeconds, self.lockFile(module)), shell=True) == 0
+ 
+     def killWait(self, module, timeout):
++        if os.name == "nt":
++            return _windows.stop(self, module, timeout)
+         lockfile = self.lockFile(module)
+ 
+         # Open pid file
+@@ -309,6 +329,10 @@
+         self.reloadTimeout = 10
+ 
+     def _get_start_params(self):
++        if os.name == "nt":
++            if self.env.syslog:
++                raise RuntimeError("POSIX syslog launch flag has no reviewed Windows mapping")
++            return subprocess.list2cmdline(["-l", self.env.lockFile(self.name)])
+         # Run as daemon
+         params = "-D"
+ 
+diff --git a/src/system/libs/python/seiscomp/windows.py b/src/system/libs/python/seiscomp/windows.py
+new file mode 100644
+--- /dev/null
++++ b/src/system/libs/python/seiscomp/windows.py
+@@ -0,0 +1,567 @@
++############################################################################
++# Windows controller portability adapter. See kernel.py for SeisComP license.
++# Private launch/ownership bookkeeping; no remote control or signal protocol.
++############################################################################
++import contextlib
++import ctypes as C
++from ctypes import wintypes as W
++import json
++import os
++import shutil
++import subprocess
++import sys
++import tempfile
++import time
++
++if os.name != "nt":
++    raise ImportError("seiscomp.windows is Windows-only")
++
++K = C.WinDLL("kernel32", use_last_error=True)
++S = C.WinDLL("shell32", use_last_error=True)
++HANDLE, DWORD, SIZE = W.HANDLE, W.DWORD, C.c_size_t
++INVALID = C.c_void_p(-1).value
++WAIT_TIMEOUT = 258
++
++
++class ControlProtocolRequired(RuntimeError):
++    pass
++
++
++class Overlapped(C.Structure):
++    _fields_ = [("internal", SIZE), ("internal_high", SIZE),
++                ("offset", DWORD), ("offset_high", DWORD), ("event", HANDLE)]
++
++
++class FileInfo(C.Structure):
++    _fields_ = [("attributes", DWORD), ("created", W.FILETIME),
++                ("accessed", W.FILETIME), ("written", W.FILETIME),
++                ("volume", DWORD), ("size_high", DWORD), ("size_low", DWORD),
++                ("links", DWORD), ("index_high", DWORD), ("index_low", DWORD)]
++
++
++class StartupInfo(C.Structure):
++    _fields_ = [("cb", DWORD), ("reserved", W.LPWSTR), ("desktop", W.LPWSTR),
++                ("title", W.LPWSTR)] + [(name, DWORD) for name in
++                ("x", "y", "xsize", "ysize", "xchars", "ychars", "fill", "flags")] + [
++                ("show", W.WORD), ("reserved_size", W.WORD), ("reserved_data", C.c_void_p),
++                ("stdin", HANDLE), ("stdout", HANDLE), ("stderr", HANDLE)]
++
++
++class StartupInfoEx(C.Structure):
++    _fields_ = [("startup", StartupInfo), ("attributes", C.c_void_p)]
++
++
++class ProcessInfo(C.Structure):
++    _fields_ = [("process", HANDLE), ("thread", HANDLE), ("pid", DWORD), ("tid", DWORD)]
++
++
++class JobBasic(C.Structure):
++    _fields_ = [("process_time", C.c_longlong), ("job_time", C.c_longlong),
++                ("flags", DWORD), ("min_working_set", SIZE), ("max_working_set", SIZE),
++                ("active_process_limit", DWORD), ("affinity", SIZE),
++                ("priority", DWORD), ("scheduling", DWORD)]
++
++
++class IoCounters(C.Structure):
++    _fields_ = [(name, C.c_ulonglong) for name in
++                ("read_operations", "write_operations", "other_operations",
++                 "read_bytes", "write_bytes", "other_bytes")]
++
++
++class JobLimits(C.Structure):
++    _fields_ = [("basic", JobBasic), ("io", IoCounters),
++                ("process_memory", SIZE), ("job_memory", SIZE),
++                ("peak_process_memory", SIZE), ("peak_job_memory", SIZE)]
++
++
++def api(name, result, args):
++    function = getattr(K, name)
++    function.restype, function.argtypes = result, args
++    return function
++
++
++create_file = api("CreateFileW", HANDLE, [W.LPCWSTR, DWORD, DWORD, C.c_void_p, DWORD, DWORD, HANDLE])
++close_handle = api("CloseHandle", W.BOOL, [HANDLE])
++lock_file = api("LockFileEx", W.BOOL, [HANDLE, DWORD, DWORD, DWORD, DWORD, C.POINTER(Overlapped)])
++unlock_file = api("UnlockFileEx", W.BOOL, [HANDLE, DWORD, DWORD, DWORD, C.POINTER(Overlapped)])
++file_info = api("GetFileInformationByHandle", W.BOOL, [HANDLE, C.POINTER(FileInfo)])
++seek_file = api("SetFilePointerEx", W.BOOL, [HANDLE, C.c_longlong, C.c_void_p, DWORD])
++read_file = api("ReadFile", W.BOOL, [HANDLE, C.c_void_p, DWORD, C.POINTER(DWORD), C.c_void_p])
++write_file = api("WriteFile", W.BOOL, [HANDLE, C.c_void_p, DWORD, C.POINTER(DWORD), C.c_void_p])
++truncate_file = api("SetEndOfFile", W.BOOL, [HANDLE])
++get_times = api("GetProcessTimes", W.BOOL, [HANDLE] + [C.POINTER(W.FILETIME)] * 4)
++image_name = api("QueryFullProcessImageNameW", W.BOOL, [HANDLE, DWORD, W.LPWSTR, C.POINTER(DWORD)])
++open_process = api("OpenProcess", HANDLE, [DWORD, W.BOOL, DWORD])
++wait_process = api("WaitForSingleObject", DWORD, [HANDLE, DWORD])
++exit_code = api("GetExitCodeProcess", W.BOOL, [HANDLE, C.POINTER(DWORD)])
++terminate_process = api("TerminateProcess", W.BOOL, [HANDLE, W.UINT])
++resume_thread = api("ResumeThread", DWORD, [HANDLE])
++current_process = api("GetCurrentProcess", HANDLE, [])
++std_handle = api("GetStdHandle", HANDLE, [DWORD])
++duplicate = api("DuplicateHandle", W.BOOL, [HANDLE, HANDLE, HANDLE, C.POINTER(HANDLE), DWORD, W.BOOL, DWORD])
++init_attributes = api("InitializeProcThreadAttributeList", W.BOOL, [C.c_void_p, DWORD, DWORD, C.POINTER(SIZE)])
++update_attributes = api("UpdateProcThreadAttribute", W.BOOL, [C.c_void_p, DWORD, SIZE, C.c_void_p, SIZE, C.c_void_p, C.c_void_p])
++delete_attributes = api("DeleteProcThreadAttributeList", None, [C.c_void_p])
++create_process = api("CreateProcessW", W.BOOL, [W.LPCWSTR, W.LPWSTR, C.c_void_p, C.c_void_p,
++    W.BOOL, DWORD, C.c_void_p, W.LPCWSTR, C.c_void_p, C.POINTER(ProcessInfo)])
++create_job = api("CreateJobObjectW", HANDLE, [C.c_void_p, W.LPCWSTR])
++set_job = api("SetInformationJobObject", W.BOOL, [HANDLE, C.c_int, C.c_void_p, DWORD])
++S.CommandLineToArgvW.restype = C.POINTER(W.LPWSTR)
++S.CommandLineToArgvW.argtypes = [W.LPCWSTR, C.POINTER(C.c_int)]
++local_free = api("LocalFree", HANDLE, [HANDLE])
++
++
++def checked(result):
++    if not result:
++        raise C.WinError(C.get_last_error())
++    return result
++
++
++def canonical(path):
++    return os.path.normcase(os.path.realpath(os.path.abspath(path)))
++
++
++class FileLock:
++    def __init__(self, path, create=False):
++        self.handle = create_file(os.fspath(path), 0xC0000000, 3, None, 4 if create else 3, 0x80, None)
++        if self.handle == INVALID:
++            self.handle = None
++            raise C.WinError(C.get_last_error())
++        self.owned = False
++        self.position = Overlapped()
++        self.position.offset, self.position.offset_high = 0xFFFFFFFE, 0x7FFFFFFF
++
++    def acquire(self):
++        if self.owned:
++            return True
++        if lock_file(self.handle, 3, 0, 1, 0, C.byref(self.position)):
++            self.owned = True
++            return True
++        error = C.get_last_error()
++        if error == 33:  # ERROR_LOCK_VIOLATION; never treat access denied as unlocked.
++            return False
++        raise C.WinError(error)
++
++    def identity(self):
++        information = FileInfo()
++        checked(file_info(self.handle, C.byref(information)))
++        if information.attributes & 0x10 or not (information.index_high or information.index_low):
++            raise RuntimeError("Lockfile has no usable native file identity")
++        return [information.volume, information.index_high, information.index_low]
++
++    def pid(self):
++        checked(seek_file(self.handle, 0, None, 0))
++        buffer, count = C.create_string_buffer(64), DWORD()
++        checked(read_file(self.handle, buffer, 64, C.byref(count), None))
++        lines = buffer.raw[:count.value].decode("ascii").splitlines()
++        if not lines or not lines[0].isdigit() or not 0 < int(lines[0]) <= 0xFFFFFFFF:
++            raise ValueError("Invalid lockfile PID metadata")
++        return int(lines[0])
++
++    def write_pid(self):
++        if not self.owned:
++            raise RuntimeError("PID metadata requires exclusive ownership")
++        data, written = str(os.getpid()).encode("ascii") + b"\n", DWORD()
++        buffer = C.create_string_buffer(data)
++        checked(seek_file(self.handle, 0, None, 0))
++        checked(truncate_file(self.handle))
++        checked(write_file(self.handle, buffer, len(data), C.byref(written), None))
++        if written.value != len(data):
++            raise OSError("Incomplete PID metadata write")
++
++    def close(self):
++        if self.handle:
++            if self.owned:
++                unlock_file(self.handle, 0, 1, 0, C.byref(self.position))
++            close_handle(self.handle)
++            self.handle, self.owned = None, False
++
++    def __enter__(self):
++        return self
++
++    def __exit__(self, *args):
++        self.close()
++
++
++def optional_lock(path):
++    try:
++        return FileLock(path)
++    except OSError as error:
++        if error.winerror in (2, 3):
++            return None
++        raise
++
++
++def lock_available(path, timeout=None):
++    # Preserve explicit waitlock(0) = no deadline; immediate probe for None.
++    if timeout is not None and timeout < 0:
++        raise ValueError("Lock timeout must not be negative")
++    deadline = None if timeout in (None, 0) else time.monotonic() + timeout
++    while True:
++        lock = optional_lock(path)
++        if lock is None:
++            return True
++        with lock:
++            if lock.acquire():
++                return True
++        if timeout is None or (deadline is not None and time.monotonic() >= deadline):
++            return False
++        time.sleep(0.05)
++
++
++def process_identity(handle):
++    created, ended, kernel, user = (W.FILETIME() for _ in range(4))
++    checked(get_times(handle, C.byref(created), C.byref(ended), C.byref(kernel), C.byref(user)))
++    image, size = C.create_unicode_buffer(32768), DWORD(32768)
++    checked(image_name(handle, 0, image, C.byref(size)))
++    return {"created": (created.dwHighDateTime << 32) | created.dwLowDateTime,
++            "image": canonical(image.value)}
++
++
++class Process:
++    def __init__(self, handle, pid, thread=None, may_terminate=False, job=None):
++        self.handle, self.thread, self.pid = handle, thread, pid
++        self.may_terminate = may_terminate
++        self.job = job
++
++    def handoff(self):
++        # Only commit an intended detached launch after its ownership record exists.
++        # Until then, controller death closes this noninherited kill-on-close job.
++        if self.job:
++            limits = JobLimits()
++            checked(set_job(self.job, 9, C.byref(limits), C.sizeof(limits)))
++            checked(close_handle(self.job))
++            self.job = None
++
++    def poll(self):
++        result = wait_process(self.handle, 0)
++        if result == WAIT_TIMEOUT:
++            return None
++        if result != 0:
++            raise C.WinError(C.get_last_error())
++        code = DWORD()
++        checked(exit_code(self.handle, C.byref(code)))
++        return code.value
++
++    def wait(self, seconds):
++        if seconds < 0:
++            raise ValueError("Negative process timeout")
++        end = time.monotonic() + seconds
++        while True:
++            code = self.poll()
++            if code is not None:
++                return code
++            remaining = end - time.monotonic()
++            if remaining <= 0:
++                return None
++            result = wait_process(self.handle, min(100, max(1, int(remaining * 1000))))
++            if result not in (0, WAIT_TIMEOUT):
++                raise C.WinError(C.get_last_error())
++
++    def resume(self):
++        result = resume_thread(self.thread)
++        if result == 0xFFFFFFFF:
++            raise C.WinError(C.get_last_error())
++        close_handle(self.thread)
++        self.thread = None
++
++    def abort_launch(self):
++        # This handle comes from our own successful CreateProcessW, never a PID lookup.
++        if not self.may_terminate:
++            raise RuntimeError("Process is not owned by this launcher")
++        if self.poll() is None:
++            if not terminate_process(self.handle, 1) and self.poll() is None:
++                raise C.WinError(C.get_last_error())
++            if self.wait(5) is None:
++                raise TimeoutError("Owned child did not finish termination in five seconds")
++
++    def close(self):
++        if self.job:
++            close_handle(self.job)
++            self.job = None
++        if self.thread:
++            close_handle(self.thread)
++            self.thread = None
++        if self.handle:
++            close_handle(self.handle)
++            self.handle = None
++
++
++def spawn(argv, cwd, environment, streams=None, background=False):
++    """CreateProcessW with explicit executable, environment, cwd and handle allowlist."""
++    import msvcrt
++    argv = [os.fspath(value) for value in argv]
++    if not argv or any("\0" in value for value in argv):
++        raise ValueError("Invalid native argv")
++    image = argv[0] if os.path.isabs(argv[0]) else shutil.which(argv[0], path=environment.get("PATH"))
++    if not image or not image.lower().endswith(".exe"):
++        raise FileNotFoundError("CreateProcessW requires a native executable or explicit interpreter")
++    argv[0] = os.path.abspath(image)
++    command = subprocess.list2cmdline(argv)
++    if len(command) >= 32767:
++        raise ValueError("Windows command line exceeds CreateProcessW limit")
++    values = {}
++    for key, value in environment.items():
++        if "\0" in key or "\0" in value or "=" in key:
++            raise ValueError("Invalid Windows environment entry")
++        values[key.upper()] = (key, value)
++    block = "\0".join("%s=%s" % values[key] for key in sorted(values)) + "\0\0"
++    env_buffer, cmd_buffer = C.create_unicode_buffer(block), C.create_unicode_buffer(command)
++    handles, attribute_buffer, attributes_ready, job = [], None, False, None
++    with contextlib.ExitStack() as stack:
++        try:
++            raw = list(streams) if streams is not None else [std_handle(n & 0xFFFFFFFF) for n in (-10, -11, -12)]
++            inherited = []
++            for index, source in enumerate(raw):
++                if source in (None, 0, INVALID):
++                    file = stack.enter_context(open(os.devnull, "rb" if index == 0 else "wb"))
++                    source = msvcrt.get_osfhandle(file.fileno())
++                target = HANDLE()
++                checked(duplicate(current_process(), source, current_process(), C.byref(target), 0, True, 2))
++                handles.append(target.value)
++                inherited.append(target.value)
++            size = SIZE()
++            init_attributes(None, 2, 0, C.byref(size))
++            if not size.value:
++                raise C.WinError(C.get_last_error())
++            attribute_buffer = C.create_string_buffer(size.value)
++            checked(init_attributes(attribute_buffer, 2, 0, C.byref(size)))
++            attributes_ready = True
++            allowlist = (HANDLE * len(handles))(*handles)
++            checked(update_attributes(attribute_buffer, 0, 0x20002, allowlist,
++                                      C.sizeof(allowlist), None, None))
++            job = checked(create_job(None, None))
++            limits = JobLimits()
++            limits.basic.flags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
++            checked(set_job(job, 9, C.byref(limits), C.sizeof(limits)))
++            jobs = (HANDLE * 1)(job)
++            # PROC_THREAD_ATTRIBUTE_JOB_LIST (Windows 10+): atomic assignment at
++            # creation avoids an orphan window between CreateProcess and AssignJob.
++            # Unsupported hosts or restrictive outer jobs fail without launching.
++            checked(update_attributes(attribute_buffer, 0, 0x2000D, jobs,
++                                      C.sizeof(jobs), None, None))
++            startup, information = StartupInfoEx(), ProcessInfo()
++            startup.startup.cb = C.sizeof(startup)
++            startup.startup.flags = 0x100 | 1  # USESTDHANDLES | USESHOWWINDOW
++            startup.startup.show = 0  # SW_HIDE
++            startup.startup.stdin, startup.startup.stdout, startup.startup.stderr = inherited
++            startup.attributes = C.cast(attribute_buffer, C.c_void_p)
++            flags = 0x400 | 0x80000 | 4  # UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO | SUSPENDED
++            if background:
++                flags |= 0x08000000  # CREATE_NO_WINDOW; no fake Unix daemon/fork.
++            checked(create_process(argv[0], cmd_buffer, None, None, True, flags,
++                                   env_buffer, cwd, C.byref(startup), C.byref(information)))
++            process = Process(information.process, information.pid, information.thread,
++                              may_terminate=True, job=job)
++            job = None
++            return process
++        finally:
++            if job:
++                close_handle(job)
++            if attributes_ready:
++                delete_attributes(attribute_buffer)
++            for handle in handles:
++                close_handle(handle)
++
++
++def parameters(text):
++    if not isinstance(text, str):
++        return list(text)
++    count = C.c_int()
++    result = S.CommandLineToArgvW("seiscomp-params " + text, C.byref(count))
++    checked(result)
++    try:
++        return [result[index] for index in range(1, count.value)]
++    finally:
++        local_free(C.cast(result, HANDLE))
++
++
++def interpreter_command(argv):
++    argv = list(argv)
++    if argv and (argv[0].lower().endswith(".py") or canonical(argv[0]) == canonical(sys.argv[0])):
++        return [sys.executable] + argv
++    return argv
++
++
++def run_wait(argv, cwd=None, environment=None):
++    process = spawn(interpreter_command(argv), cwd or os.getcwd(),
++                    dict(os.environ) if environment is None else environment)
++    try:
++        process.resume()
++        while True:
++            try:
++                code = process.wait(0.1)
++                if code is not None:
++                    process.handoff()
++                    # sys.exit consumes a C int. Preserve all DWORD status bits
++                    # without overflowing Python's Windows signed exit argument.
++                    return C.c_int32(code).value
++            except KeyboardInterrupt:
++                continue  # Preserve controller system() console-interrupt policy.
++    except BaseException:
++        process.abort_launch()
++        raise
++    finally:
++        process.close()
++
++
++def paths(env, module):
++    if not module or module != os.path.basename(module) or any(c in module for c in "\\/:\0"):
++        raise ValueError("Invalid native module name")
++    lock = os.path.join(os.path.abspath(env.SEISCOMP_ROOT), "var", "run", module + ".pid")
++    return lock, lock + ".windows-owner.json", lock + ".windows-launch"
++
++
++@contextlib.contextmanager
++def module_guard(path):
++    with FileLock(path, create=True) as lock:
++        end = time.monotonic() + 10
++        while not lock.acquire():
++            if time.monotonic() >= end:
++                raise TimeoutError("Native module lifecycle is busy")
++            time.sleep(0.05)
++        yield
++
++
++def executable(env, binary):
++    root = os.path.abspath(env.SEISCOMP_ROOT)
++    names = [binary] if os.path.isabs(binary) else [os.path.join(root, d, binary) for d in ("bin", "sbin")]
++    for name in names:
++        path = name if name.lower().endswith(".exe") else name + ".exe"
++        if os.path.isfile(path) and os.path.commonpath([canonical(root), canonical(path)]) == canonical(root):
++            return os.path.abspath(path)
++    raise FileNotFoundError("Native executable not found under SeisComP root: " + binary)
++
++
++def start(env, module, binary, params):
++    import msvcrt
++    lockpath, receipt, guardpath = paths(env, module)
++    with module_guard(guardpath):
++        if not lock_available(lockpath):
++            return 1
++        image = executable(env, binary)
++        argv = [image] + parameters(params)
++        if any(arg in ("-D", "--daemon") or arg.startswith("-Ds") for arg in argv[1:]):
++            raise ValueError("POSIX daemon flags are not a native launch contract")
++        logfile = os.path.join(os.path.abspath(env.SEISCOMP_ROOT), "var", "log", module + ".log")
++        with open(os.devnull, "rb") as stdin, open(logfile, "wb") as stdout:
++            streams = [msvcrt.get_osfhandle(stdin.fileno()), msvcrt.get_osfhandle(stdout.fileno())]
++            streams.append(streams[1])
++            environment = dict(os.environ)
++            environment.pop("SEISCOMP_LOCK", None)  # Never let a module bypass a later controller mutex.
++            process = spawn(argv, os.path.abspath(env.SEISCOMP_ROOT), environment, streams, background=True)
++        temporary = None
++        try:
++            identity = process_identity(process.handle)
++            if identity["image"] != canonical(image):
++                raise RuntimeError("Launched process image identity mismatch")
++            process.resume()
++            end = time.monotonic() + 10
++            while True:
++                code = process.poll()
++                if code is not None:
++                    print("Native module %s exited during startup with status %s" % (module, code), file=sys.stderr)
++                    return code or 1  # A module which exited is not a successful background launch.
++                file = optional_lock(lockpath)
++                if file is not None:
++                    with file:
++                        if not file.acquire() and file.pid() == process.pid:
++                            record = dict(identity, version=1, pid=process.pid, module=module,
++                                          root=canonical(env.SEISCOMP_ROOT), file=file.identity())
++                            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=os.path.dirname(receipt),
++                                                             prefix=module + "-owner-", delete=False) as output:
++                                temporary = output.name
++                                json.dump(record, output)
++                                output.flush()
++                                os.fsync(output.fileno())
++                            if process.poll() is not None:
++                                raise RuntimeError("Owned child exited during launch handoff")
++                            os.replace(temporary, receipt)
++                            temporary = None
++                            process.handoff()
++                            return 0
++                if time.monotonic() >= end:
++                    raise TimeoutError("Owned child did not acquire its PID lock within ten seconds")
++                time.sleep(0.05)
++        except BaseException:
++            process.abort_launch()
++            raise
++        finally:
++            try:
++                if temporary is not None:
++                    os.unlink(temporary)
++            finally:
++                process.close()  # Successful launch closes only the parent's handles.
++
++
++def stop(env, module, timeout):
++    lockpath, receipt, guardpath = paths(env, module)
++    if timeout < 0:
++        raise ValueError("Negative shutdown timeout")
++    with module_guard(guardpath):
++        file = optional_lock(lockpath)
++        if file is None:
++            return True
++        with file:
++            if file.acquire():
++                return True  # Stale PID text is not proof of a live owner.
++            with open(receipt, encoding="utf-8") as source:
++                record = json.load(source)
++            if (record.get("version") != 1 or record.get("module") != module or
++                    record.get("root") != canonical(env.SEISCOMP_ROOT) or
++                    record.get("file") != file.identity() or record.get("pid") != file.pid()):
++                raise RuntimeError("Unverified lockfile/process ownership; no process action taken")
++            # No terminate right is requested until a future approved policy needs it.
++            handle = checked(open_process(0x1000 | 0x100000, False, record["pid"]))
++            process = Process(handle, record["pid"])
++            try:
++                identity = process_identity(handle)
++                if identity != {key: record[key] for key in ("created", "image")}:
++                    raise RuntimeError("PID reuse or image mismatch; no process action taken")
++                if process.poll() is not None:
++                    return True
++                raise ControlProtocolRequired("Graceful stop of %s requires an approved per-PID Windows control channel; no termination sent" % module)
++            finally:
++                process.close()
++
++
++def cleanup_stopped(env, module):
++    lockpath, receipt, guardpath = paths(env, module)
++    with module_guard(guardpath):
++        file = optional_lock(lockpath)
++        with contextlib.ExitStack() as stack:
++            if file is not None:
++                stack.enter_context(file)
++                if not file.acquire():
++                    raise RuntimeError("Module still owns its lock; refusing metadata cleanup")
++            for path in (env.runFile(module), receipt):
++                try:
++                    os.unlink(path)
++                except FileNotFoundError:
++                    pass
++            # Do not unlink the PID inode: another native app must contend on it.
++
++
++def controller_lock(path, timeout):
++    if timeout is not None and timeout < 0:
++        raise ValueError("Lock timeout must not be negative")
++    file = FileLock(path, create=True)
++    end = None if timeout in (None, 0) else time.monotonic() + timeout
++    try:
++        while not file.acquire():
++            if timeout is None or (end is not None and time.monotonic() >= end):
++                raise TimeoutError("Another controller owns the native lock")
++            time.sleep(0.05)
++        file.write_pid()
++        return file
++    except BaseException:
++        file.close()
++        raise
++
++
++def configure_environment(env):
++    root = os.path.abspath(env.SEISCOMP_ROOT)
++    os.environ["PATH"] = os.pathsep.join([os.path.join(root, part) for part in ("bin", "sbin", "lib")] +
++                                         [os.environ.get("PATH", "")])
++    os.environ["PYTHONPATH"] = os.pathsep.join([os.path.join(root, "lib", "python"),
++                                               os.environ.get("PYTHONPATH", "")])
+diff --git a/src/system/apps/seiscomp/seiscomp-control.py b/src/system/apps/seiscomp/seiscomp-control.py
+--- a/src/system/apps/seiscomp/seiscomp-control.py
++++ b/src/system/apps/seiscomp/seiscomp-control.py
+@@ -109,6 +109,9 @@
+ 
+ 
+ def system(args):
++    if os.name == "nt":
++        from seiscomp import windows
++        return windows.run_wait(args, environment=dict(os.environ))
+     with subprocess.Popen(args, shell=False, env=os.environ) as proc:
+         while True:
+             try:
+@@ -239,6 +242,8 @@
+         if r is None:
+             # Not supported
+             return 1
++        if os.name == "nt" and r != 0:
++            return r
+         # Create runfile
+         touch(env.runFile(mod.name))
+         return r
+@@ -249,6 +254,9 @@
+ 
+ def stop_module(mod):
+     returncode = 0
++    if os.name == "nt" and type(mod).stop is not seiscomp.kernel.Module.stop:
++        error(f"Module-specific shutdown for {mod.name} has no reviewed Windows control mapping")
++        return 1
+     try:
+         r = mod.stop()
+         if r is None:
+@@ -269,6 +277,17 @@
+     except Exception as e:
+         error(f"Failed to stop {mod.name}: {str(e)}")
+         return 1
++
++    if os.name == "nt":
++        if returncode:
++            return returncode
++        try:
++            from seiscomp import windows
++            windows.cleanup_stopped(env, mod.name)
++            return 0
++        except Exception as exc:
++            error(f"Native stopped-module cleanup failed: {exc}")
++            return 1
+ 
+     # Delete runfile and pidfile
+     try:
+@@ -462,7 +481,47 @@
+     print("seiscomp disable seedlink slarchive")
+ 
+ 
++def _windows_modules(request, args):
++    core = seiscomp.kernel.CoreModule
++    if args:
++        selected = [mod for mod in mods if mod.name in args]
++        if set(args) - {mod.name for mod in selected}:
++            error("Unknown native module requested")
++            return 1
++    elif request == "start":
++        selected = [mod for mod in mods if isinstance(mod, core)] + [
++            mod for mod in mods if not isinstance(mod, core) and env.isModuleEnabled(mod.name)]
++    else:
++        selected = list(mods)
++    if request == "stop":
++        if args:
++            selected.reverse()
++        else:
++            selected = [mod for mod in reversed(selected) if not isinstance(mod, core)] + [
++                mod for mod in reversed(selected) if isinstance(mod, core)]
++    action_function = start_module if request == "start" else stop_module
++    failed = 0
++    for mod in selected:
++        if request == "stop":
++            try:
++                if env.tryLock(mod.name):
++                    from seiscomp import windows
++                    windows.cleanup_stopped(env, mod.name)
++                    continue  # An unlocked/stale PID is already stopped, including restart.
++            except Exception as exc:
++                error(f"Native ownership check failed for {mod.name}: {exc}")
++                failed += 1
++                continue
++        if action_function(mod) != 0:
++            failed += 1
++    if not useCSV:
++        print(f"Summary: {len(selected) - failed} native module {request} requests succeeded; {failed} failed")
++    return 1 if failed else 0
++
++
+ def on_start(args, _):
++    if os.name == "nt":
++        return _windows_modules("start", args)
+     cntStarted = 0
+     if not args:
+         if start_kernel_modules() == 0:
+@@ -496,6 +555,8 @@
+ 
+ 
+ def on_stop(args, _):
++    if os.name == "nt":
++        return _windows_modules("stop", args)
+     cntStopped = 0
+     if not args:
+         for mod in reversed(mods):
+@@ -529,6 +590,9 @@
+ 
+ 
+ def on_restart(args, flags):
++    if os.name == "nt":
++        result = on_stop(args, flags)
++        return result if result else on_start(args, flags)
+     on_stop(args, flags)
+     on_start(args, flags)
+     return 0
+@@ -546,6 +610,9 @@
+ 
+ 
+ def on_reload(args, _):
++    if os.name == "nt":
++        error("Per-PID HUP/reload requires an approved Windows module control protocol")
++        return 1
+     if not args:
+         for mod in mods:
+             # Reload not supported by kernel modules
+@@ -1497,7 +1564,7 @@
+     print("seiscomp [flags] {%s} [args]" % "|".join(allowed_actions))
+     sys.exit(1)
+ 
+-if os.getuid() == 0 and not asRoot and action != "install-deps":
++if os.name != "nt" and os.getuid() == 0 and not asRoot and action != "install-deps":
+     print("Running 'seiscomp' as root is dangerous. Use --asroot only if you")
+     print("know exactly what you are doing!")
+     sys.exit(1)
+@@ -1563,13 +1630,13 @@
+ 
+ if not isWrapped:
+     try:
+-        os.environ["PATH"] = BIN_PATH + ":" + os.environ["PATH"]
++        os.environ["PATH"] = BIN_PATH + os.pathsep + os.environ["PATH"]
+     except BaseException:
+         os.environ["PATH"] = BIN_PATH
+ 
+     try:
+         os.environ[SysLibraryPathVar] = (
+-            get_library_path() + ":" + os.environ[SysLibraryPathVar]
++            get_library_path() + os.pathsep + os.environ[SysLibraryPathVar]
+         )
+     except BaseException:
+         os.environ[SysLibraryPathVar] = get_library_path()
+@@ -1578,11 +1645,11 @@
+         os.environ[SysFrameworkPathVar] = get_framework_path()
+ 
+     try:
+-        os.environ["PYTHONPATH"] = PYTHONPATH + ":" + os.environ["PYTHONPATH"]
++        os.environ["PYTHONPATH"] = PYTHONPATH + os.pathsep + os.environ["PYTHONPATH"]
+     except BaseException:
+         os.environ["PYTHONPATH"] = PYTHONPATH
+     try:
+-        os.environ["MANPATH"] = MANPATH + ":" + os.environ["MANPATH"]
++        os.environ["MANPATH"] = MANPATH + os.pathsep + os.environ["MANPATH"]
+     except BaseException:
+         os.environ["MANPATH"] = MANPATH
+ 
+@@ -1601,7 +1668,18 @@
+ # Check for lock file
+ isChild = False
+ 
+-if action in actions_without_lock:
++if os.name == "nt":
++    if action not in actions_without_lock:
++        import atexit
++        from seiscomp import windows
++        try:
++            _native_controller_lock = windows.controller_lock(env.lockFile("seiscomp"), lockTimeout)
++        except Exception as exc:
++            error(str(exc))
++            sys.exit(1)
++        atexit.register(_native_controller_lock.close)
++    isChild = True  # The controller itself owns a kernel lock; no inherited env bypass.
++elif action in actions_without_lock:
+     isChild = True
+ else:
+     try:

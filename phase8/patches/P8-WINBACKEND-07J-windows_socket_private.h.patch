@@ -1,0 +1,46 @@
+--- /dev/null
++++ b/src/base/seedlink/plugins/sockplugin/windows_socket_private.h
+@@ -0,0 +1,43 @@
++/* Private native adapter for the original blocking IPv4 TCP sock_plugin. */
++#pragma once
++#include <winsock2.h>
++#include <ws2tcpip.h>
++#include <windows.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++
++static void sock_winsock_cleanup(void) { WSACleanup(); }
++
++static int sock_winsock_start(void) {
++  WSADATA data;
++  int error = WSAStartup(MAKEWORD(2, 2), &data);
++  if (error) return error; /* WSAStartup returns its own error code. */
++  if (LOBYTE(data.wVersion) != 2 || HIBYTE(data.wVersion) != 2) {
++    WSACleanup();
++    return WSAVERNOTSUPPORTED;
++  }
++  if (atexit(sock_winsock_cleanup) != 0) {
++    WSACleanup();
++    return WSA_NOT_ENOUGH_MEMORY;
++  }
++  return 0;
++}
++
++/* Call immediately on socket failure; CRT errno is unrelated to Winsock. */
++static const char *sock_winsock_error(void) {
++  static char message[64];
++  int error = WSAGetLastError();
++  snprintf(message, sizeof(message), "Winsock error %d", error);
++  return message;
++}
++
++/* sleep() accepts unsigned seconds. Avoid DWORD millisecond overflow and INFINITE. */
++static void sock_sleep(unsigned int seconds) {
++  uint64_t millis = (uint64_t)seconds * 1000;
++  while (millis) {
++    DWORD chunk = millis > 0xfffffffeULL ? 0xfffffffeUL : (DWORD)millis;
++    Sleep(chunk);
++    millis -= chunk;
++  }
++}

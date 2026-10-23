@@ -1,0 +1,15 @@
+--- a/src/base/common/libs/swig/datamodelext.i
++++ b/src/base/common/libs/swig/datamodelext.i
+@@ -19,6 +19,12 @@
+ 
+ %{
+ #include <seiscomp/datamodel/exchange/quakeml.h>
++/* Windows SDK macro must not rename the original Notifier::GetMessage API. */
++#ifdef _WIN32
++#ifdef GetMessage
++#undef GetMessage
++#endif
++#endif
+ %}
+ 
+ // QML Typemapper

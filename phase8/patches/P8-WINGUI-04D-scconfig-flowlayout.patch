@@ -1,0 +1,26 @@
+--- a/apps/tools/scconfig/CMakeLists.txt
++++ b/apps/tools/scconfig/CMakeLists.txt
+@@ -86,7 +86,6 @@
+ 			icon.cpp
+ 			searchwidget.cpp
+ 			wizard.cpp
+-			${SC3_PACKAGE_SOURCE_DIR}/libs/seiscomp/gui/core/flowlayout.cpp
+ 			dialogs/importfdsnws.cpp
+ 			panels/inspector.cpp
+ 			panels/bindings.cpp
+@@ -101,8 +100,15 @@
+ 	)
+ 
+ 
++	IF (NOT WIN32)
++		LIST(APPEND SCCONFIG_SOURCES ${SC3_PACKAGE_SOURCE_DIR}/libs/seiscomp/gui/core/flowlayout.cpp)
++	ENDIF ()
++
+ 	SC_ADD_EXECUTABLE(SCCONFIG ${SCCONFIG_TARGET})
+ 	SC_LINK_LIBRARIES_INTERNAL(${SCCONFIG_TARGET} core)
++	IF (WIN32)
++		SC_LINK_LIBRARIES_INTERNAL(${SCCONFIG_TARGET} qt)
++	ENDIF ()
+ 
+ 	IF (SC_GLOBAL_GUI_QT5)
+ 		SC_LINK_LIBRARIES(${SCCONFIG_TARGET} Qt5::Widgets Qt5::Network Qt5::Svg)

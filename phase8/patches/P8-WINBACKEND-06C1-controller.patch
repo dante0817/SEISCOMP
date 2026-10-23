@@ -1,0 +1,400 @@
+diff --git a/src/system/libs/python/seiscomp/windows.py b/src/system/libs/python/seiscomp/windows.py
+--- a/src/system/libs/python/seiscomp/windows.py
++++ b/src/system/libs/python/seiscomp/windows.py
+@@ -1,11 +1,12 @@
+ ############################################################################
+ # Windows controller portability adapter. See kernel.py for SeisComP license.
+-# Private launch/ownership bookkeeping; no remote control or signal protocol.
++# Private launch/ownership and opt-in local-session Client STOP; no remote signals.
+ ############################################################################
+ import contextlib
+ import ctypes as C
+ from ctypes import wintypes as W
+ import json
++import math
+ import os
+ import shutil
+ import subprocess
+@@ -18,6 +19,7 @@
+ 
+ K = C.WinDLL("kernel32", use_last_error=True)
+ S = C.WinDLL("shell32", use_last_error=True)
++A = C.WinDLL("advapi32", use_last_error=True)
+ HANDLE, DWORD, SIZE = W.HANDLE, W.DWORD, C.c_size_t
+ INVALID = C.c_void_p(-1).value
+ WAIT_TIMEOUT = 258
+@@ -25,6 +27,13 @@
+ 
+ class ControlProtocolRequired(RuntimeError):
+     pass
++
++
++class StopFailure(RuntimeError):
++    def __init__(self, status, message, exit_status=None):
++        self.status, self.exit_status = status, exit_status
++        super().__init__(status + ": " + message +
++                         (" (DWORD exit status 0x%08X)" % exit_status if exit_status is not None else ""))
+ 
+ 
+ class Overlapped(C.Structure):
+@@ -74,8 +83,8 @@
+                 ("peak_process_memory", SIZE), ("peak_job_memory", SIZE)]
+ 
+ 
+-def api(name, result, args):
+-    function = getattr(K, name)
++def api(name, result, args, library=K):
++    function = getattr(library, name)
+     function.restype, function.argtypes = result, args
+     return function
+ 
+@@ -109,6 +118,143 @@
+ S.CommandLineToArgvW.restype = C.POINTER(W.LPWSTR)
+ S.CommandLineToArgvW.argtypes = [W.LPCWSTR, C.POINTER(C.c_int)]
+ local_free = api("LocalFree", HANDLE, [HANDLE])
++
++# Only the cooperative STOP path uses these token/security/event interfaces.
++# No PROCESS_TERMINATE right is used when opening a running module.
++open_event = api("OpenEventW", HANDLE, [DWORD, W.BOOL, W.LPCWSTR])
++set_event = api("SetEvent", W.BOOL, [HANDLE])
++current_thread = api("GetCurrentThread", HANDLE, [])
++process_id = api("GetProcessId", DWORD, [HANDLE])
++process_session = api("ProcessIdToSessionId", W.BOOL, [DWORD, C.POINTER(DWORD)])
++open_token = api("OpenProcessToken", W.BOOL, [HANDLE, DWORD, C.POINTER(HANDLE)], A)
++open_thread_token = api("OpenThreadToken", W.BOOL, [HANDLE, DWORD, W.BOOL, C.POINTER(HANDLE)], A)
++token_information = api("GetTokenInformation", W.BOOL, [HANDLE, C.c_int, C.c_void_p, DWORD, C.POINTER(DWORD)], A)
++valid_sid = api("IsValidSid", W.BOOL, [C.c_void_p], A)
++sid_length = api("GetLengthSid", DWORD, [C.c_void_p], A)
++get_security = api("GetSecurityInfo", DWORD, [HANDLE, C.c_int, DWORD, C.POINTER(C.c_void_p),
++    C.c_void_p, C.POINTER(C.c_void_p), C.c_void_p, C.POINTER(C.c_void_p)], A)
++sd_control = api("GetSecurityDescriptorControl", W.BOOL, [C.c_void_p, C.POINTER(W.WORD), C.POINTER(DWORD)], A)
++valid_acl = api("IsValidAcl", W.BOOL, [C.c_void_p], A)
++get_ace = api("GetAce", W.BOOL, [C.c_void_p, DWORD, C.POINTER(C.c_void_p)], A)
++
++
++def sid_bytes(pointer):
++    if not pointer or not valid_sid(pointer):
++        raise StopFailure("IdentityMismatch", "Invalid Windows token/endpoint SID")
++    size = sid_length(pointer)
++    if not 8 <= size <= 68:
++        raise StopFailure("IdentityMismatch", "Invalid Windows SID size")
++    return C.string_at(pointer, size)
++
++
++def token_info(handle, kind):
++    size = DWORD()
++    token_information(handle, kind, None, 0, C.byref(size))
++    if C.get_last_error() != 122 or not 0 < size.value <= 65536:
++        raise StopFailure("IdentityMismatch", "Token information unavailable")
++    buffer = C.create_string_buffer(size.value)
++    checked(token_information(handle, kind, buffer, size.value, C.byref(size)))
++    return buffer
++
++
++def process_principal(handle):
++    token = HANDLE()
++    checked(open_token(handle, 8, C.byref(token)))  # TOKEN_QUERY
++    try:
++        data = {}
++        for key, kind in (("user", 1), ("owner", 4), ("integrity", 25)):
++            buffer = token_info(token, kind)
++            data[key] = sid_bytes(C.cast(buffer, C.POINTER(C.c_void_p))[0])
++        for key, kind in (("session", 12), ("elevated", 20), ("type", 8)):
++            data[key] = C.cast(token_info(token, kind), C.POINTER(DWORD))[0]
++        session = DWORD()
++        checked(process_session(checked(process_id(handle)), C.byref(session)))
++        if (data["user"] != data["owner"] or data["elevated"] or data["type"] != 1 or
++                not data["session"] or session.value != data["session"] or
++                int.from_bytes(data["integrity"][-4:], "little") != 0x2000):
++            raise StopFailure("IdentityMismatch", "STOP requires a non-elevated medium-integrity user-owned primary token in a client session")
++        return data
++    finally:
++        close_handle(token)
++
++
++def verify_principal(handle):
++    thread_token = HANDLE()
++    if open_thread_token(current_thread(), 8, True, C.byref(thread_token)):
++        close_handle(thread_token)
++        raise StopFailure("IdentityMismatch", "STOP refuses an impersonating controller thread")
++    if C.get_last_error() != 1008:  # ERROR_NO_TOKEN
++        raise C.WinError(C.get_last_error())
++    current = process_principal(current_process())
++    if process_principal(handle) != current:
++        raise StopFailure("IdentityMismatch", "Target user/owner/session/integrity differs from controller")
++    return current["user"]
++
++
++def verify_endpoint(handle, user):
++    owner, acl, descriptor = C.c_void_p(), C.c_void_p(), C.c_void_p()
++    error = get_security(handle, 6, 5, C.byref(owner), None, C.byref(acl), None, C.byref(descriptor))
++    if error:
++        raise C.WinError(error)
++    try:
++        control, revision = W.WORD(), DWORD()
++        checked(sd_control(descriptor, C.byref(control), C.byref(revision)))
++        if sid_bytes(owner) != user or not (control.value & 0x1000) or not acl or not valid_acl(acl):
++            raise StopFailure("EndpointSecurityMismatch", "Endpoint owner/protected DACL mismatch")
++        # ACL header: revision/unused, size WORD, ace-count WORD, unused WORD.
++        count = int.from_bytes(C.string_at(acl.value + 4, 2), "little")
++        if count != 2:
++            raise StopFailure("EndpointSecurityMismatch", "Endpoint must have exactly two explicit allow ACEs")
++        expected = {user: 0x120002, b"\x01\x01\x00\x00\x00\x00\x00\x05\x12\x00\x00\x00": 0x1F0003}
++        found = {}
++        for index in range(count):
++            raw = C.c_void_p()
++            checked(get_ace(acl, index, C.byref(raw)))
++            header = C.string_at(raw.value, 8)
++            size = int.from_bytes(header[2:4], "little")
++            if header[0] != 0 or header[1] != 0 or not 16 <= size <= 76:
++                raise StopFailure("EndpointSecurityMismatch", "Unexpected inherited or non-allow ACE")
++            sid = C.string_at(raw.value + 8, size - 8)
++            if sid[0] != 1 or sid[1] > 15 or len(sid) != 8 + 4 * sid[1]:
++                raise StopFailure("EndpointSecurityMismatch", "ACE contains a malformed SID")
++            if sid in found:
++                raise StopFailure("EndpointSecurityMismatch", "Duplicate endpoint ACE")
++            found[sid] = int.from_bytes(header[4:8], "little")
++        if found != expected:
++            raise StopFailure("EndpointSecurityMismatch", "Endpoint grants unexpected principals or access")
++    finally:
++        local_free(descriptor)
++
++
++class Receipt:
++    """Read a stable receipt while denying write/delete/replacement until close."""
++    def __init__(self, path):
++        self.handle = create_file(path, 0x80000000, 1, None, 3, 0x200000, None)
++        if self.handle == INVALID:
++            self.handle = None
++            raise C.WinError(C.get_last_error())
++
++    def __enter__(self):
++        try:
++            info = FileInfo()
++            checked(file_info(self.handle, C.byref(info)))
++            size = (info.size_high << 32) | info.size_low
++            if info.attributes & (0x10 | 0x400) or not 0 < size <= 16384:
++                raise StopFailure("IdentityMismatch", "Receipt must be a bounded regular non-reparse file")
++            buffer, count = C.create_string_buffer(size), DWORD()
++            checked(read_file(self.handle, buffer, size, C.byref(count), None))
++            if count.value != size:
++                raise StopFailure("IdentityMismatch", "Receipt read was incomplete")
++            self.record = json.loads(buffer.raw.decode("utf-8"))
++            return self.record
++        except BaseException:
++            self.__exit__()
++            raise
++
++    def __exit__(self, *args):
++        if self.handle:
++            close_handle(self.handle)
++            self.handle = None
+ 
+ 
+ def checked(result):
+@@ -494,35 +640,151 @@
+                 process.close()  # Successful launch closes only the parent's handles.
+ 
+ 
++def verified_owner(env, module, file, record, free_lock=False):
++    if (record.get("version") != 1 or record.get("module") != module or
++            record.get("root") != canonical(env.SEISCOMP_ROOT) or
++            record.get("file") != file.identity() or record.get("pid") != file.pid() or
++            type(record.get("pid")) is not int or not 0 < record["pid"] <= 0xFFFFFFFF or
++            type(record.get("created")) is not int or not 0 < record["created"] <= 0xFFFFFFFFFFFFFFFF or
++            not isinstance(record.get("image"), str) or
++            os.path.commonpath([record["root"], canonical(record["image"])]) != record["root"]):
++        raise StopFailure("IdentityMismatch", "Unverified root/module/lockfile/process receipt; no process action taken")
++    # Deliberately excludes PROCESS_TERMINATE. Never reopen this PID later.
++    handle = open_process(0x1000 | 0x100000, False, record["pid"])
++    if not handle:
++        error = C.get_last_error()
++        if error == 87 and free_lock:  # No such process, plus exclusive free-file proof.
++            return None
++        raise C.WinError(error)
++    process = Process(handle, record["pid"])
++    try:
++        if process_identity(handle) != {key: record[key] for key in ("created", "image")}:
++            raise StopFailure("IdentityMismatch", "PID reuse or image mismatch; no process action taken")
++        return process
++    except BaseException:
++        process.close()
++        raise
++
++
++def stop_exit(module, code, state):
++    if code:
++        raise StopFailure("NonzeroOrCrashExit", "%s: %s" % (module, state), code)
++    print("Native STOP %s: %s; DWORD exit status 0x%08X" % (module, state, code))
++    return True
++
++
++def client_stop_eligible(env, image):
++    # Explicit enrollment paired with scautoloc/main.cpp's opt-in. An image name
++    # alone never authorizes action: receipt, file/process identity, token/session
++    # and endpoint descriptors are independently verified before signaling.
++    return image in {canonical(os.path.join(env.SEISCOMP_ROOT, directory, "scautoloc.exe"))
++                     for directory in ("bin", "sbin")}
++
++
++def request_client_stop(env, module, file, record, process, timeout):
++    if not client_stop_eligible(env, record["image"]):
++        raise StopFailure("Unsupported", module + " is not enrolled for the qualified Windows Client STOP loop")
++    user = verify_principal(process.handle)
++    prefix = "Local\\SeisComP.Control.%d.%016x" % (process.pid, record["created"])
++    deadline = time.monotonic() + 5  # One budget for endpoint readiness AND ack.
++    request, accepted = None, None
++    try:
++        while True:
++            code = process.poll()
++            if code is not None:
++                return stop_exit(module, code, "AlreadyExitedBeforeRequest")
++            request = open_event(0x20002, False, prefix + ".StopRequest")
++            error = C.get_last_error() if not request else 0
++            if request:
++                accepted = open_event(0x120000, False, prefix + ".StopAccepted")
++                error = C.get_last_error() if not accepted else 0
++            if request and accepted:
++                break
++            if request:
++                close_handle(request)
++                request = None
++            if error != 2:  # Missing endpoint alone may be initialization in progress.
++                raise StopFailure("AccessDenied" if error == 5 else "EndpointUnavailable",
++                                  "OpenEvent failed with Windows error %d; no STOP sent" % error)
++            remaining = deadline - time.monotonic()
++            if remaining <= 0:
++                raise StopFailure("NotReady", "Enrolled module's endpoints unavailable after the five-second readiness/ack budget; no STOP sent")
++            time.sleep(min(0.05, remaining))
++        verify_endpoint(request, user)
++        verify_endpoint(accepted, user)
++        # Retained receipt is write/delete protected and file handle denies
++        # replacement. Recheck continuity immediately before the one signal.
++        if (process_identity(process.handle) != {key: record[key] for key in ("created", "image")} or
++                file.identity() != record["file"] or file.pid() != record["pid"]):
++            raise StopFailure("IdentityMismatch", "Ownership changed before request; no STOP sent")
++        code = process.poll()
++        if code is not None:
++            return stop_exit(module, code, "AlreadyExitedBeforeRequest")
++        if time.monotonic() >= deadline:
++            raise StopFailure("NotReady", "Endpoint qualification exhausted the readiness budget; no STOP sent")
++        checked(set_event(request))
++        while True:
++            code = process.poll()
++            if code is not None:
++                return stop_exit(module, code, "ExitedBeforeAcceptanceObserved")
++            remaining = deadline - time.monotonic()
++            if remaining <= 0:
++                raise StopFailure("AcceptanceTimeout", "STOP was sent but queue acceptance was not observed; process/metadata retained")
++            status = wait_process(accepted, max(1, int(min(0.05, remaining) * 1000)))
++            if status == 0:
++                break
++            if status != WAIT_TIMEOUT:
++                raise C.WinError(C.get_last_error())
++        print("Native STOP %s: StopAccepted (queued; exit not yet established)" % module)
++        code = process.wait(timeout)  # Same verified handle; finite monotonic exit wait.
++        if code is None:
++            raise StopFailure("ShutdownTimeout", "Queue accepted STOP but process did not exit within killTimeout; no termination or metadata cleanup")
++        return stop_exit(module, code, "ExitedAfterAcceptance")
++    finally:
++        if accepted:
++            close_handle(accepted)
++        if request:
++            close_handle(request)
++
++
+ def stop(env, module, timeout):
++    if (isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or
++            not math.isfinite(timeout) or not 0 <= timeout <= 0xFFFFFFFE / 1000):
++        raise ValueError("Shutdown timeout must be finite, nonnegative and within DWORD wait range")
+     lockpath, receipt, guardpath = paths(env, module)
+-    if timeout < 0:
+-        raise ValueError("Negative shutdown timeout")
+-    with module_guard(guardpath):
+-        file = optional_lock(lockpath)
+-        if file is None:
+-            return True
+-        with file:
+-            if file.acquire():
+-                return True  # Stale PID text is not proof of a live owner.
+-            with open(receipt, encoding="utf-8") as source:
+-                record = json.load(source)
+-            if (record.get("version") != 1 or record.get("module") != module or
+-                    record.get("root") != canonical(env.SEISCOMP_ROOT) or
+-                    record.get("file") != file.identity() or record.get("pid") != file.pid()):
+-                raise RuntimeError("Unverified lockfile/process ownership; no process action taken")
+-            # No terminate right is requested until a future approved policy needs it.
+-            handle = checked(open_process(0x1000 | 0x100000, False, record["pid"]))
+-            process = Process(handle, record["pid"])
+-            try:
+-                identity = process_identity(handle)
+-                if identity != {key: record[key] for key in ("created", "image")}:
+-                    raise RuntimeError("PID reuse or image mismatch; no process action taken")
+-                if process.poll() is not None:
++    try:
++        with module_guard(guardpath):
++            file = optional_lock(lockpath)
++            if file is None:
++                if os.path.exists(receipt):
++                    raise StopFailure("IdentityMismatch", "Ownership receipt exists without its lockfile; metadata retained")
++                print("Native STOP %s: AlreadyStopped (no lock or ownership receipt)" % module)
++                return True
++            with file:
++                free = file.acquire()
++                try:
++                    owner = Receipt(receipt)
++                except FileNotFoundError:
++                    if not free:
++                        raise StopFailure("IdentityMismatch", "Live lock without launch receipt; no process action taken")
++                    print("Native STOP %s: AlreadyStopped (free lock, no ownership receipt)" % module)
+                     return True
+-                raise ControlProtocolRequired("Graceful stop of %s requires an approved per-PID Windows control channel; no termination sent" % module)
+-            finally:
+-                process.close()
++                with owner as record:
++                    process = verified_owner(env, module, file, record, free)
++                    if process is None:
++                        print("Native STOP %s: AlreadyExited (PID no longer exists; original exit status unavailable)" % module)
++                        return True
++                    try:
++                        code = process.poll()
++                        if code is not None:
++                            return stop_exit(module, code, "AlreadyExited")
++                        return request_client_stop(env, module, file, record, process, timeout)
++                    finally:
++                        process.close()
++    except OSError as error:
++        if getattr(error, "winerror", None) == 5:
++            raise StopFailure("AccessDenied", "Windows denied STOP verification/request; no forced termination") from error
++        raise
+ 
+ 
+ def cleanup_stopped(env, module):
+@@ -534,6 +796,27 @@
+                 stack.enter_context(file)
+                 if not file.acquire():
+                     raise RuntimeError("Module still owns its lock; refusing metadata cleanup")
++            try:
++                owner = Receipt(receipt)
++            except FileNotFoundError:
++                owner = None
++            if owner is not None:
++                if file is None:
++                    owner.__exit__()
++                    raise StopFailure("IdentityMismatch", "Receipt without lockfile; refusing cleanup")
++                with owner as record:
++                    process = verified_owner(env, module, file, record, free_lock=True)
++                    if process is not None:
++                        try:
++                            code = process.poll()
++                            if code is None:
++                                raise StopFailure("ProcessStillRunning", "PID lock released but verified process has not exited; metadata retained")
++                            stop_exit(module, code, "AlreadyExitedAtCleanup")
++                        finally:
++                            process.close()
++                    else:
++                        print("Native cleanup %s: verified receipt/free lock, PID no longer exists; historical exit status unavailable here" % module)
++                # Receipt handle now closes; module guard still serializes launch.
+             for path in (env.runFile(module), receipt):
+                 try:
+                     os.unlink(path)

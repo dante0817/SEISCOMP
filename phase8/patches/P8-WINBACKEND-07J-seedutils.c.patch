@@ -1,0 +1,147 @@
+--- a/src/base/seedlink/plugins/sockplugin/seedutils.c
++++ b/src/base/seedlink/plugins/sockplugin/seedutils.c
+@@ -12,6 +12,11 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <errno.h>
++#ifdef _WIN32
++#include "windows_socket_private.h"
++#include <boost/cregex.hpp>
++typedef boost::regex_tA regex_t;
++#else
+ #include <netinet/in.h>
+ #include <netdb.h>
+ #include <arpa/inet.h>
+@@ -20,18 +25,28 @@
+ #include <sys/socket.h>
+ #include <regex.h>
+ #include <unistd.h>
++#endif
+ 
+ #include "seedutils.h"
+ #include "plugin.h"
+ 
++#ifdef _WIN32
++int lprintf(int level, const char *fmt, ...);
++#else
+ int lprintf(int level, char *fmt, ...);
++#endif
+ 
+ int process_telemetry(char *host, int port, unsigned char *buf,
+ 		      char *match, char *netcode, int rec_size)
+ {
+   struct sockaddr_in sin;
+   struct hostent *hp;
++#ifdef _WIN32
++  SOCKET sock;
++  int count, optval, i;
++#else
+   int sock, count, optval, i;
++#endif
+   int bufpop;
+ 
+   /*
+@@ -47,9 +62,14 @@
+    * We now create a socket which will be used for our connection.
+    */
+   sock = socket(AF_INET, SOCK_STREAM, 0);
++#ifdef _WIN32
++  if(sock == INVALID_SOCKET) {
++    lprintf(0, "Couldn't open local socket - %s", sock_winsock_error());
++#else
+   if(sock < 0) {
+     lprintf(0, "Couldn't open local socket - %s",
+ 	    strerror(errno));
++#endif
+     return 1;
+   }
+ 
+@@ -63,8 +83,13 @@
+    *  Now attempt to connect to the remote host .....
+    */
+   if(connect(sock, (struct sockaddr *) &sin, sizeof(sin)) < 0) {
++#ifdef _WIN32
++    lprintf(0, "Couldn't connect to server %s - %s",host, sock_winsock_error());
++    closesocket(sock);
++#else
+     lprintf(0, "Couldn't connect to server %s - %s",host,
+ 	    strerror(errno));
++#endif
+     return 2;
+   }
+ 
+@@ -75,9 +100,13 @@
+   optval = 1;
+   i = setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char *) &optval, sizeof(int));
+   
+-  if ( i == -1 ) 
++  if ( i == -1 )
++#ifdef _WIN32
++    lprintf(1, "Couldn't set keepalive on socket %s", sock_winsock_error());
++#else
+     lprintf(1, "Couldn't set keepalive on socket %s",
+ 	    strerror(errno));
++#endif
+ 
+   bufpop = 0;
+ 
+@@ -86,10 +115,19 @@
+     /*
+      * Read from the network
+      */
++#ifdef _WIN32
++    count = recv(sock, (char *)&buf[bufpop], 256, 0);
++#else
+     count = recv(sock, &buf[bufpop], 256, 0);
++#endif
+ 
+     if(count < 0) {
++#ifdef _WIN32
++      lprintf(0, "Read error from server - %s", sock_winsock_error());
++      closesocket(sock);
++#else
+       lprintf(0, "Read error from server - %s", strerror(errno));
++#endif
+       return 3;
+     }
+     if (count==0) {
+@@ -112,7 +150,11 @@
+      */
+   }
+ 
++#ifdef _WIN32
++  closesocket(sock);
++#else
+   close(sock);
++#endif
+ 
+   return(0);
+ }
+@@ -332,15 +374,26 @@
+ 
+     int retcode = 0;
+ 
+-    if ( match != '\0' ) {
++    if ( match != NULL ) {
+         static regex_t *pgm = 0;
+         if ( pgm == 0 ) {
+ 	  pgm = (regex_t *) malloc(sizeof(*pgm));
++#ifdef _WIN32
++            if ( boost::regcompA(pgm, match, boost::REG_EXTENDED) != 0) {
++#else
+             if ( regcomp(pgm, match, REG_EXTENDED ) != 0) {
++#endif
+                 lprintf(0, "can't compile regular expression '%s'", match );
++#ifdef _WIN32
++                exit(1); /* Never execute an unsuccessfully compiled expression. */
++#endif
+             }
+         }
++#ifdef _WIN32
++        if ( boost::regexecA(pgm, source, 0, 0, 0) == 0 ) {
++#else
+         if ( regexec ( pgm, source, 0, 0, 0) == 0 ) {
++#endif
+             retcode = 1;
+         }
+     } else {

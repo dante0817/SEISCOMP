@@ -1,0 +1,8 @@
+--- /dev/null
++++ b/phase8/tools/boost-1.90.0-qc-headers/phase8-cmake-hook.cmake
+@@ -0,0 +1,5 @@
++# P8-WINBACKEND-07D: exact approved header closure, private to QC consumers.
++# Generator expressions also cover targets created through legacy SUBDIRS.
++set(_p8_qc_targets "seiscomp_qcplugin,qcplugin_availability,qcplugin_delay,qcplugin_gap,qcplugin_latency,qcplugin_offset,qcplugin_outage,qcplugin_overlap,qcplugin_rms,qcplugin_spike,qcplugin_timing,scqc")
++include_directories("$<$<IN_LIST:$<TARGET_PROPERTY:NAME>,seiscomp_qcplugin;qcplugin_availability;qcplugin_delay;qcplugin_gap;qcplugin_latency;qcplugin_offset;qcplugin_outage;qcplugin_overlap;qcplugin_rms;qcplugin_spike;qcplugin_timing;scqc>:${CMAKE_CURRENT_LIST_DIR}/include>")
++message(STATUS "P8-WINBACKEND-07D: private Boost 1.90.0 Signals2/Parameter overlay for QC targets")

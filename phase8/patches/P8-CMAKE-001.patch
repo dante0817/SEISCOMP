@@ -1,0 +1,21 @@
+diff --git a/apps/messaging/scmaster/share/CMakeLists.txt b/apps/messaging/scmaster/share/CMakeLists.txt
+index 7d0cf1f7..16f65c5e 100644
+--- a/apps/messaging/scmaster/share/CMakeLists.txt
++++ b/apps/messaging/scmaster/share/CMakeLists.txt
+@@ -31,14 +31,14 @@ INSTALL(
+ 
+ INSTALL(
+ 	DIRECTORY
+-		fonts/.
++		${CMAKE_CURRENT_SOURCE_DIR}/fonts/
+ 	DESTINATION
+ 		${SC3_PACKAGE_SHARE_DIR}/${WIRED_APP_TARGET}/http/fonts
+ )
+ 
+ INSTALL(
+ 	DIRECTORY
+-		assets/.
++		${CMAKE_CURRENT_SOURCE_DIR}/assets/
+ 	DESTINATION
+ 		${SC3_PACKAGE_SHARE_DIR}/${WIRED_APP_TARGET}/http/assets
+ )

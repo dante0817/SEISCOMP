@@ -1,0 +1,5 @@
+--- a/src/base/seedlink/plugins/plugin.h
++++ b/src/base/seedlink/plugins/plugin.h
+@@ -1 +1,2 @@
+-../libs//plugin/plugin.h+/* Forward the original SeedLink symlink to its single canonical header. */
++#include "../libs/plugin/plugin.h"

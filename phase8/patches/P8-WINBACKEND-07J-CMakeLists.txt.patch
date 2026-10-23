@@ -1,0 +1,19 @@
+--- a/src/base/seedlink/plugins/sockplugin/CMakeLists.txt
++++ b/src/base/seedlink/plugins/sockplugin/CMakeLists.txt
+@@ -8,10 +8,15 @@
+ INCLUDE_DIRECTORIES(..)
+ 
+ ADD_EXECUTABLE(sock_plugin ${SOCKPLUGIN_SOURCES})
+-TARGET_LINK_LIBRARIES(sock_plugin m)
++IF(NOT WIN32)
++ TARGET_LINK_LIBRARIES(sock_plugin m)
++ENDIF()
+ 
+ INSTALL(TARGETS sock_plugin RUNTIME DESTINATION ${SEEDLINK_PLUGIN_OUTPUT_DIR})
+ 
+ IF(WIN32)
++ # Use the existing native short-option and Boost POSIX regex C++ adapters.
++ SET_SOURCE_FILES_PROPERTIES(seedutils.c sock_plugin.c PROPERTIES LANGUAGE CXX)
++ TARGET_COMPILE_DEFINITIONS(sock_plugin PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+  TARGET_LINK_LIBRARIES(sock_plugin slplugin)
+ ENDIF()

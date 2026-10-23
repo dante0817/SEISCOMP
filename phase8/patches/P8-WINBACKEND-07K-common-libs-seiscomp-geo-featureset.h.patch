@@ -1,0 +1,12 @@
+--- a/src/base/common/libs/seiscomp/geo/featureset.h
++++ b/src/base/common/libs/seiscomp/geo/featureset.h
+@@ -179,6 +179,9 @@
+ 		ObserverList _observers;
+ };
+ 
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ std::ostream& operator<<(std::ostream& os, const GeoFeatureSet &gfs);
+ 
+ 

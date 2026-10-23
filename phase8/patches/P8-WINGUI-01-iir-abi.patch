@@ -1,0 +1,38 @@
+diff --git a/libs/seiscomp/io/recordfilter/iirfilter.cpp b/libs/seiscomp/io/recordfilter/iirfilter.cpp
+index b9fff2c6..6af0b0a7 100644
+--- a/libs/seiscomp/io/recordfilter/iirfilter.cpp
++++ b/libs/seiscomp/io/recordfilter/iirfilter.cpp
+@@ -228,6 +228,16 @@ RecordFilterInterface* RecordIIRFilter<T>::clone() const {
+ 
+ 
+ 
++// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
++template <typename T>
++const std::string &RecordIIRFilter<T>::lastError() const {
++	return _lastError;
++}
++// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
++
++
++
++
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ template class SC_SYSTEM_CORE_API RecordIIRFilter<float>; \
+ template class SC_SYSTEM_CORE_API RecordIIRFilter<double>;
+diff --git a/libs/seiscomp/io/recordfilter/iirfilter.h b/libs/seiscomp/io/recordfilter/iirfilter.h
+index 13407b4d..6a1533e9 100644
+--- a/libs/seiscomp/io/recordfilter/iirfilter.h
++++ b/libs/seiscomp/io/recordfilter/iirfilter.h
+@@ -111,12 +111,6 @@ class SC_SYSTEM_CORE_API RecordIIRFilter : public RecordFilterInterface {
+ };
+ 
+ 
+-template <typename T>
+-inline const std::string &RecordIIRFilter<T>::lastError() const {
+-	return _lastError;
+-}
+-
+-
+ }
+ }
+ 

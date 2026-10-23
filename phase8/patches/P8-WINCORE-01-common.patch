@@ -1,0 +1,2491 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 054afaff..67bb2b68 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -17,6 +17,7 @@ FIND_PACKAGE(Boost REQUIRED COMPONENTS program_options thread filesystem iostrea
+ IF (WIN32)
+ 	ADD_DEFINITIONS("-DBOOST_ALL_NO_LIB")
+ 	ADD_DEFINITIONS("-DBOOST_LIB_DIAGNOSTIC")
++	ADD_DEFINITIONS("-DNOMINMAX")
+ ENDIF (WIN32)
+ 
+ FIND_PACKAGE(OpenSSL REQUIRED)
+diff --git a/apps/messaging/scmaster/share/CMakeLists.txt b/apps/messaging/scmaster/share/CMakeLists.txt
+index 7d0cf1f7..16f65c5e 100644
+--- a/apps/messaging/scmaster/share/CMakeLists.txt
++++ b/apps/messaging/scmaster/share/CMakeLists.txt
+@@ -31,14 +31,14 @@ INSTALL(
+ 
+ INSTALL(
+ 	DIRECTORY
+-		fonts/.
++		${CMAKE_CURRENT_SOURCE_DIR}/fonts/
+ 	DESTINATION
+ 		${SC3_PACKAGE_SHARE_DIR}/${WIRED_APP_TARGET}/http/fonts
+ )
+ 
+ INSTALL(
+ 	DIRECTORY
+-		assets/.
++		${CMAKE_CURRENT_SOURCE_DIR}/assets/
+ 	DESTINATION
+ 		${SC3_PACKAGE_SHARE_DIR}/${WIRED_APP_TARGET}/http/assets
+ )
+diff --git a/libs/3rd-party/tau/libtau/CMakeLists.txt b/libs/3rd-party/tau/libtau/CMakeLists.txt
+index ce5de5ed..b44e30e2 100644
+--- a/libs/3rd-party/tau/libtau/CMakeLists.txt
++++ b/libs/3rd-party/tau/libtau/CMakeLists.txt
+@@ -1,4 +1,6 @@
+ SET(LIBRARY_OUTPUT_PATH ${CMAKE_CURRENT_BINARY_DIR})
+-ADD_DEFINITIONS("-fPIC")
++IF (NOT MSVC)
++	ADD_DEFINITIONS("-fPIC")
++ENDIF()
+ ADD_LIBRARY(tau_internal STATIC emdlv.c libtau.c tauint.c tauspl.c)
+ LINK_LIBRARIES(tau_internal -lm)
+diff --git a/libs/3rd-party/tau/libtau/emdlv.c b/libs/3rd-party/tau/libtau/emdlv.c
+index cfe1d95f..7378dcea 100644
+--- a/libs/3rd-party/tau/libtau/emdlv.c
++++ b/libs/3rd-party/tau/libtau/emdlv.c
+@@ -3,6 +3,39 @@
+ #include <string.h>
+ #include <math.h>
+ 
++#ifdef _WIN32
++/* MSVC's C runtime does not provide POSIX getline. Keep the same dynamically
++ * sized, newline-preserving behavior for the velocity-model input file. */
++static int seiscomp_getline(char **line, size_t *capacity, FILE *fp) {
++	size_t length = 0;
++	int ch;
++
++	if ( *line == NULL || *capacity == 0 ) {
++		*capacity = 128;
++		*line = (char *)malloc(*capacity);
++		if ( *line == NULL ) return -1;
++	}
++
++	while ( (ch = fgetc(fp)) != EOF ) {
++		if ( length + 1 >= *capacity ) {
++			size_t next_capacity = *capacity * 2;
++			char *next_line = (char *)realloc(*line, next_capacity);
++			if ( next_line == NULL ) return -1;
++			*line = next_line;
++			*capacity = next_capacity;
++		}
++
++		(*line)[length++] = (char)ch;
++		if ( ch == '\n' ) break;
++	}
++
++	if ( length == 0 && ch == EOF ) return -1;
++	(*line)[length] = '\0';
++	return (int)length;
++}
++#define getline seiscomp_getline
++#endif
++
+ /*
+ Replaces the routine with the same name and its entry, emdld, in the
+ IASPEI91 package.  This version allows introduction of other models
+diff --git a/libs/seiscomp/CMakeLists.txt b/libs/seiscomp/CMakeLists.txt
+index 0e3f6a6c..298a9d3c 100644
+--- a/libs/seiscomp/CMakeLists.txt
++++ b/libs/seiscomp/CMakeLists.txt
+@@ -39,6 +39,11 @@ IF(HAS_SYS_EVENTFD_H)
+ 	ENDIF()
+ ENDIF()
+ 
++# Windows uses the native Winsock WSAPoll reactor. POSIX platforms retain the
++# existing epoll/kqueue selection below.
++IF(WIN32)
++	SET(SC_HAS_WSAPOLL 1)
++ELSE()
+ # epoll
+ CHECK_INCLUDE_FILE(sys/epoll.h HAS_SYS_EPOLL_H)
+ 
+@@ -59,6 +64,7 @@ ELSE()
+ 		MESSAGE(FATAL_ERROR "Require support for either epoll or kqueue")
+ 	ENDIF()
+ ENDIF()
++ENDIF()
+ 
+ # timer
+ IF(LINUX)
+@@ -218,22 +224,24 @@ SC_LIB_LINK_LIBRARIES(
+ 		${Boost_program_options_LIBRARY}
+ 		${Boost_container_LIBRARY}
+ 		${Boost_LIBRARIES}
+-		pthread
+-		rt
+ 		tau_internal
+ 		${LIBXML2_LIBRARIES}
+ 		${OPENSSL_LIBRARIES}
+-		stdc++fs
+ )
++IF(NOT WIN32)
++	SC_LIB_LINK_LIBRARIES(core pthread rt stdc++fs)
++ENDIF(NOT WIN32)
+ SC_LIB_VERSION(core ${SC_COMMON_VERSION} ${SC_COMMON_VERSION_MAJOR})
+ SC_LIB_LINK_LIBRARIES_INTERNAL(core config)
+ 
+ IF(WIN32)
+ 	SC_LIB_LINK_LIBRARIES(core ws2_32)
++	SC_LIB_LINK_LIBRARIES(core iphlpapi)
+ ENDIF(WIN32)
+ 
+ IF(WIN32)
+-	SC_LIB_LINK_LIBRARIES(core zlib)
++	find_package(ZLIB REQUIRED)
++	SC_LIB_LINK_LIBRARIES(core ZLIB::ZLIB)
+ ENDIF(WIN32)
+ 
+ IF ( MACOSX )
+@@ -283,7 +291,7 @@ SC_LIB_LINK_LIBRARIES_INTERNAL(client core)
+ SC_LIB_VERSION(client ${SC_COMMON_VERSION} ${SC_COMMON_VERSION_MAJOR})
+ 
+ IF(WIN32)
+-	SC_LIB_LINK_LIBRARIES(client zlib psapi)
++	SC_LIB_LINK_LIBRARIES(client ZLIB::ZLIB psapi)
+ ENDIF(WIN32)
+ 
+ ADD_DEPENDENCIES(seiscomp_core build_and_git_infos)
+diff --git a/libs/seiscomp/core/backports/charconv/floating_from_chars.cpp b/libs/seiscomp/core/backports/charconv/floating_from_chars.cpp
+index 3de2b098..3a9b79fb 100644
+--- a/libs/seiscomp/core/backports/charconv/floating_from_chars.cpp
++++ b/libs/seiscomp/core/backports/charconv/floating_from_chars.cpp
+@@ -41,7 +41,9 @@
+ #include <cstring>
+ #include <cctype>
+ #include <locale.h>
++#if defined(__GLIBCXX__) && defined(_GLIBCXX_RELEASE) && _GLIBCXX_RELEASE < 11
+ #include <bits/functexcept.h>
++#endif
+ 
+ 
+ #if defined __GLIBCXX__ && _GLIBCXX_RELEASE < 11 && __cplusplus >= 201703L
+diff --git a/libs/seiscomp/core/build_version.cmake b/libs/seiscomp/core/build_version.cmake
+index 71c3a812..5751956e 100644
+--- a/libs/seiscomp/core/build_version.cmake
++++ b/libs/seiscomp/core/build_version.cmake
+@@ -6,26 +6,32 @@ EXECUTE_PROCESS(
+ 	OUTPUT_STRIP_TRAILING_WHITESPACE
+ )
+ 
+-# Get the build system
+-EXECUTE_PROCESS(
+-	COMMAND uname -sr
+-	OUTPUT_VARIABLE SC_BUILD_SYSTEM
+-	OUTPUT_STRIP_TRAILING_WHITESPACE
+-)
++IF (WIN32)
++	SET(SC_BUILD_SYSTEM "Windows ${CMAKE_SYSTEM_VERSION}")
++	SET(SC_COMPILER_VERSION "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
++	SET(SC_OS_VERSION "Windows")
++ELSE()
++	# Get the build system
++	EXECUTE_PROCESS(
++		COMMAND uname -sr
++		OUTPUT_VARIABLE SC_BUILD_SYSTEM
++		OUTPUT_STRIP_TRAILING_WHITESPACE
++	)
+ 
+-# Get the compiler version
+-EXECUTE_PROCESS(
+-	COMMAND bash -c "${COMPILER} --version | head -1"
+-	OUTPUT_VARIABLE SC_COMPILER_VERSION
+-	OUTPUT_STRIP_TRAILING_WHITESPACE
+-)
++	# Get the compiler version
++	EXECUTE_PROCESS(
++		COMMAND bash -c "${COMPILER} --version | head -1"
++		OUTPUT_VARIABLE SC_COMPILER_VERSION
++		OUTPUT_STRIP_TRAILING_WHITESPACE
++	)
+ 
+-# Get the OS version
+-EXECUTE_PROCESS(
+-	COMMAND bash -c "cat /etc/os-release | grep PRETTY_NAME | sed 's/PRETTY_NAME=//g' | sed 's/\"//g'"
+-	OUTPUT_VARIABLE SC_OS_VERSION
+-	OUTPUT_STRIP_TRAILING_WHITESPACE
+-)
++	# Get the OS version
++	EXECUTE_PROCESS(
++		COMMAND bash -c "cat /etc/os-release | grep PRETTY_NAME | sed 's/PRETTY_NAME=//g' | sed 's/\"//g'"
++		OUTPUT_VARIABLE SC_OS_VERSION
++		OUTPUT_STRIP_TRAILING_WHITESPACE
++	)
++ENDIF()
+ 
+ SET(SC_SYSTEM ${SYSTEM})
+ 
+diff --git a/libs/seiscomp/core/datetime.cpp b/libs/seiscomp/core/datetime.cpp
+index e8225de0..6462d6d4 100644
+--- a/libs/seiscomp/core/datetime.cpp
++++ b/libs/seiscomp/core/datetime.cpp
+@@ -4,8 +4,13 @@
+ 
+ // Disable remote time zone database API
+ #define HAS_REMOTE_API 0
+-// Use the OS provided time zone database
++// Use the OS database on POSIX. The date library uses the Windows registry
++// and native timezone mappings when USE_OS_TZDB is disabled on Windows.
++#ifndef WIN32
+ #define USE_OS_TZDB 1
++#else
++#define USE_OS_TZDB 0
++#endif
+ // Only use C locales
+ #define ONLY_C_LOCALE 1
+ 
+diff --git a/libs/seiscomp/core/platform.h.in b/libs/seiscomp/core/platform.h.in
+index aa88cb96..36924b18 100644
+--- a/libs/seiscomp/core/platform.h.in
++++ b/libs/seiscomp/core/platform.h.in
+@@ -1,12 +1,18 @@
+ #ifndef SEISCOMP_CORE_PLATFORM_H
+ #define SEISCOMP_CORE_PLATFORM_H
+ 
++#ifdef WIN32
++#include <BaseTsd.h>
++typedef SSIZE_T ssize_t;
++#endif
++
+ #cmakedefine MACOSX
+ #cmakedefine LINUX
+ #cmakedefine SC_HAS_TIMER_CREATE
+ #cmakedefine SC_HAS_EVENTFD
+ #cmakedefine SC_HAS_EPOLL
+ #cmakedefine SC_HAS_KQUEUE
++#cmakedefine SC_HAS_WSAPOLL
+ 
+ #ifdef MACOSX
+    #include <seiscomp/core/platform/osx.h>
+diff --git a/libs/seiscomp/core/platform/CMakeLists.txt b/libs/seiscomp/core/platform/CMakeLists.txt
+index df259fbc..f647955c 100644
+--- a/libs/seiscomp/core/platform/CMakeLists.txt
++++ b/libs/seiscomp/core/platform/CMakeLists.txt
+@@ -1,6 +1,7 @@
+ SET(PLATFORM_HEADERS
+ 	${CMAKE_CURRENT_BINARY_DIR}/platform.h
+ 	osx.h
++	windows.h
+ )
+ 
+ #SC_SETUP_LIB_SUBDIR(PLATFORM)
+diff --git a/libs/seiscomp/core/platform/windows.h b/libs/seiscomp/core/platform/windows.h
+new file mode 100644
+index 00000000..3b4d591c
+--- /dev/null
++++ b/libs/seiscomp/core/platform/windows.h
+@@ -0,0 +1,56 @@
++/***************************************************************************
++ * Windows platform compatibility declarations for SeisComP.
++ ***************************************************************************/
++
++#ifndef SEISCOMP_CORE_PLATFORM_WINDOWS_H
++#define SEISCOMP_CORE_PLATFORM_WINDOWS_H
++
++#ifdef WIN32
++
++#include <winsock2.h>
++#include <ws2tcpip.h>
++#include <windows.h>
++#include <direct.h>
++#include <io.h>
++#include <sys/stat.h>
++#include <string.h>
++
++// Prevent legacy SDK compatibility macros from rewriting ordinary project
++// identifiers and the Config logging enum.
++#ifdef ERROR
++#undef ERROR
++#endif
++#ifdef far
++#undef far
++#endif
++#ifdef near
++#undef near
++#endif
++#define far
++#define near
++#ifdef DELETE
++#undef DELETE
++#endif
++
++#ifndef PATH_MAX
++#define PATH_MAX 32768
++#endif
++#ifndef strcasecmp
++#define strcasecmp _stricmp
++#endif
++#ifndef strncasecmp
++#define strncasecmp _strnicmp
++#endif
++#ifndef S_ISREG
++#define S_ISREG(mode) (((mode) & _S_IFMT) == _S_IFREG)
++#endif
++#ifndef S_ISDIR
++#define S_ISDIR(mode) (((mode) & _S_IFMT) == _S_IFDIR)
++#endif
++#ifndef mkdir
++#define mkdir(path, mode) _mkdir(path)
++#endif
++
++#endif // WIN32
++
++#endif // SEISCOMP_CORE_PLATFORM_WINDOWS_H
+diff --git a/libs/seiscomp/core/strings.cpp b/libs/seiscomp/core/strings.cpp
+index 99ff0d94..bf6cdc92 100644
+--- a/libs/seiscomp/core/strings.cpp
++++ b/libs/seiscomp/core/strings.cpp
+@@ -511,7 +511,7 @@ const char *tokenizeExt(size_t &lenTok, size_t &lenSource, const char *&source,
+ 		}
+ 
+ 		// check for unprotected delimiter outside of quotes
+-		if ( quote == 0 and strchr(delimiter, *source) != nullptr ) {
++		if ( quote == 0 && strchr(delimiter, *source) != nullptr ) {
+ 			delimFound = *source;
+ 			--lenSource; ++source;
+ 			lenTok -= trailing_spaces;
+@@ -523,13 +523,13 @@ const char *tokenizeExt(size_t &lenTok, size_t &lenSource, const char *&source,
+ 			quote = 0;
+ 		}
+ 		// check for beginning quote
+-		else if ( quote == 0 and strchr(quotes, *source) != nullptr ) {
++		else if ( quote == 0 && strchr(quotes, *source) != nullptr ) {
+ 			quote = *source;
+ 			trailing_spaces = 0;
+ 		}
+ 		// trimming outside unprotected characters outside of quotes
+ 		else if ( trim ) {
+-			if ( !quote and strchr(whitespaces, *source) != nullptr ) {
++			if ( !quote && strchr(whitespaces, *source) != nullptr ) {
+ 				// trim leading whitespaces
+ 				if ( lenTok == 0 )
+ 					continue;
+@@ -613,7 +613,7 @@ const char *tokenizeUnescape(size_t &lenTok, size_t &lenSource, char *&source,
+ 		}
+ 
+ 		// check for unprotected delimiter outside of quotes
+-		if ( quote == 0 and strchr(delimiter, *source) != nullptr ) {
++		if ( quote == 0 && strchr(delimiter, *source) != nullptr ) {
+ 			delimFound = *source;
+ 			--lenSource; ++source;
+ 			lenTok -= trailing_spaces;
+@@ -626,14 +626,14 @@ const char *tokenizeUnescape(size_t &lenTok, size_t &lenSource, char *&source,
+ 			continue;
+ 		}
+ 		// check for beginning quote
+-		else if ( quote == 0 and strchr(quotes, *source) != nullptr ) {
++		else if ( quote == 0 && strchr(quotes, *source) != nullptr ) {
+ 			quote = *source;
+ 			trailing_spaces = 0;
+ 			continue;
+ 		}
+ 		// trim outside unprotected characters outside of quotes
+ 		else if ( trim ) {
+-			if ( !quote and strchr(whitespaces, *source) != nullptr ) {
++			if ( !quote && strchr(whitespaces, *source) != nullptr ) {
+ 				// trim leading whitespaces
+ 				if ( lenTok == 0 )
+ 					continue;
+diff --git a/libs/seiscomp/core/strings.h b/libs/seiscomp/core/strings.h
+index 5f5fb493..5839c404 100644
+--- a/libs/seiscomp/core/strings.h
++++ b/libs/seiscomp/core/strings.h
+@@ -200,12 +200,12 @@ size_t splitExt(std::vector<std::string> &tokens, const char *source,
+  * @param separator[in] The optional separator string
+  * @return The resulting string
+  */
+-SC_SYSTEM_CORE_API
+ template <class CONT>
++SC_SYSTEM_CORE_API
+ std::string join(const CONT &tokens, const char *separator = nullptr);
+ 
+-SC_SYSTEM_CORE_API
+ template <class CONT>
++SC_SYSTEM_CORE_API
+ std::string join(const CONT &tokens, const std::string &separator);
+ 
+ SC_SYSTEM_CORE_API bool isEmpty(const char*);
+diff --git a/libs/seiscomp/datamodel/databasearchive.cpp b/libs/seiscomp/datamodel/databasearchive.cpp
+index 32bcfa82..2ca938f1 100644
+--- a/libs/seiscomp/datamodel/databasearchive.cpp
++++ b/libs/seiscomp/datamodel/databasearchive.cpp
+@@ -29,7 +29,11 @@
+ #include <iostream>
+ #include <stdlib.h>
+ #include <inttypes.h>
++#ifndef WIN32
+ #include <strings.h>
++#else
++#include <seiscomp/core/platform/windows.h>
++#endif
+ 
+ 
+ using namespace Seiscomp::Core;
+diff --git a/libs/seiscomp/geo/feature.h b/libs/seiscomp/geo/feature.h
+index dcb64697..3cf5d15e 100644
+--- a/libs/seiscomp/geo/feature.h
++++ b/libs/seiscomp/geo/feature.h
+@@ -118,7 +118,7 @@ class SC_SYSTEM_CORE_API GeoFeature : public Core::BaseObject {
+ 		 * @deprecated This method is deprecated and will be removed in future
+ 		 * releases. Use Seiscomp::Geo::area instead.
+ 		 */
+-		static double area(const GeoCoordinate *polygon, size_t sides) __attribute__((deprecated));
++		[[deprecated]] static double area(const GeoCoordinate *polygon, size_t sides);
+ 
+ 	private:
+ 		std::string          _name;
+diff --git a/libs/seiscomp/geo/featureset.h b/libs/seiscomp/geo/featureset.h
+index e6a532f4..42c6619f 100644
+--- a/libs/seiscomp/geo/featureset.h
++++ b/libs/seiscomp/geo/featureset.h
+@@ -24,6 +24,7 @@
+ 
+ #include <seiscomp/core.h>
+ #include <seiscomp/geo/feature.h>
++#include <seiscomp/core/platform/platform.h>
+ 
+ #include <boost/filesystem/path.hpp>
+ 
+@@ -59,8 +60,8 @@ class SC_SYSTEM_CORE_API GeoFeatureSet : public Core::BaseObject {
+ 		/** Destructor */
+ 		virtual ~GeoFeatureSet();
+ 
+-		/** Copy operator, intentionally left undefined */
+-		GeoFeatureSet & operator=(const GeoFeatureSet &);
++		/** Copy assignment is intentionally unsupported. */
++		GeoFeatureSet & operator=(const GeoFeatureSet &) = delete;
+ 
+ 		using Features = std::vector<GeoFeature*>;
+ 		using Categories = std::vector<Category*>;
+@@ -97,14 +98,14 @@ class SC_SYSTEM_CORE_API GeoFeatureSet : public Core::BaseObject {
+ 		 * @deprecated This method is deprecated and will be removed in future
+ 		 * releases. Consider readDir() instead.
+ 		 */
+-		size_t readBNADir(const std::string &dirPath) __attribute__((deprecated));
++		[[deprecated]] size_t readBNADir(const std::string &dirPath);
+ 
+ 		/**
+ 		 * Reads one BNA-file
+ 		 * @deprecated This method is deprecated and will be removed in future
+ 		 * releases. Consider readFile() or Seiscomp::Geo::readBNA() instead.
+ 		 */
+-		bool readBNAFile(const std::string& filename, const Category* category) __attribute__((deprecated));
++		[[deprecated]] bool readBNAFile(const std::string& filename, const Category* category);
+ 
+ 		/**
+ 		 * Initializes the _feature vector with all files (*.bna, *.geojson) of
+diff --git a/libs/seiscomp/io/httpclient.cpp b/libs/seiscomp/io/httpclient.cpp
+index 77e582b3..f3661dcd 100644
+--- a/libs/seiscomp/io/httpclient.cpp
++++ b/libs/seiscomp/io/httpclient.cpp
+@@ -27,8 +27,10 @@
+ #include <string>
+ #include <string_view>
+ 
++#ifdef WIN32
++#include <seiscomp/core/platform/windows.h>
++#else
+ #include <fcntl.h>
+-#ifndef WIN32
+ #include <unistd.h>
+ #endif
+ 
+@@ -368,12 +370,21 @@ void HTTPClient::openConnection() {
+ 		if ( proxyScheme == "http" ) {
+ 			// Now read result unbuffered and blocking
+ 			int fd = _socket->takeFd();
++#ifdef WIN32
++			u_long blocking = 0;
++			ioctlsocket(static_cast<SOCKET>(fd), FIONBIO, &blocking);
++			auto readByte = [fd](char *byte) {
++				return recv(static_cast<SOCKET>(fd), byte, 1, 0);
++			};
++#else
+ 			int flags = fcntl(fd, F_GETFL, 0);
+ 			flags &= ~O_NONBLOCK;
+ 			fcntl(fd, F_SETFL, flags);
++			auto readByte = [fd](char *byte) { return ::read(fd, byte, 1); };
++#endif
+ 
+ 			char c;
+-			while ( ::read(fd, &c, 1) == 1 ) {
++			while ( readByte(&c) == 1 ) {
+ 				if ( c == '\r' ) {
+ 					continue;
+ 				}
+@@ -384,7 +395,7 @@ void HTTPClient::openConnection() {
+ 				line += c;
+ 			}
+ 
+-			while ( ::read(fd, &c, 1) == 1 ) {
++			while ( readByte(&c) == 1 ) {
+ 				if ( c == '\n' ) {
+ 					break;
+ 				}
+diff --git a/libs/seiscomp/io/quakelink/connection.cpp b/libs/seiscomp/io/quakelink/connection.cpp
+index d8de389a..6981187d 100644
+--- a/libs/seiscomp/io/quakelink/connection.cpp
++++ b/libs/seiscomp/io/quakelink/connection.cpp
+@@ -787,11 +787,11 @@ bool Connection::assertLineBreak() {
+ 	return false;
+ }
+ 
+-bool Connection::readPayload(string &data, uint count) {
++bool Connection::readPayload(string &data, unsigned int count) {
+ 	SEISCOMP_DEBUG("%sreading %u payload bytes", _logPrefix.c_str(), count);
+ 
+-	uint read = 0;
+-	uint total = 0;
++	unsigned int read = 0;
++	unsigned int total = 0;
+ 	data.reserve(count);
+ 
+ 	while ( total < count ) {
+diff --git a/libs/seiscomp/io/quakelink/connection.h b/libs/seiscomp/io/quakelink/connection.h
+index bd082447..641e2548 100644
+--- a/libs/seiscomp/io/quakelink/connection.h
++++ b/libs/seiscomp/io/quakelink/connection.h
+@@ -109,7 +109,7 @@ class Response : public Core::BaseObject {
+ 	public:
+ 		// Header
+ 		ContentType          type;
+-		uint                 length;
++		unsigned int         length;
+ 		Core::Time           timestamp;
+ 		std::string          format;
+ 		bool                 gzip;
+@@ -386,7 +386,7 @@ class Connection : public Core::BaseObject {
+ 		bool readResponseCode(std::string &code);
+ 		bool assertResponseCode(const std::string &expected);
+ 		bool assertLineBreak();
+-		bool readPayload(std::string &data, uint count);
++		bool readPayload(std::string &data, unsigned int count);
+ 		bool checkFormatVersion(std::string &error,
+ 		                        const RequestFormatVersion &formatVerion);
+ 
+diff --git a/libs/seiscomp/io/records/mseed/decoder/steim1.cpp b/libs/seiscomp/io/records/mseed/decoder/steim1.cpp
+index 988baa2a..7909e33b 100644
+--- a/libs/seiscomp/io/records/mseed/decoder/steim1.cpp
++++ b/libs/seiscomp/io/records/mseed/decoder/steim1.cpp
+@@ -51,7 +51,9 @@ namespace Seiscomp::IO::MSEED {
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
++#if defined(__GNUC__)
+ __attribute__((optimize("O3", "unroll-loops")))
++#endif
+ int64_t decodeSteim1(const char *net, const char *sta, const char *loc, const char *cha,
+                      int32_t *input, size_t inputLength, size_t sampleCount,
+                      int32_t *output, size_t outputLength, bool swapflag) {
+diff --git a/libs/seiscomp/io/records/mseed/decoder/steim2.cpp b/libs/seiscomp/io/records/mseed/decoder/steim2.cpp
+index 6339238b..14c5d173 100644
+--- a/libs/seiscomp/io/records/mseed/decoder/steim2.cpp
++++ b/libs/seiscomp/io/records/mseed/decoder/steim2.cpp
+@@ -51,7 +51,9 @@ namespace Seiscomp::IO::MSEED {
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
++#if defined(__GNUC__)
+ __attribute__((optimize("O3", "unroll-loops")))
++#endif
+ int64_t decodeSteim2(const char *net, const char *sta, const char *loc, const char *cha,
+                      int32_t *input, size_t inputLength, size_t sampleCount,
+                      int32_t *output, size_t outputLength, bool swapflag) {
+diff --git a/libs/seiscomp/io/records/mseed/encoder/steim1.h b/libs/seiscomp/io/records/mseed/encoder/steim1.h
+index 85929901..51a9d59a 100644
+--- a/libs/seiscomp/io/records/mseed/encoder/steim1.h
++++ b/libs/seiscomp/io/records/mseed/encoder/steim1.h
+@@ -31,14 +31,21 @@ namespace Seiscomp::IO::MSEED {
+ /**
+  * @brief A Steim1 frame with 64 bytes payload
+  */
++#if defined(_MSC_VER)
++#pragma pack(push, 1)
++#endif
+ struct Steim1Frame {
+-	u_int32_t nibbleWord;
+-	u_int32_t sampleWord[15];
++	uint32_t nibbleWord;
++	uint32_t sampleWord[15];
+ }
+-#if defined (__GNUC__)
++#if defined(__GNUC__) && !defined(_MSC_VER)
+ __attribute__((packed))
+ #endif
+ ;
++#if defined(_MSC_VER)
++#pragma pack(pop)
++#endif
++static_assert(sizeof(Steim1Frame) == 64, "Steim1 frame layout changed");
+ 
+ 
+ template<typename T>
+@@ -67,7 +74,7 @@ class Steim1 : public Encoder {
+ 		int       _spw{4};
+ 		int32_t   _lastSample{0};
+ 		int32_t   _buf[5];
+-		u_int32_t _nibbleWord{0};
++		uint32_t _nibbleWord{0};
+ };
+ 
+ 
+diff --git a/libs/seiscomp/io/records/mseed/encoder/steim1.ipp b/libs/seiscomp/io/records/mseed/encoder/steim1.ipp
+index fca9fabd..e0382b2b 100644
+--- a/libs/seiscomp/io/records/mseed/encoder/steim1.ipp
++++ b/libs/seiscomp/io/records/mseed/encoder/steim1.ipp
+@@ -114,7 +114,7 @@ void Steim1<T>::finishPacket() {
+ template<typename T>
+ void Steim1<T>::updatePacket() {
+ 	unsigned int nibble = 0;
+-	u_int32_t sampleWord = 0;
++	uint32_t sampleWord = 0;
+ 
+ 	assert(_bp < 5);
+ 
+diff --git a/libs/seiscomp/io/records/mseed/encoder/steim2.h b/libs/seiscomp/io/records/mseed/encoder/steim2.h
+index a9c255dd..0e439998 100644
+--- a/libs/seiscomp/io/records/mseed/encoder/steim2.h
++++ b/libs/seiscomp/io/records/mseed/encoder/steim2.h
+@@ -32,14 +32,21 @@ namespace Seiscomp::IO::MSEED {
+ /**
+  * @brief A Steim2 frame with 64 bytes payload
+  */
++#if defined(_MSC_VER)
++#pragma pack(push, 1)
++#endif
+ struct Steim2Frame {
+ 	uint32_t nibbleWord;
+ 	uint32_t sampleWord[15];
+ }
+-#if defined (__GNUC__)
++#if defined(__GNUC__) && !defined(_MSC_VER)
+ __attribute__((packed))
+ #endif
+ ;
++#if defined(_MSC_VER)
++#pragma pack(pop)
++#endif
++static_assert(sizeof(Steim2Frame) == 64, "Steim2 frame layout changed");
+ 
+ 
+ template<typename T>
+diff --git a/libs/seiscomp/io/recordstream/caps.cpp b/libs/seiscomp/io/recordstream/caps.cpp
+index 8767ac6a..18656e05 100644
+--- a/libs/seiscomp/io/recordstream/caps.cpp
++++ b/libs/seiscomp/io/recordstream/caps.cpp
+@@ -28,6 +28,7 @@
+ 
+ #include <seiscomp/logging/log.h>
+ #include <seiscomp/core/typedarray.h>
++#include <seiscomp/core/system.h>
+ #include <seiscomp/core/genericrecord.h>
+ #include <seiscomp/core/plugin.h>
+ #include <seiscomp/core/strings.h>
+@@ -93,9 +94,9 @@ class CAPSRecord : public GenericRecord {
+ 				default:
+ 				case Array::FLOAT:
+ 				{
+-					FloatArrayPtr far = new FloatArray(_nsamp);
+-					ar = far;
+-					res = readData(in, *far);
++					FloatArrayPtr floatArray = new FloatArray(_nsamp);
++					ar = floatArray;
++					res = readData(in, *floatArray);
+ 				}
+ 					break;
+ 				case Array::DOUBLE:
+@@ -486,7 +487,7 @@ bool RecordStream::addRequest(const string &net, const string &sta,
+ void RecordStream::wait() {
+ 	// Wait 5 seconds and keep response latency low
+ 	for ( int i = 0; (i < 10) && !_terminated; ++i )
+-		usleep(500000);
++		sc::msleep(500);
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+diff --git a/libs/seiscomp/io/recordstream/caps/sessiontable.cpp b/libs/seiscomp/io/recordstream/caps/sessiontable.cpp
+index 29b43cc5..0083f7cc 100644
+--- a/libs/seiscomp/io/recordstream/caps/sessiontable.cpp
++++ b/libs/seiscomp/io/recordstream/caps/sessiontable.cpp
+@@ -20,6 +20,9 @@
+ 
+ #define SEISCOMP_COMPONENT CAPS
+ #include <seiscomp/logging/log.h>
++#ifdef WIN32
++#include <seiscomp/core/platform/windows.h>
++#endif
+ 
+ #include "sessiontable.h"
+ #include "utils.h"
+diff --git a/libs/seiscomp/io/recordstream/caps/utils.h b/libs/seiscomp/io/recordstream/caps/utils.h
+index 69e56f81..064e261e 100644
+--- a/libs/seiscomp/io/recordstream/caps/utils.h
++++ b/libs/seiscomp/io/recordstream/caps/utils.h
+@@ -24,6 +24,10 @@
+ 
+ #include "packet.h"
+ 
++#ifdef WIN32
++#include <seiscomp/core/platform/windows.h>
++#endif
++
+ #include <cerrno>
+ #include <cstdlib>
+ #include <cstdio>
+diff --git a/libs/seiscomp/io/recordstream/seedlink4.cpp b/libs/seiscomp/io/recordstream/seedlink4.cpp
+index e118ac04..5502c9f9 100644
+--- a/libs/seiscomp/io/recordstream/seedlink4.cpp
++++ b/libs/seiscomp/io/recordstream/seedlink4.cpp
+@@ -41,6 +41,9 @@ namespace {
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
++#if defined(_MSC_VER)
++#pragma pack(push, 1)
++#endif
+ struct SL4FixedHeader {
+ 	char signature[2];
+ 	char format;
+@@ -48,7 +51,15 @@ struct SL4FixedHeader {
+ 	uint32_t payloadLength;
+ 	uint64_t seq;
+ 	uint8_t stationIdLength;
+-} __attribute__ ((packed));
++}
++#if defined(__GNUC__) && !defined(_MSC_VER)
++__attribute__ ((packed))
++#endif
++;
++#if defined(_MSC_VER)
++#pragma pack(pop)
++#endif
++static_assert(sizeof(SL4FixedHeader) == 17, "SeedLink4 fixed header layout changed");
+ 
+ /* Seedlink4 packets consist of a fixed header ... */
+ #define HEADSIZE sizeof(SL4FixedHeader)
+diff --git a/libs/seiscomp/io/socket.cpp b/libs/seiscomp/io/socket.cpp
+index c95cf15f..7081e86f 100644
+--- a/libs/seiscomp/io/socket.cpp
++++ b/libs/seiscomp/io/socket.cpp
+@@ -25,17 +25,17 @@
+ #include <utility>
+ #include <limits>
+ #include <cerrno>
+-#include <fcntl.h>
+ #include <sys/types.h>
+-#include <sys/ioctl.h>
+ #include <openssl/err.h>
+ #ifndef WIN32
++#include <fcntl.h>
++#include <sys/ioctl.h>
+ #include <sys/socket.h>
+ #include <netdb.h>
+ #include <unistd.h>
+ #else
+ #include <io.h>
+-#include <winsock2.h>
++#include <seiscomp/core/platform/windows.h>
+ #include <ws2tcpip.h>
+ #endif
+ #include <seiscomp/core/strings.h>
+@@ -46,7 +46,6 @@
+ #undef min
+ #undef max
+ #define posix_read _read
+-typedef int ssize_t;
+ #else
+ #define posix_read read
+ #endif
+@@ -665,6 +664,15 @@ int Socket::addrSocket(char *hostname, char *port, struct sockaddr *addr, size_t
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ int Socket::poll() {
+ 	int num_bytes;
++	#ifdef WIN32
++	unsigned long available = 0;
++	int ret = ioctlsocket(_sockfd, FIONREAD, &available);
++	if ( ret < 0 ) {
++		SEISCOMP_ERROR("socket: %s",strerror(errno));
++		throw SocketException("Socket error");
++	}
++	return static_cast<int>(available);
++	#else
+ 	int ret = ioctl(_sockfd, FIONREAD, &num_bytes);
+ 
+ 	if ( ret < 0 ) {
+@@ -673,6 +681,7 @@ int Socket::poll() {
+ 	}
+ 
+ 	return num_bytes;
++	#endif
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+diff --git a/libs/seiscomp/logging/log.cpp b/libs/seiscomp/logging/log.cpp
+index 7bdb18b7..d689f6a4 100644
+--- a/libs/seiscomp/logging/log.cpp
++++ b/libs/seiscomp/logging/log.cpp
+@@ -25,7 +25,9 @@
+ #include <seiscomp/logging/publisher.h>
+ #include <seiscomp/logging/output/fd.h>
+ 
++#ifndef WIN32
+ #include <unistd.h>
++#endif
+ #include <mutex>
+ 
+ 
+diff --git a/libs/seiscomp/logging/output/fd.cpp b/libs/seiscomp/logging/output/fd.cpp
+index 14cc9265..0e6de93c 100644
+--- a/libs/seiscomp/logging/output/fd.cpp
++++ b/libs/seiscomp/logging/output/fd.cpp
+@@ -24,6 +24,7 @@
+ #include <seiscomp/logging/output/fd.h>
+ #include <seiscomp/core/interfacefactory.ipp>
+ #include <seiscomp/core/strings.h>
++#include <seiscomp/core/platform/platform.h>
+ 
+ #include <cstdio>
+ #include <sstream>
+diff --git a/libs/seiscomp/logging/output/filerotator.cpp b/libs/seiscomp/logging/output/filerotator.cpp
+index 20d441ad..5db5ba1b 100644
+--- a/libs/seiscomp/logging/output/filerotator.cpp
++++ b/libs/seiscomp/logging/output/filerotator.cpp
+@@ -25,8 +25,8 @@
+ 
+ #include <cstdarg>
+ #include <cstdio>
+-#include <unistd.h>
+ #include <sstream>
++#include <cstdio>
+ 
+ #ifndef WIN32
+ #include <sys/stat.h>
+@@ -143,7 +143,7 @@ void FileRotatorOutput::log(const char* channelName,
+ void FileRotatorOutput::removeLog(int index) {
+ 	std::stringstream ss;
+ 	ss << _filename << "." << index;
+-	unlink(ss.str().c_str());
++	std::remove(ss.str().c_str());
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+@@ -163,7 +163,7 @@ void FileRotatorOutput::renameLog(int oldIndex, int newIndex) {
+ 		newFile << "." << newIndex;
+ 	}
+ 
+-	rename(oldFile.str().c_str(), newFile.str().c_str());
++	std::rename(oldFile.str().c_str(), newFile.str().c_str());
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+diff --git a/libs/seiscomp/processing/amplitudes/a5_2.cpp b/libs/seiscomp/processing/amplitudes/a5_2.cpp
+index 70c351df..0b5cf21d 100644
+--- a/libs/seiscomp/processing/amplitudes/a5_2.cpp
++++ b/libs/seiscomp/processing/amplitudes/a5_2.cpp
+@@ -21,6 +21,7 @@
+ #define SEISCOMP_COMPONENT Amplitudes/A5_2  // For logging
+ 
+ #include <cmath>  // fabs, tan, M_PI, sqrt, pow
++#include <memory>
+ 
+ #include <seiscomp/core/datetime.h>
+ #include <seiscomp/logging/log.h>
+@@ -270,7 +271,8 @@ bool AmplitudeA5_2::computeAmplitude(const Seiscomp::DoubleArray &data,
+ 
+ 	// Assign types to all signal data points
+ 	// By definition, first and last points cannot be peaks/troughs
+-	DataPointType dataPointTypes[signalCount];
++	std::unique_ptr<DataPointType[]> dataPointTypes(
++	    new DataPointType[signalCount]);
+ 	dataPointTypes[0] = NEITHER;  // Set first (needed in loop below)
+ 
+ 	for ( size_t ti = 1, si = signalStart + 1; // Skip first (initialized above)
+@@ -451,7 +453,8 @@ bool AmplitudeA5_2::computeAmplitude(const Seiscomp::DoubleArray &data,
+ 
+ 	if ( _interpolation ) {
+ 		double interpolatedAmplitude = 0.0, interpolatedPeriod = 0.0;
+-		if ( interpolate(dataAmpPer.typedData() + signalStart, dataPointTypes,
++		if ( interpolate(dataAmpPer.typedData() + signalStart,
++	                 dataPointTypes.get(),
+ 		                 signalCount, maxLeft - signalStart,
+ 		                 maxRight - signalStart, &interpolatedAmplitude,
+ 		                 &interpolatedPeriod) ) {
+@@ -592,17 +595,20 @@ bool AmplitudeA5_2::computeAmplitude(const Seiscomp::DoubleArray &data,
+ 	// Compute running average of noise (noiseRunningAverage)
+ 	double *noiseData = dataSNR.typedData() + noiseStart;
+ 
+-	size_t noiseState[noiseCount];
+-	double noiseRunningAverage[noiseCount];
+-	size_t noiseRunningAverageState[noiseCount];
++	std::unique_ptr<size_t[]> noiseState(new size_t[noiseCount]);
++	std::unique_ptr<double[]> noiseRunningAverage(
++	    new double[noiseCount]);
++	std::unique_ptr<size_t[]> noiseRunningAverageState(
++	    new size_t[noiseCount]);
+ 
+ 	for ( size_t i = 0; i < noiseCount; ++i ) {
+ 		noiseState[i] = 1;
+ 	}
+ 
+-	if ( !runningAverage(noiseData, noiseState, noiseCount, noiseCount,
+-	                     noiseCount, _ltavFunction, noiseRunningAverage,
+-	                     noiseRunningAverageState) ) {
++	if ( !runningAverage(noiseData, noiseState.get(), noiseCount, noiseCount,
++	                     noiseCount, _ltavFunction,
++	                     noiseRunningAverage.get(),
++	                     noiseRunningAverageState.get()) ) {
+ 		SEISCOMP_ERROR("Error computing average over noise window");
+ 		return false;
+ 	}
+@@ -619,9 +625,11 @@ bool AmplitudeA5_2::computeAmplitude(const Seiscomp::DoubleArray &data,
+ 	SEISCOMP_DEBUG("stavNumWindows = %zu", stavNumWindows);
+ 
+ 	double *signalData = dataSNR.typedData() + signalStart;
+-	size_t signalState[stavCount];
+-	double signalRunningAverage[stavCount];
+-	size_t signalRunningAverageState[stavCount];
++	std::unique_ptr<size_t[]> signalState(new size_t[stavCount]);
++	std::unique_ptr<double[]> signalRunningAverage(
++	    new double[stavCount]);
++	std::unique_ptr<size_t[]> signalRunningAverageState(
++	    new size_t[stavCount]);
+ 
+ 	for ( size_t i = 0; i < signalCount; ++i ) {
+ 		signalState[i] = 1;
+@@ -633,10 +641,10 @@ bool AmplitudeA5_2::computeAmplitude(const Seiscomp::DoubleArray &data,
+ 	      ++i, signalOffset += stavWindowMoveInterval ) {
+ 		// Compute running average of signal (signalRunningAverage)
+ 		SEISCOMP_DEBUG("signalOffset = %zu", signalOffset);
+-		if ( !runningAverage(signalData + signalOffset, signalState,
++		if ( !runningAverage(signalData + signalOffset, signalState.get(),
+ 		                     stavCount, stavCount, stavCount, _stavFunction,
+-		                     signalRunningAverage,
+-		                     signalRunningAverageState) ) {
++		                     signalRunningAverage.get(),
++		                     signalRunningAverageState.get()) ) {
+ 			SEISCOMP_ERROR("Error computing short-term average in signal window");
+ 			return false;
+ 		}
+diff --git a/libs/seiscomp/processing/amplitudes/sbsnr.cpp b/libs/seiscomp/processing/amplitudes/sbsnr.cpp
+index 219262f1..ca6f43ca 100644
+--- a/libs/seiscomp/processing/amplitudes/sbsnr.cpp
++++ b/libs/seiscomp/processing/amplitudes/sbsnr.cpp
+@@ -21,6 +21,7 @@
+ #define SEISCOMP_COMPONENT Amplitudes/SBSNR  // For logging
+ 
+ #include <cmath>  // fabs, sqrt
++#include <memory>
+ 
+ #include <seiscomp/core/datetime.h>
+ #include <seiscomp/logging/log.h>
+@@ -219,23 +220,26 @@ bool AmplitudeSBSNR::computeAmplitude(const Seiscomp::DoubleArray &data,
+ 	const size_t stavCount = dataSBSNRCount;
+ 	SEISCOMP_DEBUG("stavCount = %zu", stavCount);
+ 	const double *stavData = dataSBSNR.typedData() + dataSBSNRStart;
+-	size_t stavState[stavCount];
++	std::unique_ptr<size_t[]> stavState(new size_t[stavCount]);
+ 	const size_t stavAverageWindowLength = (size_t)(_stavLength * samplingRate);
+ 	SEISCOMP_DEBUG("stavAverageWindowLength = %zu", stavAverageWindowLength);
+ 	const size_t stavThreshold =
+ 	    (size_t)(stavAverageWindowLength * _stavFraction);
+ 	SEISCOMP_DEBUG("stavThreshold = %zu", stavThreshold);
+ 
+-	double stavRunningAverage[stavCount];
+-	size_t stavRunningAverageState[stavCount];
++	std::unique_ptr<double[]> stavRunningAverage(
++	    new double[stavCount]);
++	std::unique_ptr<size_t[]> stavRunningAverageState(
++	    new size_t[stavCount]);
+ 
+ 	for ( size_t i = 0; i < stavCount; ++i ) {
+ 		stavState[i] = 1;
+ 	}
+ 
+-	if ( !runningAverage(stavData, stavState, stavCount,
++	if ( !runningAverage(stavData, stavState.get(), stavCount,
+ 	                     stavAverageWindowLength, stavThreshold, _stavFunction,
+-	                     stavRunningAverage, stavRunningAverageState) ) {
++	                     stavRunningAverage.get(),
++	                     stavRunningAverageState.get()) ) {
+ 		SEISCOMP_ERROR("Error computing stav running average");
+ 		return false;
+ 	}
+@@ -243,9 +247,9 @@ bool AmplitudeSBSNR::computeAmplitude(const Seiscomp::DoubleArray &data,
+ 	// Find maximum absolute short-term running average in the signal window
+ 	const size_t stavSignalStart = signalStart - dataSBSNRStart;
+ 	SEISCOMP_DEBUG("stavSignalStart = %zu", stavSignalStart);
+-	double maxAbsStav = fabs(stavRunningAverage[stavSignalStart]);
++	double maxAbsStav = std::fabs(stavRunningAverage[stavSignalStart]);
+ 	for ( size_t i = 1; i < signalCount; ++i ) {
+-		double absStav = fabs(stavRunningAverage[stavSignalStart + i]);
++		double absStav = std::fabs(stavRunningAverage[stavSignalStart + i]);
+ 		if ( absStav > maxAbsStav) {
+ 			maxAbsStav = absStav;
+ 			SEISCOMP_DEBUG("New maxAbsStav = %f at i = %zu", maxAbsStav, i);
+@@ -258,8 +262,8 @@ bool AmplitudeSBSNR::computeAmplitude(const Seiscomp::DoubleArray &data,
+ 	// Compute ltav recursive average and ltav
+ 	const size_t ltavCount = stavCount;
+ 	SEISCOMP_DEBUG("ltavCount = %zu", ltavCount);
+-	const double *ltavData = stavRunningAverage;
+-	const size_t *ltavState = stavRunningAverageState;
++	const double *ltavData = stavRunningAverage.get();
++	const size_t *ltavState = stavRunningAverageState.get();
+ 	const size_t ltavRecursionLookbackLength = stavAverageWindowLength;
+ 	SEISCOMP_DEBUG("ltavRecursionLookbackLength = %zu",
+ 	               ltavRecursionLookbackLength);
+@@ -269,14 +273,16 @@ bool AmplitudeSBSNR::computeAmplitude(const Seiscomp::DoubleArray &data,
+ 	    (size_t)(ltavAverageWindowLength * _ltavFraction);
+ 	SEISCOMP_DEBUG("ltavThreshold = %zu", ltavThreshold);
+ 
+-	double ltavRecursiveAverage[ltavCount];
+-	size_t ltavRecursiveAverageState[ltavCount];
++	std::unique_ptr<double[]> ltavRecursiveAverage(
++	    new double[ltavCount]);
++	std::unique_ptr<size_t[]> ltavRecursiveAverageState(
++	    new size_t[ltavCount]);
+ 
+ 	if ( !recursiveAverage(ltavData, ltavState, ltavCount,
+ 	                       ltavRecursionLookbackLength,
+ 	                       ltavAverageWindowLength, ltavThreshold,
+-	                       _ltavFunction, ltavRecursiveAverage,
+-	                       ltavRecursiveAverageState) ) {
++	                       _ltavFunction, ltavRecursiveAverage.get(),
++	                       ltavRecursiveAverageState.get()) ) {
+ 		SEISCOMP_ERROR("Error computing ltav recursive average");
+ 		return false;
+ 	}
+diff --git a/libs/seiscomp/processing/waveformoperator.cpp b/libs/seiscomp/processing/waveformoperator.cpp
+index d91bc3d0..9c4c167e 100644
+--- a/libs/seiscomp/processing/waveformoperator.cpp
++++ b/libs/seiscomp/processing/waveformoperator.cpp
+@@ -24,6 +24,14 @@
+ 
+ namespace Seiscomp {
+ namespace Processing {
++
++void intrusive_ptr_add_ref(const WaveformOperator *p) {
++	Core::intrusive_ptr_add_ref(static_cast<const Core::BaseObject*>(p));
++}
++
++void intrusive_ptr_release(const WaveformOperator *p) {
++	Core::intrusive_ptr_release(static_cast<const Core::BaseObject*>(p));
++}
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+ 
+diff --git a/libs/seiscomp/processing/waveformprocessor.h b/libs/seiscomp/processing/waveformprocessor.h
+index d6767b4e..04cd411a 100644
+--- a/libs/seiscomp/processing/waveformprocessor.h
++++ b/libs/seiscomp/processing/waveformprocessor.h
+@@ -38,6 +38,11 @@ namespace Processing {
+ DEFINE_SMARTPOINTER(WaveformOperator);
+ DEFINE_SMARTPOINTER(WaveformProcessor);
+ 
++// Keep Boost intrusive_ptr's unqualified hooks discoverable by ADL while
++// WaveformOperator is still incomplete in this header.
++SC_SYSTEM_CLIENT_API void intrusive_ptr_add_ref(const WaveformOperator *);
++SC_SYSTEM_CLIENT_API void intrusive_ptr_release(const WaveformOperator *);
++
+ 
+ class SC_SYSTEM_CLIENT_API WaveformProcessor : public Processor {
+ 	DECLARE_SC_CLASS(WaveformProcessor)
+diff --git a/libs/seiscomp/system/application.cpp b/libs/seiscomp/system/application.cpp
+index 4e81554c..51aa52bc 100644
+--- a/libs/seiscomp/system/application.cpp
++++ b/libs/seiscomp/system/application.cpp
+@@ -41,6 +41,10 @@
+ #include <seiscomp/system/pluginregistry.h>
+ #include <seiscomp/system/hostinfo.h>
+ 
++#ifdef WIN32
++#include <windows.h>
++#endif
++
+ #include <cerrno>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -245,7 +249,6 @@ void registerSignalHandler(bool term, bool crash) {
+ #else
+ 		signal(SIGSEGV, signalHandler);
+ 		signal(SIGABRT, signalHandler);
+-		signal(SIGPIPE, SIG_IGN);
+ #endif
+ 
+ 		crashRegistered = true;
+@@ -269,7 +272,6 @@ void registerSignalHandler(bool term, bool crash) {
+ #else
+ 		signal(SIGTERM, signalHandler);
+ 		signal(SIGINT, signalHandler);
+-		signal(SIGPIPE, SIG_IGN);
+ #endif
+ 
+ 		termRegistered = true;
+diff --git a/libs/seiscomp/system/application.h b/libs/seiscomp/system/application.h
+index d5ba7ba3..8e484cc0 100644
+--- a/libs/seiscomp/system/application.h
++++ b/libs/seiscomp/system/application.h
+@@ -1325,7 +1325,9 @@ class SC_SYSTEM_CORE_API Application : public Core::InterruptibleObject {
+ 					& cfg(component, "component")
+ 					& cfg(components, "components")
+ 					& cfg(output, "output")
++#ifndef WIN32
+ 					& cfg(syslog, "syslog")
++#endif
+ 					& cfg(toStdout, "stderr")
+ 					& cfg(UTC, "utc")
+ 					& cfg(file, "file")
+diff --git a/libs/seiscomp/system/environment.cpp b/libs/seiscomp/system/environment.cpp
+index 7a4da152..31f22886 100644
+--- a/libs/seiscomp/system/environment.cpp
++++ b/libs/seiscomp/system/environment.cpp
+@@ -37,6 +37,9 @@
+ #include <seiscomp/system/environment.h>
+ #include <seiscomp/utils/files.h>
+ #include <seiscomp/utils/replace.h>
++#ifdef WIN32
++#include <seiscomp/core/platform/windows.h>
++#endif
+ 
+ 
+ namespace Seiscomp {
+@@ -355,8 +358,13 @@ std::string Environment::absolutePath(const std::string& name) const {
+ 
+ 	bool trailingSlash = !tmpName.empty() && tmpName[tmpName.size()-1] == '/';
+ 
++	#ifdef WIN32
++	char absolutePath[32768];
++	if ( _fullpath(absolutePath, tmpName.c_str(), sizeof(absolutePath)) )
++	#else
+ 	char absolutePath[PATH_MAX];
+ 	if ( realpath(tmpName.c_str(), absolutePath) )
++	#endif
+ 		tmpName = absolutePath;
+ 
+ 	if ( trailingSlash && !tmpName.empty() && tmpName[tmpName.size()-1] != '/' )
+diff --git a/libs/seiscomp/system/hostinfo.cpp b/libs/seiscomp/system/hostinfo.cpp
+index b9f84f23..199a98a2 100644
+--- a/libs/seiscomp/system/hostinfo.cpp
++++ b/libs/seiscomp/system/hostinfo.cpp
+@@ -23,6 +23,10 @@
+ #include <seiscomp/utils/files.h>
+ #include <seiscomp/core/strings.h>
+ #include <seiscomp/core/platform/platform.h>
++#include <seiscomp/logging/log.h>
++#ifdef WIN32
++#include <seiscomp/core/platform/windows.h>
++#endif
+ #include <seiscomp/utils/timer.h>
+ 
+ #if !defined(_MSC_VER)
+@@ -354,7 +358,7 @@ class HostInfo::Impl {
+ 			HANDLE hProcess;
+ 
+ 			hProcess = OpenProcess(PROCESS_QUERY_INFORMATION,
+-			                       FALSE, _pid);
++			                       FALSE, g_impl.pid);
+ 			if ( hProcess != nullptr ) {
+ 				FILETIME creationtime, exittime, kerneltime, usertime;
+ 				if ( GetProcessTimes(hProcess, &creationtime, &exittime, &kerneltime, &usertime) ) {
+@@ -369,7 +373,7 @@ class HostInfo::Impl {
+ 						return -1;
+ 					}
+ 
+-					double elapsed = _timer.elapsed();
++					double elapsed = _timer.elapsed().length();
+ 					_timer.restart();
+ 
+ 					double usage = (current.QuadPart - _last.QuadPart) / double(elapsed*g_impl.clockTicks);
+@@ -519,7 +523,7 @@ int HostInfo::getCurrentMemoryUsage() const {
+ 
+ 	hProcess = OpenProcess(PROCESS_QUERY_INFORMATION |
+ 	                       PROCESS_VM_READ,
+-	                       FALSE, _pid);
++	                       FALSE, g_impl.pid);
+ 	if ( hProcess != nullptr ) {
+ 		if ( GetProcessMemoryInfo(hProcess, &pmc, sizeof(pmc)) )
+ 			// map to kbyte
+diff --git a/libs/seiscomp/system/model.cpp b/libs/seiscomp/system/model.cpp
+index 05758528..5f70a227 100644
+--- a/libs/seiscomp/system/model.cpp
++++ b/libs/seiscomp/system/model.cpp
+@@ -24,6 +24,9 @@
+ #include <seiscomp/core/strings.h>
+ #include <seiscomp/core/system.h>
+ #include <seiscomp/utils/files.h>
++#ifdef WIN32
++#include <seiscomp/core/platform/windows.h>
++#endif
+ 
+ #include <boost/version.hpp>
+ #include <boost/filesystem/operations.hpp>
+@@ -32,6 +35,9 @@
+ 
+ #include <sys/stat.h>
+ #include <sys/types.h>
++#ifdef WIN32
++#include <direct.h>
++#endif
+ #include <errno.h>
+ 
+ #include <stdexcept>
+diff --git a/libs/seiscomp/system/pluginregistry.cpp b/libs/seiscomp/system/pluginregistry.cpp
+index a16784af..3e3d31d7 100644
+--- a/libs/seiscomp/system/pluginregistry.cpp
++++ b/libs/seiscomp/system/pluginregistry.cpp
+@@ -20,9 +20,16 @@
+ 
+ #define SEISCOMP_COMPONENT Application
+ 
++#ifdef WIN32
++#include <windows.h>
++#endif
++
+ #include <seiscomp/system/environment.h>
+ #include <seiscomp/config/config.h>
+ #include <seiscomp/system/pluginregistry.h>
++#ifdef WIN32
++#include <seiscomp/core/platform/windows.h>
++#endif
+ #include <seiscomp/logging/log.h>
+ #include <seiscomp/utils/files.h>
+ #include <seiscomp/core/strings.h>
+diff --git a/libs/seiscomp/utils/files.cpp b/libs/seiscomp/utils/files.cpp
+index 2fcbc75b..23ddfe70 100644
+--- a/libs/seiscomp/utils/files.cpp
++++ b/libs/seiscomp/utils/files.cpp
+@@ -21,6 +21,9 @@
+ #include <seiscomp/utils/files.h>
+ #include <seiscomp/utils/replace.h>
+ #include <seiscomp/system/environment.h>
++#ifdef WIN32
++#include <seiscomp/core/platform/windows.h>
++#endif
+ 
+ #include <fstream>
+ #include <sstream>
+diff --git a/libs/seiscomp/wired/CMakeLists.txt b/libs/seiscomp/wired/CMakeLists.txt
+index 80883d29..f0e760ee 100644
+--- a/libs/seiscomp/wired/CMakeLists.txt
++++ b/libs/seiscomp/wired/CMakeLists.txt
+@@ -2,7 +2,6 @@ SET (
+ 	WIRE_SOURCES
+ 		buffer.cpp
+ 		clientsession.cpp
+-		device.cpp
+ 		endpoint.cpp
+ 		ipacl.cpp
+ 		mime.cpp
+@@ -11,6 +10,12 @@ SET (
+ 		session.cpp
+ )
+ 
++IF(WIN32)
++	LIST(APPEND WIRE_SOURCES device_win.cpp)
++ELSE()
++	LIST(APPEND WIRE_SOURCES device.cpp)
++ENDIF()
++
+ SET(
+ 	WIRE_HEADERS
+ 		buffer.h
+diff --git a/libs/seiscomp/wired/buffers/file.cpp b/libs/seiscomp/wired/buffers/file.cpp
+index 2baf0963..863a352d 100644
+--- a/libs/seiscomp/wired/buffers/file.cpp
++++ b/libs/seiscomp/wired/buffers/file.cpp
+@@ -19,6 +19,7 @@
+ 
+ 
+ #include <seiscomp/wired/buffers/file.h>
++#include <seiscomp/core/platform/windows.h>
+ #include <sys/stat.h>
+ 
+ 
+diff --git a/libs/seiscomp/wired/device.cpp b/libs/seiscomp/wired/device.cpp
+index 1007cddd..000b0def 100644
+--- a/libs/seiscomp/wired/device.cpp
++++ b/libs/seiscomp/wired/device.cpp
+@@ -106,7 +106,7 @@ int Device::_deviceCount = 0;
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-Device::Device() : _fd(-1) {
++Device::Device() : _fd(static_cast<handle_type>(-1)) {
+ 	++_deviceCount;
+ 	_selectMode = Idle;
+ #ifdef SEISCOMP_WIRED_KQUEUE
+@@ -122,7 +122,7 @@ Device::Device() : _fd(-1) {
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-Device::Device(int fd) : _fd(fd) {
++Device::Device(handle_type fd) : _fd(fd) {
+ 	++_deviceCount;
+ 	_selectMode = Idle;
+ #if defined(SEISCOMP_WIRED_EPOLL) || defined(SEISCOMP_WIRED_KQUEUE)
+@@ -147,7 +147,7 @@ Device::~Device() {
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ bool Device::isValid() const {
+-	return _fd != -1;
++	return _fd != static_cast<handle_type>(-1);
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+@@ -213,7 +213,8 @@ Device::Status Device::setNonBlocking(bool nb) {
+ 
+ 	return Success;
+ #else
+-	return Error;
++	u_long arg = nb ? 1 : 0;
++	return ioctlsocket(_fd, FIONBIO, &arg) == 0 ? Success : Error;
+ #endif
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+@@ -222,7 +223,7 @@ Device::Status Device::setNonBlocking(bool nb) {
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-int Device::takeFd() {
++Device::handle_type Device::takeFd() {
+ 	auto fd = _fd;
+ 	_fd = -1;
+ 	return fd;
+@@ -233,7 +234,7 @@ int Device::takeFd() {
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-int Device::fd() const {
++Device::handle_type Device::fd() const {
+ 	return _fd;
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+diff --git a/libs/seiscomp/wired/device.h b/libs/seiscomp/wired/device.h
+index 0fe244d9..c6f897be 100644
+--- a/libs/seiscomp/wired/device.h
++++ b/libs/seiscomp/wired/device.h
+@@ -21,15 +21,26 @@
+ #ifndef SEISCOMP_WIRED_DEVICE_H
+ #define SEISCOMP_WIRED_DEVICE_H
+ 
++#ifdef WIN32
++#include <seiscomp/core/platform/windows.h>
++#endif
++
+ #include <seiscomp/core/platform/platform.h>
+ #include <seiscomp/core/interruptible.h>
+ 
++#ifdef WIN32
++#include <chrono>
++#include <vector>
++#endif
++
+ #if defined(SC_HAS_EPOLL)
+ 	#define SEISCOMP_WIRED_EPOLL
+ #elif defined(SC_HAS_KQUEUE)
+ 	#define SEISCOMP_WIRED_KQUEUE
++#elif defined(SC_HAS_WSAPOLL)
++	#define SEISCOMP_WIRED_WSAPOLL
+ #else
+-	#error "Require either epoll or kqueue support"
++	#error "Require epoll, kqueue, or WSAPoll support"
+ #endif
+ 
+ #ifdef SEISCOMP_WIRED_EPOLL
+@@ -101,6 +112,11 @@ class SC_SYSTEM_CORE_API Device : public Core::BaseObject {
+ 		};
+ 
+ 		typedef uint64_t count_t;
++#ifdef WIN32
++		typedef SOCKET handle_type;
++#else
++		typedef int handle_type;
++#endif
+ 
+ 
+ 	// ----------------------------------------------------------------------
+@@ -114,7 +130,7 @@ class SC_SYSTEM_CORE_API Device : public Core::BaseObject {
+ 		 * @brief Device constructor
+ 		 * @param fd The file descriptor of the device
+ 		 */
+-		Device(int fd);
++		Device(handle_type fd);
+ 
+ 		//! D'tor
+ 		~Device() override;
+@@ -154,8 +170,8 @@ class SC_SYSTEM_CORE_API Device : public Core::BaseObject {
+ 		 *        file descriptor to invalid
+ 		 * @return The current file descriptor
+ 		 */
+-		int takeFd();
+-		int fd() const;
++		handle_type takeFd();
++		handle_type fd() const;
+ 
+ 		virtual Status setNonBlocking(bool nb);
+ 
+@@ -166,7 +182,7 @@ class SC_SYSTEM_CORE_API Device : public Core::BaseObject {
+ 	protected:
+ 		Session     *_session;
+ 
+-		int          _fd;
++		handle_type  _fd;
+ 		int          _selectMode;
+ #ifdef SEISCOMP_WIRED_KQUEUE
+ 		int          _activeMode;
+@@ -261,8 +277,8 @@ class SC_SYSTEM_CORE_API DeviceGroup : public Core::BaseObject {
+ 		bool timedOut() const;
+ 		bool interrupted() const { return _isInterrupted; }
+ 
+-		//! Set the trigger mode which is only supported when epoll or kqueue
+-		//! is used. The default trigger mode is LevelTriggered.
++		//! Edge triggering is available with epoll/kqueue. WSAPoll supports
++		//! level triggering only. The default trigger mode is LevelTriggered.
+ 		bool setTriggerMode(TriggerMode);
+ 		TriggerMode triggerMode() const;
+ 
+@@ -294,10 +310,25 @@ class SC_SYSTEM_CORE_API DeviceGroup : public Core::BaseObject {
+ 		TimeoutFunc          _fnTimeout;
+ 		int                  _timerFd;
+ 
++#ifdef SEISCOMP_WIRED_WSAPOLL
++		SOCKET               _interrupt_read_fd;
++		SOCKET               _interrupt_write_fd;
++		bool                 _wsaInitialized;
++		bool                 _timerActive;
++		std::chrono::steady_clock::time_point _timerDeadline;
++		std::chrono::milliseconds _timerInterval;
++		struct PollEvent {
++			WSAPOLLFD pollfd;
++			Device *device;
++		};
++		std::vector<PollEvent> _devices;
++		std::vector<PollEvent> _pollEvents;
++#else
+ 		int                  _interrupt_read_fd;
+ 		int                  _interrupt_write_fd;
++#endif
+ 
+-#if defined(SEISCOMP_WIRED_EPOLL) || defined(SEISCOMP_WIRED_KQUEUE)
++#if defined(SEISCOMP_WIRED_EPOLL) || defined(SEISCOMP_WIRED_KQUEUE) || defined(SEISCOMP_WIRED_WSAPOLL)
+ 		unsigned int         _defaultOps;
+ 		size_t               _count;
+ #ifdef SEISCOMP_WIRED_EPOLL
+diff --git a/libs/seiscomp/wired/device_win.cpp b/libs/seiscomp/wired/device_win.cpp
+new file mode 100644
+index 00000000..9e4a129e
+--- /dev/null
++++ b/libs/seiscomp/wired/device_win.cpp
+@@ -0,0 +1,448 @@
++/***************************************************************************
++ * Copyright (C) gempa GmbH                                                *
++ * All rights reserved.                                                    *
++ * Contact: gempa GmbH (seiscomp-dev@gempa.de)                             *
++ *                                                                         *
++ * GNU Affero General Public License Usage                                 *
++ * This file may be used under the terms of the GNU Affero                 *
++ * Public License version 3.0 as published by the Free Software Foundation *
++ * and appearing in the file LICENSE included in the packaging of this     *
++ * file. Please review the following information to ensure the GNU Affero  *
++ * Public License version 3.0 requirements will be met:                    *
++ * https://www.gnu.org/licenses/agpl-3.0.html.                             *
++ *                                                                         *
++ * Other Usage                                                             *
++ * Alternatively, this file may be used in accordance with the terms and   *
++ * conditions contained in a signed written agreement between you and      *
++ * gempa GmbH.                                                             *
++ ***************************************************************************/
++
++#define SEISCOMP_COMPONENT Wired
++#include <seiscomp/logging/log.h>
++#include <seiscomp/wired/device.h>
++
++#include <algorithm>
++#include <cerrno>
++#include <climits>
++#include <cstring>
++#include <limits>
++
++namespace Seiscomp {
++namespace Wired {
++
++int Device::_deviceCount = 0;
++
++Device::Device() : _fd(INVALID_SOCKET) {
++	++_deviceCount;
++	_selectMode = Idle;
++	_group = nullptr;
++	_qPrev = _qNext = nullptr;
++	_timeout = -1;
++}
++
++Device::Device(handle_type fd) : _fd(fd) {
++	++_deviceCount;
++	_selectMode = Idle;
++	_group = nullptr;
++	_qPrev = _qNext = nullptr;
++	_timeout = -1;
++}
++
++Device::~Device() {
++	--_deviceCount;
++}
++
++bool Device::isValid() const {
++	return _fd != INVALID_SOCKET;
++}
++
++void Device::setMode(int mode) {
++	if ( _selectMode == mode ) return;
++	_selectMode = mode;
++	if ( _group ) _group->updateState(this);
++}
++
++void Device::addMode(int mode) {
++	setMode(_selectMode | mode);
++}
++
++void Device::removeMode(int mode) {
++	setMode(_selectMode & ~mode);
++}
++
++bool Device::setTimeout(int milliseconds) {
++	if ( _timeout == milliseconds ) return true;
++	_timeout = milliseconds;
++	if ( _group ) _group->applyTimeout(this);
++	return true;
++}
++
++Device::Status Device::setNonBlocking(bool nonBlocking) {
++	if ( !isValid() ) return InvalidDevice;
++	u_long mode = nonBlocking ? 1 : 0;
++	return ioctlsocket(_fd, FIONBIO, &mode) == 0 ? Success : Error;
++}
++
++Device::handle_type Device::takeFd() {
++	handle_type handle = _fd;
++	_fd = INVALID_SOCKET;
++	return handle;
++}
++
++Device::handle_type Device::fd() const {
++	return _fd;
++}
++
++DeviceGroup::DeviceGroup()
++: _triggerMode(LevelTriggered), _readyForRead(false), _readyForWrite(false),
++  _timedOut(false), _isInSelect(false), _isInterrupted(false),
++  _timerSeconds(0), _timerMilliseconds(0), _timerSingleShot(false),
++  _fnTimeout(), _timerFd(-1), _interrupt_read_fd(INVALID_SOCKET),
++  _interrupt_write_fd(INVALID_SOCKET), _wsaInitialized(false),
++  _timerActive(false), _timerDeadline(), _timerInterval(0),
++  _lastCallDuration(0), _queue(nullptr), _nextQueue(nullptr) {
++	_selectIndex = _selectSize = _count = 0;
++}
++
++DeviceGroup::~DeviceGroup() {
++	clear();
++}
++
++bool DeviceGroup::isValid() const {
++	return _interrupt_read_fd != INVALID_SOCKET && _interrupt_write_fd != INVALID_SOCKET;
++}
++
++bool DeviceGroup::setup() {
++	if ( isValid() ) {
++		SEISCOMP_ERROR("[reactor] already set up");
++		return false;
++	}
++
++	WSADATA data;
++	int result = WSAStartup(MAKEWORD(2, 2), &data);
++	if ( result != 0 ) {
++		SEISCOMP_ERROR("WSAStartup failed: %d", result);
++		return false;
++	}
++	_wsaInitialized = true;
++
++	_interrupt_read_fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
++	_interrupt_write_fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
++	if ( !isValid() ) {
++		SEISCOMP_ERROR("Unable to create reactor wakeup sockets: %d", WSAGetLastError());
++		clear();
++		return false;
++	}
++
++	sockaddr_in address{};
++	address.sin_family = AF_INET;
++	address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
++	address.sin_port = 0;
++	if ( ::bind(_interrupt_read_fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ) {
++		SEISCOMP_ERROR("Unable to bind reactor wakeup socket: %d", WSAGetLastError());
++		clear();
++		return false;
++	}
++
++	int addressLength = sizeof(address);
++	if ( getsockname(_interrupt_read_fd, reinterpret_cast<sockaddr*>(&address), &addressLength) == SOCKET_ERROR ||
++	     ::connect(_interrupt_write_fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR ) {
++		SEISCOMP_ERROR("Unable to connect reactor wakeup sockets: %d", WSAGetLastError());
++		clear();
++		return false;
++	}
++
++	u_long nonBlocking = 1;
++	if ( ioctlsocket(_interrupt_read_fd, FIONBIO, &nonBlocking) == SOCKET_ERROR ||
++	     ioctlsocket(_interrupt_write_fd, FIONBIO, &nonBlocking) == SOCKET_ERROR ) {
++		SEISCOMP_ERROR("Unable to configure reactor wakeup sockets: %d", WSAGetLastError());
++		clear();
++		return false;
++	}
++
++	return true;
++}
++
++bool DeviceGroup::append(Device *device) {
++	if ( !device || device->_group ) {
++		SEISCOMP_WARNING("Device is null or already part of a group");
++		return false;
++	}
++	if ( !device->isValid() ) return false;
++	int socketType = 0;
++	int socketTypeSize = sizeof(socketType);
++	if ( getsockopt(device->fd(), SOL_SOCKET, SO_TYPE,
++	                reinterpret_cast<char*>(&socketType), &socketTypeSize) == SOCKET_ERROR ) {
++		SEISCOMP_ERROR("WSAPoll supports socket devices only (handle %llu, Winsock error %d)",
++		               static_cast<unsigned long long>(device->fd()), WSAGetLastError());
++		return false;
++	}
++	if ( !isValid() && !setup() ) return false;
++	device->_group = this;
++	_devices.push_back({WSAPOLLFD{device->fd(), 0, 0}, device});
++	++_count;
++	if ( device->_timeout >= 0 ) applyTimeout(device);
++	return true;
++}
++
++bool DeviceGroup::remove(Device *device) {
++	if ( !device || device->_group != this ) {
++		SEISCOMP_WARNING("Device is not part of that group");
++		return false;
++	}
++	device->_group = nullptr;
++	if ( _isInSelect ) interrupt();
++	if ( _nextQueue == device ) _nextQueue = device->_qNext;
++	if ( device->_qPrev || device->_qNext || _queue == device ) removeFromQueue(device);
++	_devices.erase(std::remove_if(_devices.begin(), _devices.end(),
++		[device](const PollEvent &entry) { return entry.device == device; }), _devices.end());
++	for ( size_t i = 0; i < _selectIndex && i < _pollEvents.size(); ++i )
++		if ( _pollEvents[i].device == device ) --_selectIndex;
++	_pollEvents.erase(std::remove_if(_pollEvents.begin(), _pollEvents.end(),
++		[device](const PollEvent &entry) { return entry.device == device; }), _pollEvents.end());
++	--_count;
++	_selectSize = _pollEvents.size();
++	return true;
++}
++
++size_t DeviceGroup::count() const {
++	return _count;
++}
++
++void DeviceGroup::clear() {
++	for ( auto &entry : _devices ) {
++		if ( entry.device && entry.device->_group == this ) entry.device->_group = nullptr;
++	}
++	_devices.clear();
++	_pollEvents.clear();
++	_count = _selectIndex = _selectSize = 0;
++	_queue = _nextQueue = nullptr;
++	_timerActive = false;
++	_fnTimeout = TimeoutFunc();
++	if ( _interrupt_write_fd != INVALID_SOCKET ) {
++		closesocket(_interrupt_write_fd);
++		_interrupt_write_fd = INVALID_SOCKET;
++	}
++	if ( _interrupt_read_fd != INVALID_SOCKET ) {
++		closesocket(_interrupt_read_fd);
++		_interrupt_read_fd = INVALID_SOCKET;
++	}
++	if ( _wsaInitialized ) {
++		WSACleanup();
++		_wsaInitialized = false;
++	}
++}
++
++bool DeviceGroup::setTimer(uint32_t seconds, uint32_t milliseconds, TimeoutFunc func) {
++	if ( !func ) {
++		SEISCOMP_ERROR("Failed to create timer: function required");
++		return false;
++	}
++	if ( !isValid() && !setup() ) return false;
++	_timerSeconds = seconds;
++	_timerMilliseconds = milliseconds;
++	_timerInterval = std::chrono::milliseconds(
++		static_cast<uint64_t>(seconds) * 1000 + milliseconds);
++	_fnTimeout = std::move(func);
++	if ( _timerInterval.count() == 0 ) {
++		_timerActive = false;
++		return true;
++	}
++	_timerDeadline = std::chrono::steady_clock::now() + _timerInterval;
++	_timerActive = true;
++	return true;
++}
++
++bool DeviceGroup::clearTimer() {
++	if ( !_timerActive ) return false;
++	_timerActive = false;
++	_fnTimeout = TimeoutFunc();
++	return true;
++}
++
++void DeviceGroup::interrupt() {
++	if ( _interrupt_write_fd == INVALID_SOCKET ) return;
++	const char byte = 1;
++	int result = ::send(_interrupt_write_fd, &byte, 1, 0);
++	if ( result == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK )
++		SEISCOMP_ERROR("[reactor] interrupt send failed: %d", WSAGetLastError());
++}
++
++Device *DeviceGroup::wait() {
++	_isInterrupted = false;
++	_readyForRead = _readyForWrite = _timedOut = false;
++	_selectIndex = _selectSize = 0;
++	if ( !isValid() && !setup() ) return nullptr;
++
++	std::vector<WSAPOLLFD> pollFds;
++	std::vector<Device*> pollDevices;
++	pollFds.reserve(_devices.size() + 1);
++	pollDevices.reserve(_devices.size() + 1);
++	pollFds.push_back(WSAPOLLFD{_interrupt_read_fd, POLLRDNORM, 0});
++	pollDevices.push_back(nullptr);
++	for ( const auto &entry : _devices ) {
++		if ( !entry.device || !entry.device->isValid() ) continue;
++		short events = 0;
++		if ( entry.device->selectMode() & Device::Read ) events |= POLLRDNORM;
++		if ( entry.device->selectMode() & Device::Write ) events |= POLLWRNORM;
++		if ( events ) {
++			pollFds.push_back(WSAPOLLFD{entry.device->fd(), events, 0});
++			pollDevices.push_back(entry.device);
++		}
++	}
++
++	int timeout = -1;
++	if ( _queue ) timeout = std::max(0, _queue->_ticker);
++	if ( _timerActive ) {
++		auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
++			_timerDeadline - std::chrono::steady_clock::now()).count();
++		int timerTimeout = static_cast<int>(std::max<int64_t>(0, std::min<int64_t>(remaining, INT_MAX)));
++		if ( timeout < 0 || timerTimeout < timeout ) timeout = timerTimeout;
++	}
++
++	auto started = std::chrono::steady_clock::now();
++	_isInSelect = true;
++	int result = WSAPoll(pollFds.data(), static_cast<ULONG>(pollFds.size()), timeout);
++	_isInSelect = false;
++	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
++		std::chrono::steady_clock::now() - started).count();
++	_lastCallDuration = static_cast<int>(std::min<int64_t>(elapsed, INT_MAX));
++	if ( result == SOCKET_ERROR ) {
++		if ( WSAGetLastError() != WSAEINTR )
++			SEISCOMP_ERROR("[reactor] WSAPoll failed: %d", WSAGetLastError());
++		return nullptr;
++	}
++
++	_pollEvents.clear();
++	for ( size_t i = 0; i < pollFds.size(); ++i ) {
++		if ( !pollFds[i].revents ) continue;
++		Device *device = pollDevices[i];
++		if ( device && std::none_of(_devices.begin(), _devices.end(),
++			[device](const PollEvent &entry) { return entry.device == device; }) )
++			continue;
++		_pollEvents.push_back({pollFds[i], device});
++	}
++	_selectSize = _pollEvents.size();
++	_nextQueue = _queue;
++	return next();
++}
++
++Device *DeviceGroup::next() {
++	while ( _nextQueue ) {
++		_nextQueue->_ticker -= _lastCallDuration;
++		if ( _nextQueue->_ticker <= 0 ) {
++			Device *device = _nextQueue;
++			_nextQueue = _nextQueue->_qNext;
++			bool hasTrigger = std::any_of(_pollEvents.begin() + static_cast<std::ptrdiff_t>(_selectIndex),
++				_pollEvents.end(), [device](const PollEvent &entry) { return entry.device == device; });
++			removeFromQueue(device);
++			if ( !hasTrigger ) {
++				_readyForRead = _readyForWrite = false;
++				_timedOut = true;
++				return device;
++			}
++		}
++		else _nextQueue = _nextQueue->_qNext;
++	}
++
++	_timedOut = false;
++	if ( _timerActive && std::chrono::steady_clock::now() >= _timerDeadline ) {
++		TimeoutFunc callback = _fnTimeout;
++		_timerDeadline = std::chrono::steady_clock::now() + _timerInterval;
++		if ( callback ) callback();
++	}
++
++	while ( _selectIndex < _selectSize ) {
++		const PollEvent &event = _pollEvents[_selectIndex++];
++		if ( !event.device ) {
++			char bytes[128];
++			while ( ::recv(_interrupt_read_fd, bytes, sizeof(bytes), 0) > 0 ) {}
++			_isInterrupted = true;
++			continue;
++		}
++
++		Device *device = event.device;
++		if ( device->_timeout >= 0 ) applyTimeout(device);
++		_readyForRead = (event.pollfd.revents & (POLLRDNORM | POLLIN)) != 0;
++		_readyForWrite = (event.pollfd.revents & (POLLWRNORM | POLLOUT)) != 0;
++		if ( !_readyForRead && (event.pollfd.revents & (POLLERR | POLLHUP | POLLNVAL)) )
++			device->close();
++		return device;
++	}
++
++	_selectIndex = _selectSize = 0;
++	return nullptr;
++}
++
++bool DeviceGroup::setTriggerMode(TriggerMode mode) {
++	if ( mode == EdgeTriggered ) return false;
++	_triggerMode = mode;
++	return true;
++}
++
++DeviceGroup::TriggerMode DeviceGroup::triggerMode() const {
++	return _triggerMode;
++}
++
++void DeviceGroup::removeFromQueue(Device *device) {
++	if ( device->_qPrev ) device->_qPrev->_qNext = device->_qNext;
++	else _queue = device->_qNext;
++	if ( device->_qNext ) device->_qNext->_qPrev = device->_qPrev;
++	device->_qPrev = device->_qNext = nullptr;
++}
++
++void DeviceGroup::applyTimeout(Device *device) {
++	device->_ticker = device->_timeout;
++	if ( _queue && (device->_qNext || device->_qPrev || _queue == device) ) {
++		if ( device->_timeout < 0 ) {
++			removeFromQueue(device);
++			return;
++		}
++		if ( device->_qPrev && device->_qPrev->_ticker > device->_ticker ) {
++			Device *position = device->_qPrev;
++			while ( position->_qPrev && position->_qPrev->_ticker > device->_ticker )
++				position = position->_qPrev;
++			removeFromQueue(device);
++			device->_qPrev = position->_qPrev;
++			device->_qNext = position;
++			if ( device->_qPrev ) device->_qPrev->_qNext = device;
++			else _queue = device;
++			position->_qPrev = device;
++		}
++		else if ( device->_qNext && device->_ticker > device->_qNext->_ticker ) {
++			Device *position = device->_qNext;
++			while ( position->_qNext && device->_ticker > position->_qNext->_ticker )
++				position = position->_qNext;
++			removeFromQueue(device);
++			device->_qPrev = position;
++			device->_qNext = position->_qNext;
++			if ( device->_qNext ) device->_qNext->_qPrev = device;
++			position->_qNext = device;
++		}
++	}
++	else if ( device->_timeout >= 0 ) {
++		device->_qPrev = device->_qNext = nullptr;
++		if ( !_queue ) _queue = device;
++		else {
++			Device *position = _queue;
++			Device *last = nullptr;
++			while ( position && position->_ticker <= device->_ticker ) {
++				last = position;
++				position = position->_qNext;
++			}
++			device->_qNext = position;
++			device->_qPrev = position ? position->_qPrev : last;
++			if ( device->_qPrev ) device->_qPrev->_qNext = device;
++			else _queue = device;
++			if ( position ) position->_qPrev = device;
++		}
++	}
++}
++
++void DeviceGroup::updateState(Device *) {
++	// WSAPoll registrations are rebuilt from the current device modes per wait.
++	if ( _isInSelect ) interrupt();
++}
++
++}
++}
+diff --git a/libs/seiscomp/wired/devices/fd.cpp b/libs/seiscomp/wired/devices/fd.cpp
+index 18e28cc0..65ab4768 100644
+--- a/libs/seiscomp/wired/devices/fd.cpp
++++ b/libs/seiscomp/wired/devices/fd.cpp
+@@ -22,7 +22,11 @@
+ #include <seiscomp/logging/log.h>
+ #include <seiscomp/wired/devices/fd.h>
+ 
++#ifdef WIN32
++#include <io.h>
++#else
+ #include <unistd.h>
++#endif
+ 
+ 
+ namespace Seiscomp {
+@@ -58,10 +62,14 @@ FileDescriptor::~FileDescriptor() {
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ void FileDescriptor::close() {
+ 	if ( _fd != -1 ) {
+-		int fd = _fd;
++		int fd = static_cast<int>(_fd);
+ 		setMode(Closed);
+ 		_fd = -1;
++		#ifdef WIN32
++		::_close(fd);
++		#else
+ 		::close(fd);
++		#endif
+ 	}
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+@@ -71,7 +79,11 @@ void FileDescriptor::close() {
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ ssize_t FileDescriptor::write(const char *data, size_t len) {
++	#ifdef WIN32
++	return ::_write(static_cast<int>(_fd), data, static_cast<unsigned int>(len));
++	#else
+ 	return ::write(_fd, data, len);
++	#endif
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+@@ -80,7 +92,11 @@ ssize_t FileDescriptor::write(const char *data, size_t len) {
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ ssize_t FileDescriptor::read(char *data, size_t len) {
++	#ifdef WIN32
++	return ::_read(static_cast<int>(_fd), data, static_cast<unsigned int>(len));
++	#else
+ 	return ::read(_fd, data, len);
++	#endif
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+diff --git a/libs/seiscomp/wired/devices/socket.cpp b/libs/seiscomp/wired/devices/socket.cpp
+index 296d18e1..34c7cfbf 100644
+--- a/libs/seiscomp/wired/devices/socket.cpp
++++ b/libs/seiscomp/wired/devices/socket.cpp
+@@ -24,8 +24,8 @@
+ 
+ #include <fcntl.h>
+ #include <sys/types.h>
+-#include <arpa/inet.h>
+ #ifndef WIN32
++#include <arpa/inet.h>
+ #include <sys/socket.h>
+ #include <net/if.h>
+ #ifdef BSD
+@@ -39,6 +39,8 @@
+ #include <io.h>
+ #include <winsock2.h>
+ #include <ws2tcpip.h>
++#include <windows.h>
++#include <iphlpapi.h>
+ #endif
+ 
+ #include <seiscomp/wired/devices/socket.h>
+@@ -47,10 +49,25 @@
+ #include <openssl/err.h>
+ #include <openssl/pkcs12.h>
+ 
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
++#ifdef WIN32
++#include <windows.h>
++using ssl_mutex_t = CRITICAL_SECTION;
++#else
+ #include <pthread.h>
++using ssl_mutex_t = pthread_mutex_t;
++#endif
++#endif
+ #include <cerrno>
+ #include <fstream>
+ 
++#ifdef WIN32
++#define SC_SETSOCKOPT(s, l, o, v, n) \
++	::setsockopt((s), (l), (o), reinterpret_cast<const char*>(v), static_cast<int>(n))
++#else
++#define SC_SETSOCKOPT(s, l, o, v, n) ::setsockopt((s), (l), (o), (v), (n))
++#endif
++
+ using namespace std;
+ 
+ 
+@@ -83,33 +100,49 @@ using EVP_PKEYPtr = std::unique_ptr<EVP_PKEY, SSlDeleter>;
+ using PKCS12Ptr = std::unique_ptr<PKCS12, SSlDeleter>;
+ 
+ #if OPENSSL_VERSION_NUMBER < 0x10100000L
+-pthread_mutex_t *ssl_mutex_buffer = nullptr;
++ssl_mutex_t *ssl_mutex_buffer = nullptr;
+ 
+ 
+ unsigned long SSL_thread_id_function(void) {
++	#ifdef WIN32
++	return static_cast<unsigned long>(GetCurrentThreadId());
++	#else
+ 	return reinterpret_cast<unsigned long>(pthread_self());
++	#endif
+ }
+ 
+ 
+ void SSL_locking_function(int mode, int id, const char *, int) {
+ 	if ( mode & CRYPTO_LOCK )
++		#ifdef WIN32
++		EnterCriticalSection(&ssl_mutex_buffer[id]);
++		#else
+ 		pthread_mutex_lock(&ssl_mutex_buffer[id]);
++		#endif
+ 	else
++		#ifdef WIN32
++		LeaveCriticalSection(&ssl_mutex_buffer[id]);
++		#else
+ 		pthread_mutex_unlock(&ssl_mutex_buffer[id]);
++		#endif
+ }
+ 
+ 
+ void SSL_static_init() {
+ 	if ( ssl_mutex_buffer == nullptr ) {
+-		ssl_mutex_buffer = static_cast<pthread_mutex_t*>(
++		ssl_mutex_buffer = static_cast<ssl_mutex_t*>(
+ 			malloc(
+-				static_cast<size_t>(CRYPTO_num_locks()) * sizeof(pthread_mutex_t)
++				static_cast<size_t>(CRYPTO_num_locks()) * sizeof(ssl_mutex_t)
+ 			)
+ 		);
+ 	}
+ 
+ 	for ( int i = 0; i < CRYPTO_num_locks(); ++i )
++		#ifdef WIN32
++		InitializeCriticalSection(&ssl_mutex_buffer[i]);
++		#else
+ 		pthread_mutex_init(&ssl_mutex_buffer[i], nullptr);
++		#endif
+ 
+ 	CRYPTO_set_id_callback(SSL_thread_id_function);
+ 	CRYPTO_set_locking_callback(SSL_locking_function);
+@@ -124,7 +157,11 @@ void SSL_static_cleanup() {
+ 		return;
+ 
+ 	for ( int i = 0; i < CRYPTO_num_locks(); ++i )
++		#ifdef WIN32
++		DeleteCriticalSection(&ssl_mutex_buffer[i]);
++		#else
+ 		pthread_mutex_destroy(&ssl_mutex_buffer[i]);
++		#endif
+ 
+ 	free(ssl_mutex_buffer);
+ 	ssl_mutex_buffer = nullptr;
+@@ -158,6 +195,29 @@ struct SSLInitializer {
+ 
+ SSLInitializer __sslInitializer;
+ 
++#ifdef WIN32
++bool bindSocketToInterface(SOCKET socket, ADDRESS_FAMILY family, const char *name) {
++	NET_LUID luid;
++	NET_IFINDEX index;
++	if ( ConvertInterfaceNameToLuidA(name, &luid) != NO_ERROR ||
++	     ConvertInterfaceLuidToIndex(&luid, &index) != NO_ERROR )
++		return false;
++
++	if ( family == AF_INET ) {
++		ULONG networkOrderIndex = htonl(index);
++		return SC_SETSOCKOPT(socket, IPPROTO_IP, IP_UNICAST_IF,
++		                     &networkOrderIndex, sizeof(networkOrderIndex)) == 0;
++	}
++
++	if ( family == AF_INET6 ) {
++		ULONG interfaceIndex = index;
++		return SC_SETSOCKOPT(socket, IPPROTO_IPV6, IPV6_UNICAST_IF,
++		                     &interfaceIndex, sizeof(interfaceIndex)) == 0;
++	}
++
++	return false;
++}
++#endif
+ 
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+@@ -352,7 +412,7 @@ Socket::Socket() {
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+-Socket::Socket(int fd, const std::string &hostname, uint16_t port)
++Socket::Socket(Device::handle_type fd, const std::string &hostname, uint16_t port)
+ : Device(fd) {
+ 	if ( _socketCount == -1 ) {
+ #if WIN32
+@@ -441,7 +501,11 @@ const char *Socket::toString(Status stat) {
+ void Socket::shutdown() {
+ 	if ( _fd == -1 ) return;
+ 	//SEISCOMP_DEBUG("Socket::shutdown");
++	#ifdef WIN32
++	::shutdown(_fd, SD_BOTH);
++	#else
+ 	::shutdown(_fd, SHUT_RDWR);
++	#endif
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+@@ -452,10 +516,14 @@ void Socket::shutdown() {
+ void Socket::close() {
+ 	if ( _fd != -1 ) {
+ 		//SEISCOMP_DEBUG("[socket] close %lX with fd = %d", (long int)this, _fd);
+-		int fd = _fd;
++		Device::handle_type fd = _fd;
+ 		setMode(Closed);
+ 		_fd = -1;
++		#ifdef WIN32
++		::closesocket(fd);
++		#else
+ 		::close(fd);
++		#endif
+ 	}
+ 
+ 	_flags &= ~InAccept;
+@@ -483,6 +551,13 @@ Socket::Status Socket::setSocketTimeout(int secs, int usecs) {
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ Socket::Status Socket::applySocketTimeout(int secs, int usecs) {
+ 	if ( _fd != -1 ) {
++		#ifdef WIN32
++		DWORD timeout = secs < 0 ? 0 : static_cast<DWORD>(secs * 1000LL + usecs / 1000);
++		if ( SC_SETSOCKOPT(_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) )
++			return Error;
++		if ( SC_SETSOCKOPT(_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) )
++			return Error;
++		#else
+ 		struct timeval timeout;
+ 		void *opt;
+ 		socklen_t optlen;
+@@ -500,11 +575,12 @@ Socket::Status Socket::applySocketTimeout(int secs, int usecs) {
+ 
+ 		//SEISCOMP_DEBUG("set socket timeout to %d.%06ds", secs, usecs);
+ 
+-		if ( setsockopt(_fd, SOL_SOCKET, SO_RCVTIMEO, opt, optlen) )
++		if ( SC_SETSOCKOPT(_fd, SOL_SOCKET, SO_RCVTIMEO, opt, optlen) )
+ 			return Error;
+ 
+-		if ( setsockopt(_fd, SOL_SOCKET, SO_SNDTIMEO, opt, optlen) )
++		if ( SC_SETSOCKOPT(_fd, SOL_SOCKET, SO_SNDTIMEO, opt, optlen) )
+ 			return Error;
++		#endif
+ 	}
+ 	else
+ 		return InvalidSocket;
+@@ -622,13 +698,21 @@ Socket::Status Socket::connect(const std::string &hostname, port_t port,
+ 	addrlen = res->ai_addrlen;
+ 	freeaddrinfo(res);
+ 
+-	if ( (_fd = socket(PF_INET, SOCK_STREAM, 0)) < 0 ) {
++	if ( (_fd = socket(PF_INET, SOCK_STREAM, 0)) == static_cast<Device::handle_type>(-1) ) {
+ 		SEISCOMP_DEBUG("Socket::connect(%s:%d): %s",
+ 		               hostname.c_str(), port, strerror(errno));
+ 		return AllocationError;
+ 	}
+ 
+ 	if ( nic ) {
++		#ifdef WIN32
++		if ( !bindSocketToInterface(_fd, AF_INET, nic) ) {
++			this->close();
++			SEISCOMP_ERROR("Socket::connect(%s:%d): cannot bind to interface %s (Winsock error %d)",
++			               hostname.c_str(), port, nic, WSAGetLastError());
++			return Error;
++		}
++		#else
+ 		auto nNic = strnlen(nic, IFNAMSIZ);
+ 		if ( nNic == IFNAMSIZ ) {
+ 			this->close();
+@@ -636,17 +720,18 @@ Socket::Status Socket::connect(const std::string &hostname, port_t port,
+ 			               hostname.c_str(), port, nic);
+ 			return Error;
+ 		}
+-		if ( setsockopt(_fd, SOL_SOCKET, SO_BINDTODEVICE, nic, nNic) ) {
++		if ( SC_SETSOCKOPT(_fd, SOL_SOCKET, SO_BINDTODEVICE, nic, nNic) ) {
+ 			this->close();
+ 			SEISCOMP_ERROR("Socket::connect(%s:%d): bind to nic %s: %s",
+ 			               hostname.c_str(), port, nic, strerror(errno));
+ 			return Error;
+ 		}
++		#endif
+ 	}
+ 
+ 	if ( _flags & NoDelay ) {
+ 		int flag = 1;
+-		setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
++		SC_SETSOCKOPT(_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
+ 	}
+ 
+ 	setNonBlocking(_flags & NonBlocking ? true : false);
+@@ -718,13 +803,21 @@ Socket::Status Socket::connectV6(const std::string &hostname, port_t port,
+ 	addrlen = res->ai_addrlen;
+ 	freeaddrinfo(res);
+ 
+-	if ( (_fd = socket(PF_INET6, SOCK_STREAM, 0)) < 0 ) {
++	if ( (_fd = socket(PF_INET6, SOCK_STREAM, 0)) == static_cast<Device::handle_type>(-1) ) {
+ 		SEISCOMP_DEBUG("Socket::connect(%s:%d): %s",
+ 		               hostname.c_str(), port, strerror(errno));
+ 		return AllocationError;
+ 	}
+ 
+ 	if ( nic ) {
++		#ifdef WIN32
++		if ( !bindSocketToInterface(_fd, AF_INET6, nic) ) {
++			this->close();
++			SEISCOMP_ERROR("Socket::connect(%s:%d): cannot bind to interface %s (Winsock error %d)",
++			               hostname.c_str(), port, nic, WSAGetLastError());
++			return Error;
++		}
++		#else
+ 		auto nNic = strnlen(nic, IFNAMSIZ);
+ 		if ( nNic == IFNAMSIZ ) {
+ 			this->close();
+@@ -732,12 +825,13 @@ Socket::Status Socket::connectV6(const std::string &hostname, port_t port,
+ 			               hostname.c_str(), port, strerror(errno));
+ 			return Error;
+ 		}
+-		setsockopt(_fd, SOL_SOCKET, SO_BINDTODEVICE, nic, nNic);
++		SC_SETSOCKOPT(_fd, SOL_SOCKET, SO_BINDTODEVICE, nic, nNic);
++		#endif
+ 	}
+ 
+ 	if ( _flags & NoDelay ) {
+ 		int flag = 1;
+-		setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
++		SC_SETSOCKOPT(_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
+ 	}
+ 
+ 	setNonBlocking(_flags & NonBlocking ? true : false);
+@@ -789,7 +883,7 @@ Socket::Status Socket::bind(IPAddress ip, port_t port) {
+ 
+ #ifdef MACOSX
+ 	int set = 1;
+-	if ( setsockopt(_fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int)) < 0 ) {
++	if ( SC_SETSOCKOPT(_fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int)) < 0 ) {
+ 		close();
+ 		return Error;
+ 	}
+@@ -800,7 +894,7 @@ Socket::Status Socket::bind(IPAddress ip, port_t port) {
+ 
+ 	if ( _flags & ReuseAddress ) {
+ 		int arg = 1;
+-		if ( setsockopt(_fd, SOL_SOCKET, SO_REUSEADDR, &arg, sizeof(arg)) != 0 )
++		if ( SC_SETSOCKOPT(_fd, SOL_SOCKET, SO_REUSEADDR, &arg, sizeof(arg)) != 0 )
+ 			return ReuseAdressError;
+ 	}
+ 
+@@ -847,7 +941,7 @@ Socket::Status Socket::bindV6(IPAddress ip, port_t port) {
+ 
+ #ifdef MACOSX
+ 	int set = 1;
+-	if ( setsockopt(_fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int)) < 0 ) {
++	if ( SC_SETSOCKOPT(_fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(int)) < 0 ) {
+ 		close();
+ 		return Error;
+ 	}
+@@ -858,7 +952,7 @@ Socket::Status Socket::bindV6(IPAddress ip, port_t port) {
+ 
+ 	if ( _flags & ReuseAddress ) {
+ 		int arg = 1;
+-		if ( setsockopt(_fd, SOL_SOCKET, SO_REUSEADDR, &arg, sizeof(arg)) != 0 )
++		if ( SC_SETSOCKOPT(_fd, SOL_SOCKET, SO_REUSEADDR, &arg, sizeof(arg)) != 0 )
+ 			return ReuseAdressError;
+ 	}
+ 
+@@ -917,12 +1011,19 @@ Socket *Socket::accept() {
+ 	struct sockaddr_in addr;
+ 	socklen_t addr_len = sizeof(addr);
+ 
+-	int client_fd = ::accept(_fd, reinterpret_cast<struct sockaddr*>(&addr), &addr_len);
++	Device::handle_type client_fd = ::accept(_fd, reinterpret_cast<struct sockaddr*>(&addr), &addr_len);
+ 	// AcceptError
+-	if( client_fd < 0 ) {
++	#ifdef WIN32
++	if ( client_fd == INVALID_SOCKET ) {
++		int socketError = WSAGetLastError();
++		if ( socketError != WSAEWOULDBLOCK )
++			SEISCOMP_DEBUG("Accept: Winsock error %d", socketError);
++	#else
++	if ( client_fd < 0 ) {
+ 		if ( (errno != EAGAIN) && (errno != EWOULDBLOCK) ) {
+ 			SEISCOMP_DEBUG("Accept: %s", strerror(errno));
+ 		}
++#endif
+ 
+ 		return nullptr;
+ 	}
+@@ -940,7 +1041,7 @@ Socket *Socket::accept() {
+ 
+ 	if ( _flags & NoDelay ) {
+ 		int flag = 1;
+-		setsockopt(sock->_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
++		SC_SETSOCKOPT(sock->_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
+ 	}
+ 
+ 	return sock;
+@@ -1243,12 +1344,19 @@ Socket* SSLSocket::accept() {
+ 	struct sockaddr_in addr;
+ 	socklen_t addr_len = sizeof(addr);
+ 
+-	int client_fd = ::accept(_fd, reinterpret_cast<struct sockaddr*>(&addr), &addr_len);
++	Device::handle_type client_fd = ::accept(_fd, reinterpret_cast<struct sockaddr*>(&addr), &addr_len);
+ 	// AcceptError
+-	if( client_fd < 0 ) {
++	#ifdef WIN32
++	if ( client_fd == INVALID_SOCKET ) {
++		int socketError = WSAGetLastError();
++		if ( socketError != WSAEWOULDBLOCK )
++			SEISCOMP_DEBUG("SSL accept: Winsock error %d", socketError);
++	#else
++	if ( client_fd < 0 ) {
+ 		if ( (errno != EAGAIN) && (errno != EWOULDBLOCK) ) {
+ 			SEISCOMP_DEBUG("Accept: %s", strerror(errno));
+ 		}
++#endif
+ 
+ 		return nullptr;
+ 	}
+@@ -1256,7 +1364,11 @@ Socket* SSLSocket::accept() {
+ 	SSL *ssl = SSL_new(_ctx);
+ 	if ( ssl == nullptr ) {
+ 		SEISCOMP_ERROR("Failed to create SSL channel from context");
++		#ifdef WIN32
++		::closesocket(client_fd);
++		#else
+ 		::close(client_fd);
++		#endif
+ 		return nullptr;
+ 	}
+ 
+@@ -1270,7 +1382,7 @@ Socket* SSLSocket::accept() {
+ 
+ 	if ( _flags & NoDelay ) {
+ 		int flag = 1;
+-		setsockopt(sock->_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
++		SC_SETSOCKOPT(sock->_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
+ 	}
+ 
+ 	char buf[512];
+diff --git a/libs/seiscomp/wired/devices/socket.h b/libs/seiscomp/wired/devices/socket.h
+index 4f979eda..a24f40c4 100644
+--- a/libs/seiscomp/wired/devices/socket.h
++++ b/libs/seiscomp/wired/devices/socket.h
+@@ -156,7 +156,7 @@ class SC_SYSTEM_CORE_API Socket : public Device {
+ 
+ 	public:
+ 		Socket();
+-		Socket(int fd, const std::string &hostname = "localhost", port_t port = 0);
++		Socket(Device::handle_type fd, const std::string &hostname = "localhost", port_t port = 0);
+ 		~Socket() override;
+ 
+ 
+diff --git a/libs/seiscomp/wired/endpoint.cpp b/libs/seiscomp/wired/endpoint.cpp
+index d58ed730..10457b7d 100644
+--- a/libs/seiscomp/wired/endpoint.cpp
++++ b/libs/seiscomp/wired/endpoint.cpp
+@@ -25,7 +25,9 @@
+ #include <seiscomp/wired/clientsession.h>
+ #include <seiscomp/wired/server.h>
+ 
++#ifndef WIN32
+ #include <fcntl.h>
++#endif
+ 
+ 
+ namespace Seiscomp {
+@@ -99,9 +101,17 @@ Session *Endpoint::accept(Socket *socket) {
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ bool Endpoint::checkSocket(Socket *socket) const {
++	#ifdef WIN32
++	int type = 0;
++	int typeLength = sizeof(type);
++	bool fdValid = getsockopt(socket->fd(), SOL_SOCKET, SO_TYPE,
++	                          reinterpret_cast<char*>(&type), &typeLength) == 0;
++	#else
+ 	bool fdValid = fcntl(socket->fd(), F_GETFD) != -1 || errno != EBADF;
++	#endif
+ 	if ( !fdValid )
+-		SEISCOMP_ERROR("Invalid fd = %d", socket->fd());
++		SEISCOMP_ERROR("Invalid socket handle = %llu",
++		               static_cast<unsigned long long>(socket->fd()));
+ 
+ 	return fdValid;
+ }
+diff --git a/libs/seiscomp/wired/mime.cpp b/libs/seiscomp/wired/mime.cpp
+index 0d7f0c29..4fecdfb4 100644
+--- a/libs/seiscomp/wired/mime.cpp
++++ b/libs/seiscomp/wired/mime.cpp
+@@ -24,6 +24,9 @@
+ 
+ #include <seiscomp/logging/log.h>
+ #include <seiscomp/core/strings.h>
++#ifdef WIN32
++#include <seiscomp/core/platform/windows.h>
++#endif
+ 
+ #include <string.h>
+ 
+diff --git a/libs/seiscomp/wired/protocols/http.cpp b/libs/seiscomp/wired/protocols/http.cpp
+index e0fa7389..f778a58c 100644
+--- a/libs/seiscomp/wired/protocols/http.cpp
++++ b/libs/seiscomp/wired/protocols/http.cpp
+@@ -497,7 +497,11 @@ void HttpSession::sendResponse(Buffer* buf, HttpStatus status,
+ 		buf->header += "Last-Modified: ";
+ 
+ 		struct tm t;
++#ifdef WIN32
++		gmtime_s(&t, &buf->lastModified);
++#else
+ 		gmtime_r(&buf->lastModified, &t);
++#endif
+ 
+ 		buf->header += WeekDays[t.tm_wday];
+ 		buf->header += ", ";
+diff --git a/libs/seiscomp/wired/protocols/websocket.h b/libs/seiscomp/wired/protocols/websocket.h
+index 4f8194e9..d8ac5ab6 100644
+--- a/libs/seiscomp/wired/protocols/websocket.h
++++ b/libs/seiscomp/wired/protocols/websocket.h
+@@ -25,6 +25,8 @@
+ #include <string>
+ #include <stdint.h>
+ 
++#include <seiscomp/core/platform/platform.h>
++
+ #include <seiscomp/wired/buffer.h>
+ 
+ 
+diff --git a/libs/seiscomp/wired/server.cpp b/libs/seiscomp/wired/server.cpp
+index 933dea7c..25c6cd97 100644
+--- a/libs/seiscomp/wired/server.cpp
++++ b/libs/seiscomp/wired/server.cpp
+@@ -114,7 +114,9 @@ bool fromString(BindAddress &bind, string_view sv) {
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ Server::Server() {
++#ifndef WIN32
+ 	signal(SIGPIPE, SIG_IGN);
++#endif
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 

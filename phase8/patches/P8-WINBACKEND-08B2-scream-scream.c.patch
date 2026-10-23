@@ -1,0 +1,215 @@
+--- a/src/base/seedlink/plugins/scream_plugin/scream.c
++++ b/src/base/seedlink/plugins/scream_plugin/scream.c
+@@ -41,10 +41,53 @@
+ 
+ #include "project.h"
+ 
++#ifdef _WIN32
++/* A SOCKET is pointer-width and must never pass through the CRT descriptor API. */
++#include <ws2tcpip.h>
++static SOCKET sockfd = INVALID_SOCKET;
++static int winsock_ready;
++
++static void scm_windows_cleanup(void)
++{
++  if (sockfd != INVALID_SOCKET) {
++    closesocket(sockfd);
++    sockfd = INVALID_SOCKET;
++  }
++  if (winsock_ready) {
++    WSACleanup();
++    winsock_ready = 0;
++  }
++}
++
++static void scm_windows_error(const char *operation, int error, int fatal_error)
++{
++  fprintf(stderr, "SCREAM %s: Winsock error %d\n", operation, error);
++  if (fatal_error) exit(-1);
++}
++
++static void scm_windows_start(void)
++{
++  WSADATA data;
++  int error;
++  if (winsock_ready) return;
++  error = WSAStartup(MAKEWORD(2, 2), &data);
++  if (error) scm_windows_error("WSAStartup", error, 1);
++  if (LOBYTE(data.wVersion) != 2 || HIBYTE(data.wVersion) != 2) {
++    WSACleanup();
++    scm_windows_error("WSAStartup version", WSAVERNOTSUPPORTED, 1);
++  }
++  winsock_ready = 1;
++  if (atexit(scm_windows_cleanup) != 0) {
++    scm_windows_cleanup();
++    fprintf(stderr, "SCREAM cannot register owned Winsock cleanup\n");
++    exit(-1);
++  }
++}
++#else
+ #include <sys/socket.h>
+ #include <netdb.h>
+-
+ static int sockfd = -1;
++#endif
+ static int protocol;
+ 
+ /* _protocol is one of SCM_PROTO_... */
+@@ -61,6 +104,9 @@
+   struct hostent *he;
+   uint8_t cmd;
+ 
++#ifdef _WIN32
++  scm_windows_start();
++#endif
+   protocol = _protocol;
+   //_protocol = SCM_PROTO_TCP;
+  
+@@ -69,20 +115,32 @@
+     case SCM_PROTO_TCP:
+ 
+       sockfd = socket (PF_INET, SOCK_STREAM, 0);
++#ifdef _WIN32
++      if (sockfd == INVALID_SOCKET)
++        scm_windows_error("TCP socket", WSAGetLastError(), 1);
++#endif
+ 
+       local.sin_family = AF_INET;
+       local.sin_port = 0;
+       local.sin_addr.s_addr = INADDR_ANY;
+ 
+       if (bind (sockfd, (struct sockaddr *) &local, sizeof (local)))
++#ifdef _WIN32
++          scm_windows_error("TCP bind", WSAGetLastError(), 1);
++#else
+           fatal (("bind failed: %m"));
++#endif
+ 
+       remote.sin_family = AF_INET;
+       remote.sin_port = htons (port);
+ 
+       he = gethostbyname (server);
+ 
++#ifdef _WIN32
++      if (!he) scm_windows_error("gethostbyname", WSAGetLastError(), 1);
++#else
+       if (!he) fatal (("gethostbyname(%s) failed: %m", server));
++#endif
+ 
+       if (he->h_addrtype != AF_INET)
+           fatal (("gethostbyname returned a non-IP address"));
+@@ -90,6 +148,9 @@
+       memcpy (&remote.sin_addr.s_addr, he->h_addr, he->h_length);
+ 
+       if (connect (sockfd, (struct sockaddr *) &remote, sizeof (remote))) {
++#ifdef _WIN32
++          scm_windows_error("TCP connect", WSAGetLastError(), 0);
++#endif
+           printf("connect failed\n");
+       }
+       else
+@@ -97,8 +158,14 @@
+         cmd = SCREAM_CMD_START_XMIT;
+         printf("send SCREAM_CMD_START_XMIT\n");
+ 
++#ifdef _WIN32
++        /* Original one-byte TCP command; Linux's MSG_CONFIRM is a datagram hint. */
++        if (send (sockfd, (const char *)&cmd, 1, 0) != 1)
++           scm_windows_error("TCP send", WSAGetLastError(), 1);
++#else
+         if (send (sockfd, &cmd, 1,  MSG_CONFIRM) != 1)
+            fatal (("write to socket failed: %m"));
++#endif
+ 
+       }
+ 
+@@ -108,15 +175,24 @@
+     case SCM_PROTO_UDP:
+ 
+       sockfd = socket (PF_INET, SOCK_DGRAM, 0);
++#ifdef _WIN32
++      if (sockfd == INVALID_SOCKET)
++        scm_windows_error("UDP socket", WSAGetLastError(), 1);
++#endif
+ 
+       /*For the UDP binding we want to be able to rebind to this listening port */
+ 
+       {
+         int on = 1;
+ 
++#ifdef _WIN32
++        if (setsockopt (sockfd, SOL_SOCKET, SO_REUSEADDR, (const char *) &on, sizeof (on)))
++            scm_windows_error("SO_REUSEADDR", WSAGetLastError(), 0);
++#else
+         if (setsockopt (sockfd, SOL_SOCKET, SO_REUSEADDR, (void *) &on, sizeof (on)))
+ 
+             warning (("Error setting SO_REUSEADDR: %m"));
++#endif
+       }
+ 
+       local.sin_family = AF_INET;
+@@ -124,7 +200,11 @@
+       local.sin_addr.s_addr = INADDR_ANY;
+ 
+       if (bind (sockfd, (struct sockaddr *) &local, sizeof (local)))
++#ifdef _WIN32
++        scm_windows_error("UDP bind", WSAGetLastError(), 1);
++#else
+         fatal (("bind failed: %m"));
++#endif
+ 
+ 
+       break;
+@@ -151,8 +231,18 @@
+         case SCM_PROTO_UDP:
+ 	    memset(buf,0,sizeof(buf));
+ 
++#ifdef _WIN32
++            if (recv (sockfd, (char *)buf, SCREAM_MAX_LENGTH, 0) == SOCKET_ERROR) {
++                int error = WSAGetLastError();
++                /* POSIX recv keeps the leading bytes of an oversized datagram.
++                   Winsock fills the same buffer but also reports WSAEMSGSIZE. */
++                if (error != WSAEMSGSIZE)
++                    scm_windows_error("UDP recv", error, 1);
++            }
++#else
+             if (recv (sockfd, buf, SCREAM_MAX_LENGTH, 0) < 0)
+                 fatal (("recv failed: %m"));
++#endif
+  
+ 
+ /*printf("version: %c %d %x\n", buf[GCF_BLOCK_LEN],buf[GCF_BLOCK_LEN],buf[GCF_BLOCK_LEN]); */
+@@ -196,21 +286,33 @@
+                   if (complete_read
+                       (sockfd, (char *) buf + SCREAM_INITIAL_LEN,
+                        SCREAM_V31_SUBSEQUENT) != SCREAM_V31_SUBSEQUENT)
++#ifdef _WIN32
++                    fatal (("TCP read ended before the complete SCREAM record"));
++#else
+                     fatal (("read failed: %m"));
++#endif
+                   blocknr = buf[GCF_BLOCK_LEN+34]*256 + buf[GCF_BLOCK_LEN+35];
+                   break;
+             case 40:
+                   if (complete_read
+                       (sockfd, (char *) buf + SCREAM_INITIAL_LEN,
+                        SCREAM_V40_SUBSEQUENT) != SCREAM_V40_SUBSEQUENT)
++#ifdef _WIN32
++                    fatal (("TCP read ended before the complete SCREAM record"));
++#else
+                     fatal (("read failed: %m"));
++#endif
+                   blocknr = buf[GCF_BLOCK_LEN+2]*256 + buf[GCF_BLOCK_LEN+3];
+                   break;
+             case 45:
+                   if (complete_read
+                       (sockfd, (char *) buf + SCREAM_INITIAL_LEN,
+                        SCREAM_V45_SUBSEQUENT) != SCREAM_V45_SUBSEQUENT)
++#ifdef _WIN32
++                    fatal (("TCP read ended before the complete SCREAM record"));
++#else
+                     fatal (("read failed: %m"));
++#endif
+                   blocknr = buf[GCF_BLOCK_LEN+2]*256 + buf[GCF_BLOCK_LEN+3];
+ 		  break;
+             default:

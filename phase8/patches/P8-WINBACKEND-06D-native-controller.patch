@@ -1,0 +1,520 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -46,6 +46,13 @@
+ OPTION(SC_GLOBAL_PYTHON_WRAPPER "Create Python 3 wrapper" ON)
+ OPTION(SC_GLOBAL_PYTHON_WRAPPER_NUMPY "Add Numpy support for Python 3 wrapper" ON)
+ OPTION(SC_ENABLE_CONTRIB "Enables descending into the contrib directory" ON)
++
++IF(WIN32)
++	OPTION(SC_WINDOWS_CONTROLLER_ONLY "Build only the controller config binding, leaving SDK wrappers disabled" OFF)
++	IF(SC_WINDOWS_CONTROLLER_ONLY AND (SC_GLOBAL_PYTHON_WRAPPER OR SC_GLOBAL_PYTHON_WRAPPER_NUMPY))
++		MESSAGE(FATAL_ERROR "Controller-only mode requires general Python and NumPy wrappers OFF")
++	ENDIF()
++ENDIF()
+ 
+ # Modern GCC (>= 5.1) on old systems with libraries compiled with ABI version 0.
+ # see https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html
+@@ -78,12 +85,16 @@
+ 	ENDIF()
+ ENDIF()
+ 
++IF(WIN32)
++	INCLUDE(WindowsPython310)
++ELSE()
+ IF (APPLE)
+ 	FIND_PACKAGE(PythonLibsApple REQUIRED)
+ ELSE (APPLE)
+ 	FIND_PACKAGE(PythonLibs REQUIRED)
+ ENDIF (APPLE)
+ FIND_PACKAGE(PythonInterp REQUIRED)
++ENDIF()
+ SET(PYTHON_LIBRARY_SUFFIX /python)
+ SET(PYTHON_LIBRARY_PATH lib${PYTHON_LIBRARY_SUFFIX})
+ 
+diff --git a/cmake/WindowsPython310.cmake b/cmake/WindowsPython310.cmake
+new file mode 100644
+--- /dev/null
++++ b/cmake/WindowsPython310.cmake
+@@ -0,0 +1,73 @@
++# Windows-only bridge from the selected modern FindPython result to legacy users.
++# Identity and compile/link checks do not import or execute SeisComP code.
++IF(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
++	MESSAGE(FATAL_ERROR "Native controller requires Windows MSVC x64")
++ENDIF()
++IF(CMAKE_VERSION VERSION_LESS 3.19)
++	MESSAGE(FATAL_ERROR "Windows Python ABI verification requires CMake >= 3.19")
++ENDIF()
++FIND_PACKAGE(Python 3.10.11 EXACT REQUIRED COMPONENTS Interpreter Development)
++LIST(LENGTH Python_INCLUDE_DIRS _sc_py_include_count)
++LIST(LENGTH Python_LIBRARIES _sc_py_library_count)
++IF(NOT _sc_py_include_count EQUAL 1 OR NOT _sc_py_library_count EQUAL 1)
++	MESSAGE(FATAL_ERROR "Windows Python requires one unambiguous Release header root and import library")
++ENDIF()
++SET(_sc_py_include "${Python_INCLUDE_DIRS}")
++SET(_sc_py_library "${Python_LIBRARIES}")
++SET(SC_WINDOWS_PYTHON_IDENTITY "${CMAKE_BINARY_DIR}/WindowsPython310-identity.json")
++EXECUTE_PROCESS(
++	COMMAND "${Python_EXECUTABLE}" -I "${CMAKE_SOURCE_DIR}/cmake/windows_python_identity.py"
++		"${_sc_py_include}" "${_sc_py_library}" "${SC_WINDOWS_PYTHON_IDENTITY}"
++	RESULT_VARIABLE _sc_py_result OUTPUT_VARIABLE _sc_py_stdout ERROR_VARIABLE _sc_py_stderr)
++FILE(WRITE "${CMAKE_BINARY_DIR}/WindowsPython310-identity.log" "${_sc_py_stdout}${_sc_py_stderr}")
++IF(NOT _sc_py_result EQUAL 0)
++	MESSAGE(FATAL_ERROR "Windows Python identity failed: ${_sc_py_stdout}${_sc_py_stderr}")
++ENDIF()
++FILE(READ "${SC_WINDOWS_PYTHON_IDENTITY}" _sc_py_json)
++STRING(JSON SC_WINDOWS_PYTHON_HOME GET "${_sc_py_json}" home)
++STRING(JSON SC_WINDOWS_PYTHON_RUNTIME GET "${_sc_py_json}" runtime)
++STRING(JSON SC_WINDOWS_PYTHON_EXT_SUFFIX GET "${_sc_py_json}" ext_suffix)
++EXECUTE_PROCESS(COMMAND "${CMAKE_LINKER}" /dump /headers "${_sc_py_library}"
++	RESULT_VARIABLE _sc_lib_result OUTPUT_VARIABLE _sc_lib_dump ERROR_VARIABLE _sc_lib_error)
++FILE(WRITE "${CMAKE_BINARY_DIR}/WindowsPython310-import-library.log" "${_sc_lib_dump}${_sc_lib_error}")
++STRING(TOLOWER "${_sc_lib_dump}" _sc_lib_lower)
++STRING(REGEX MATCHALL "python[0-9_]+\\.dll" _sc_imported_dlls "${_sc_lib_lower}")
++LIST(REMOVE_DUPLICATES _sc_imported_dlls)
++IF(NOT _sc_lib_result EQUAL 0 OR NOT _sc_lib_lower MATCHES "8664 machine" OR
++	_sc_lib_lower MATCHES "14c machine|aa64 machine" OR NOT _sc_imported_dlls STREQUAL "python310.dll")
++	MESSAGE(FATAL_ERROR "Python import library must be AMD64 COFF for python310.dll; see WindowsPython310-import-library.log")
++ENDIF()
++
++# All legacy names actually consumed by system/common wrapper CMake are aligned.
++SET(PYTHON_EXECUTABLE "${Python_EXECUTABLE}" CACHE FILEPATH "Selected native Python interpreter" FORCE)
++SET(PYTHON_INCLUDE_DIR "${_sc_py_include}" CACHE PATH "Selected native Python headers" FORCE)
++SET(PYTHON_INCLUDE_PATH "${_sc_py_include}")
++SET(PYTHON_INCLUDE_DIRS "${_sc_py_include}")
++SET(PYTHON_LIBRARY "${_sc_py_library}" CACHE FILEPATH "Selected native Python Release import library" FORCE)
++SET(PYTHON_LIBRARY_RELEASE "${_sc_py_library}" CACHE FILEPATH "Selected native Python Release import library" FORCE)
++SET(PYTHON_LIBRARIES "${_sc_py_library}")
++SET(PYTHON_LIBRARY_DEBUG "PYTHON_LIBRARY_DEBUG-NOTFOUND" CACHE FILEPATH "Debug ABI is not qualified" FORCE)
++SET(PYTHON_DEBUG_LIBRARY "PYTHON_DEBUG_LIBRARY-NOTFOUND" CACHE FILEPATH "Debug ABI is not qualified" FORCE)
++SET(PYTHON_VERSION_STRING "3.10.11")
++SET(PYTHONLIBS_VERSION_STRING "3.10.11")
++SET(PYTHON_VERSION_MAJOR 3)
++SET(PYTHON_VERSION_MINOR 10)
++SET(PYTHON_VERSION_PATCH 11)
++
++SET(SC_WINDOWS_PYTHON_GUARD "${CMAKE_BINARY_DIR}/WindowsPython310-guard.h")
++FILE(WRITE "${SC_WINDOWS_PYTHON_GUARD}" "#include <Python.h>\n#if !defined(_WIN64) || !defined(MS_WIN64) || defined(_DEBUG) || PY_VERSION_HEX != 0x030A0BF0\n#error Windows controller requires CPython 3.10.11 x64 Release headers and CRT\n#endif\nstatic_assert(sizeof(void*) == 8, \"Python ABI must be x64\");\n")
++FILE(WRITE "${CMAKE_BINARY_DIR}/CMakeFiles/windows-python310-abi.cpp"
++	"#include \"${SC_WINDOWS_PYTHON_GUARD}\"\nint main() { return Py_GetVersion() == nullptr; }\n")
++FUNCTION(_sc_verify_python_link)
++	SET(CMAKE_TRY_COMPILE_CONFIGURATION Release)
++	TRY_COMPILE(_sc_abi_link "${CMAKE_BINARY_DIR}/CMakeFiles/windows-python310-link"
++		"${CMAKE_BINARY_DIR}/CMakeFiles/windows-python310-abi.cpp"
++		CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${_sc_py_include}"
++		LINK_LIBRARIES Python::Python OUTPUT_VARIABLE _sc_abi_log)
++	FILE(WRITE "${CMAKE_BINARY_DIR}/WindowsPython310-abi-link.log" "${_sc_abi_log}")
++	IF(NOT _sc_abi_link)
++		MESSAGE(FATAL_ERROR "CPython 3.10.11 x64 Release compile/link qualification failed; see WindowsPython310-abi-link.log")
++	ENDIF()
++ENDFUNCTION()
++_sc_verify_python_link()
++MESSAGE(STATUS "Windows Python ABI: CPython 3.10.11 x64 Release; legacy headers/library aligned; compile/link only")
+diff --git a/cmake/windows_python_identity.py b/cmake/windows_python_identity.py
+new file mode 100644
+--- /dev/null
++++ b/cmake/windows_python_identity.py
+@@ -0,0 +1,37 @@
++"""Configure-time CPython identity check. Standard library only; no SeisComP imports."""
++import json
++from pathlib import Path
++import re
++import struct
++import sys
++import sysconfig
++import hashlib
++
++include, library, output = map(Path, sys.argv[1:])
++if (sys.implementation.name != 'cpython' or sys.version_info[:3] != (3, 10, 11) or
++        struct.calcsize('P') != 8 or sysconfig.get_config_var('Py_DEBUG') or
++        sys.prefix != sys.base_prefix):
++    raise SystemExit('Windows controller requires the established non-debug CPython 3.10.11 x64 installation')
++version = re.search(r'^#define\s+PY_VERSION\s+"([^"]+)"',
++                    (include / 'patchlevel.h').read_text(), re.M)
++if not version or version[1] != '3.10.11' or library.name.lower() != 'python310.lib':
++    raise SystemExit('Python header/import-library version differs from selected interpreter')
++home = Path(sys.base_prefix).resolve()
++runtime = home / 'python310.dll'
++def pe(path):
++    data = path.read_bytes()
++    offset = struct.unpack_from('<I', data, 0x3c)[0]
++    if (data[offset:offset+4] != b'PE\0\0' or struct.unpack_from('<H', data, offset+4)[0] != 0x8664 or
++            struct.unpack_from('<H', data, offset+24)[0] != 0x20b):
++        raise SystemExit('Python executable/runtime must be AMD64 PE32+: ' + str(path))
++for p in [Path(sys.executable), runtime]:
++    pe(p)
++files = [Path(sys.executable), runtime, library, include / 'Python.h', include / 'patchlevel.h', include / 'pyconfig.h']
++record = dict(executable=Path(sys.executable).resolve().as_posix(), version='3.10.11',
++              version_text=sys.version, bits=64, debug=False, home=home.as_posix(),
++              include=include.resolve().as_posix(), library=library.resolve().as_posix(),
++              runtime=runtime.as_posix(), ext_suffix=sysconfig.get_config_var('EXT_SUFFIX'),
++              hashes={p.resolve().as_posix(): hashlib.sha256(p.read_bytes()).hexdigest().upper() for p in files},
++              scope='Interpreter identity and file inspection only; no SeisComP/controller/extension execution')
++output.write_text(json.dumps(record, indent=2)+'\n', encoding='utf-8')
++print('CPython 3.10.11 x64 Release identity verified; no SeisComP imported')
+diff --git a/src/system/libs/CMakeLists.txt b/src/system/libs/CMakeLists.txt
+--- a/src/system/libs/CMakeLists.txt
++++ b/src/system/libs/CMakeLists.txt
+@@ -1,5 +1,11 @@
+ SUBDIRS(3rd-party seiscomp python)
+ 
++IF(WIN32)
++	IF(SC_WINDOWS_CONTROLLER_ONLY OR SC_GLOBAL_PYTHON_WRAPPER)
++		ADD_SUBDIRECTORY(swig)
++	ENDIF()
++ELSE()
+ IF (SC_GLOBAL_PYTHON_WRAPPER)
+ 	SUBDIRS(swig)
+ ENDIF (SC_GLOBAL_PYTHON_WRAPPER)
++ENDIF()
+diff --git a/src/system/libs/swig/CMakeLists.txt b/src/system/libs/swig/CMakeLists.txt
+--- a/src/system/libs/swig/CMakeLists.txt
++++ b/src/system/libs/swig/CMakeLists.txt
+@@ -1,3 +1,28 @@
++IF(WIN32)
++	# Preserve the generated SWIG 4.4.1 source; qualify its original _config module.
++	FILE(READ "${CMAKE_CURRENT_SOURCE_DIR}/config_python_wrap.cxx" _sc_swig_source)
++	IF(NOT _sc_swig_source MATCHES "SWIG_VERSION 0x040401" OR NOT _sc_swig_source MATCHES "PyInit__config")
++		MESSAGE(FATAL_ERROR "Expected original SWIG 4.4.1 _config initialization source")
++	ENDIF()
++	ADD_LIBRARY(_config MODULE config_python_wrap.cxx)
++	TARGET_INCLUDE_DIRECTORIES(_config PRIVATE "${PYTHON_INCLUDE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}")
++	TARGET_COMPILE_OPTIONS(_config PRIVATE "/FI${SC_WINDOWS_PYTHON_GUARD}")
++	TARGET_LINK_LIBRARIES(_config PRIVATE Python::Python seiscomp_config)
++	SET(_sc_python_output "${CMAKE_BINARY_DIR}/lib/python/$<CONFIG>/seiscomp")
++	SET_TARGET_PROPERTIES(_config PROPERTIES PREFIX "" SUFFIX ".pyd"
++		LIBRARY_OUTPUT_DIRECTORY "${_sc_python_output}" RUNTIME_OUTPUT_DIRECTORY "${_sc_python_output}"
++		ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/$<CONFIG>/python")
++	ADD_CUSTOM_COMMAND(TARGET _config POST_BUILD
++		COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/config.py" "${_sc_python_output}/config.py"
++		COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/../python/seiscomp/__init__.py" "${_sc_python_output}/__init__.py"
++		VERBATIM)
++	INSTALL(TARGETS _config LIBRARY DESTINATION lib/python/seiscomp COMPONENT WindowsController
++		RUNTIME DESTINATION lib/python/seiscomp COMPONENT WindowsController)
++	INSTALL(FILES config.py DESTINATION lib/python/seiscomp COMPONENT WindowsController)
++	INSTALL(FILES "${SC_WINDOWS_PYTHON_IDENTITY}" DESTINATION share/controller COMPONENT WindowsController)
++	RETURN() # No .so links, POSIX py-compile, general SDK wrappers or NumPy.
++ENDIF()
++
+ INCLUDE_DIRECTORIES(${PYTHON_INCLUDE_DIR})
+ INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
+ 
+diff --git a/src/system/apps/seiscomp/CMakeLists.txt b/src/system/apps/seiscomp/CMakeLists.txt
+--- a/src/system/apps/seiscomp/CMakeLists.txt
++++ b/src/system/apps/seiscomp/CMakeLists.txt
+@@ -1,7 +1,38 @@
++IF(WIN32)
++	CONFIGURE_FILE(windows/python_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/controller_python_config.h @ONLY)
++	FOREACH(_frontend seiscomp_controller seiscomp_python)
++		ADD_EXECUTABLE(${_frontend} windows/frontend.cpp)
++		TARGET_INCLUDE_DIRECTORIES(${_frontend} PRIVATE "${PYTHON_INCLUDE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}")
++		TARGET_LINK_LIBRARIES(${_frontend} PRIVATE Python::Python)
++		TARGET_COMPILE_FEATURES(${_frontend} PRIVATE cxx_std_17)
++		TARGET_COMPILE_OPTIONS(${_frontend} PRIVATE "/FI${SC_WINDOWS_PYTHON_GUARD}" /utf-8)
++		ADD_CUSTOM_COMMAND(TARGET ${_frontend} POST_BUILD
++			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SC_WINDOWS_PYTHON_RUNTIME}" "$<TARGET_FILE_DIR:${_frontend}>/python310.dll"
++			VERBATIM)
++		INSTALL(TARGETS ${_frontend} RUNTIME DESTINATION bin COMPONENT WindowsController)
++	ENDFOREACH()
++	TARGET_COMPILE_DEFINITIONS(seiscomp_controller PRIVATE SC_CONTROLLER_FRONTEND=1)
++	TARGET_COMPILE_DEFINITIONS(seiscomp_python PRIVATE SC_CONTROLLER_FRONTEND=0)
++	SET_TARGET_PROPERTIES(seiscomp_controller PROPERTIES OUTPUT_NAME seiscomp)
++	SET_TARGET_PROPERTIES(seiscomp_python PROPERTIES OUTPUT_NAME seiscomp-python)
++	INSTALL(FILES windows/bootstrap.py DESTINATION bin RENAME seiscomp-bootstrap.py COMPONENT WindowsController)
++	INSTALL(FILES seiscomp-control.py DESTINATION bin COMPONENT WindowsController)
++	INSTALL(FILES kernel.py DESTINATION etc/init COMPONENT WindowsController)
++	INSTALL(FILES "${SC_WINDOWS_PYTHON_RUNTIME}" DESTINATION bin COMPONENT WindowsController)
++	INSTALL(FILES
++		../../libs/python/seiscomp/__init__.py ../../libs/python/seiscomp/kernel.py
++		../../libs/python/seiscomp/windows.py ../../libs/python/seiscomp/shell.py
++		../../libs/python/seiscomp/setup.py
++		DESTINATION lib/python/seiscomp COMPONENT WindowsController)
++ELSE()
+ CONFIGURE_FILE(seiscomp-python.in ${CMAKE_CURRENT_BINARY_DIR}/seiscomp-python @ONLY)
++ENDIF()
+ 
+ SC_INSTALL_INIT(kernel kernel.py)
+ 
++IF(WIN32)
++	# Native targets and original Python source are installed in the component above.
++ELSE()
+ INSTALL(PROGRAMS seiscomp-control.py DESTINATION ${SC3_PACKAGE_BIN_DIR})
+ 
+ INSTALL(
+@@ -14,6 +45,7 @@
+ 		GROUP_EXECUTE GROUP_READ
+ 		WORLD_EXECUTE WORLD_READ
+ )
++ENDIF()
+ 
+ INSTALL(DIRECTORY share/deps DESTINATION ${SC3_PACKAGE_SHARE_DIR}
+         PATTERN ".svn" EXCLUDE
+diff --git a/src/system/apps/seiscomp/seiscomp-control.py b/src/system/apps/seiscomp/seiscomp-control.py
+--- a/src/system/apps/seiscomp/seiscomp-control.py
++++ b/src/system/apps/seiscomp/seiscomp-control.py
+@@ -63,7 +63,10 @@
+             return res.lower()
+ 
+ 
+-if sys.platform == "darwin":
++if os.name == "nt":
++    SysLibraryPathVar = "PATH"
++    SysFrameworkPathVar = None
++elif sys.platform == "darwin":
+     SysLibraryPathVar = "DYLD_FALLBACK_LIBRARY_PATH"
+     SysFrameworkPathVar = "DYLD_FALLBACK_FRAMEWORK_PATH"
+ else:
+@@ -72,6 +75,8 @@
+ 
+ 
+ def get_library_path():
++    if os.name == "nt":
++        return os.pathsep.join((BIN_PATH, SBIN_PATH, LD_LIBRARY_PATH))
+     if sys.platform == "darwin":
+         return LD_LIBRARY_PATH + ":" + DYLD_FALLBACK_FRAMEWORK_PATH
+ 
+@@ -214,7 +219,8 @@
+     print("--------------------")
+     print(f'SEISCOMP_ROOT="{SEISCOMP_ROOT}"')
+     print(f"PATH=\"{os.environ['PATH']}\"")
+-    print(f'{SysLibraryPathVar}="{os.environ[SysLibraryPathVar]}"')
++    if os.name != "nt":
++        print(f'{SysLibraryPathVar}="{os.environ[SysLibraryPathVar]}"')
+     if SysFrameworkPathVar:
+         print(f'{SysFrameworkPathVar}="{os.environ[SysFrameworkPathVar]}"')
+     print(f'PYTHONPATH="{sys.path}"')
+@@ -355,6 +361,9 @@
+ # Commandline action handler
+ # ------------------------------------------------------------------------------
+ def on_setup(args, flags):
++    if os.name == "nt":
++        error("Windows setup requires reviewed module configuration adapters; no changes made")
++        return 1
+     # pylint: disable=C0415,W0621
+     import seiscomp.setup
+ 
+@@ -640,6 +649,25 @@
+ 
+ 
+ def on_check(args, _):
++    if os.name == "nt":
++        selected = [mod for mod in mods if not args or mod.name in args]
++        if args and set(args) - {mod.name for mod in selected}:
++            error("Unknown native module requested")
++            return 1
++        failed = 0
++        checked = 0
++        for mod in selected:
++            if shouldModuleRun(mod.name):
++                checked += 1
++                try:
++                    if not mod.isRunning() and mod.check() != 0:
++                        failed += 1
++                except Exception as exc:
++                    error(f"Native module check failed for {mod.name}: {exc}")
++                    failed += 1
++        if not useCSV:
++            print(f"Summary: {checked} native started modules checked; {failed} failed")
++        return 1 if failed else 0
+     cntStarted = 0
+     for mod in mods:
+         if mod.name in args or len(args) == 0:
+@@ -666,6 +694,8 @@
+ def on_exec(args, _):
+     if len(args) < 1:
+         error("no module name given")
++        if os.name == "nt":
++            return 1
+         return False
+ 
+     # Change back into the working dir
+@@ -848,6 +878,24 @@
+         error("expected argument: {crontab|env|variables}")
+         return 1
+ 
++    if os.name == "nt":
++        if args[0] == "env":
++            # PowerShell single-quoted strings preserve dollars/backticks and
++            # escape an embedded apostrophe by doubling it. Print only; no shell.
++            values = {"SEISCOMP_ROOT": SEISCOMP_ROOT,
++                      "PATH": os.environ.get("PATH", get_library_path()),
++                      "PYTHONPATH": os.environ.get("PYTHONPATH", PYTHONPATH)}
++            for name, value in values.items():
++                quoted = value.replace("'", "''")
++                print(f"$env:{name} = '{quoted}'")
++            return 0
++        if args[0] == "crontab":
++            error("Windows scheduling requires a separate Task Scheduler adapter")
++            return 1
++        if args[0] == "variables":
++            error("Windows print variables requires the separately qualified _system binding")
++            return 1
++
+     if args[0] == "crontab":
+         path = os.path.join(env.SEISCOMP_ROOT, "bin", "seiscomp")
+         print(f"*/3 * * * * {path} check >/dev/null 2>&1")
+@@ -992,6 +1040,9 @@
+ 
+ 
+ def on_update_config(args, _):
++    if os.name == "nt":
++        error("Windows update-config requires reviewed binding/database/module adapters; no changes made")
++        return 1
+     kernelModsStarted = False
+ 
+     availableMods = {mod.name: mod for mod in config_mods}
+@@ -1054,6 +1105,9 @@
+ 
+ 
+ def on_alias(args, _):
++    if os.name == "nt":
++        error("Windows aliases require a defined native executable/module mapping; POSIX symlinks are unsupported")
++        return 1
+     if len(args) < 2:
+         error("expected arguments: {create|remove} ALIAS_NAME APP_NAME")
+         return 1
+diff --git a/src/system/apps/seiscomp/windows/frontend.cpp b/src/system/apps/seiscomp/windows/frontend.cpp
+new file mode 100644
+--- /dev/null
++++ b/src/system/apps/seiscomp/windows/frontend.cpp
+@@ -0,0 +1,88 @@
++/* Native Windows frontend for the original Python controller.
++ * Same SeisComP Public License terms as seiscomp-control.py/kernel.py.
++ * Hosts the configured original CPython runtime; no shell/process-control shim. */
++#include <Python.h>
++#include <windows.h>
++#include <filesystem>
++#include <vector>
++#include <string>
++#include <cstdio>
++#include <cstring>
++#include "controller_python_config.h"
++
++namespace {
++void checked(PyStatus status) {
++	if ( PyStatus_Exception(status) ) Py_ExitStatusException(status);
++}
++class DllDirectories {
++public:
++	~DllDirectories() { for ( auto cookie : cookies ) RemoveDllDirectory(cookie); }
++	bool add(const std::filesystem::path &path) {
++		auto cookie = AddDllDirectory(path.c_str());
++		if ( !cookie ) return false;
++		cookies.push_back(cookie);
++		return true;
++	}
++private:
++	std::vector<DLL_DIRECTORY_COOKIE> cookies;
++};
++}
++
++int wmain(int argc, wchar_t **argv) {
++	// Python DLL itself is copied from the configured interpreter beside this
++	// executable. Its version and all imports are recorded during staging.
++	if ( std::strncmp(Py_GetVersion(), "3.10.11 ", 8) ) {
++		std::fputs("Configured CPython 3.10.11 runtime mismatch\n", stderr);
++		return 2;
++	}
++	std::vector<wchar_t> filename(32768);
++	DWORD size = GetModuleFileNameW(nullptr, filename.data(), static_cast<DWORD>(filename.size()));
++	if ( !size || size >= filename.size() ) {
++		std::fputs("Cannot resolve native controller installation path\n", stderr);
++		return 2;
++	}
++	const std::filesystem::path bin = std::filesystem::path(filename.data()).parent_path();
++	if ( bin.filename() != L"bin" ) {
++		std::fputs("Use the isolated installed bin layout; build-tree frontend is not an installation\n", stderr);
++		return 2;
++	}
++	const auto root = bin.parent_path();
++	DllDirectories directories;
++	if ( !SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS) ||
++	     !directories.add(bin) || !directories.add(root / L"lib") ||
++	     !directories.add(std::filesystem::path(ControllerPythonHome) / L"DLLs") ) {
++		std::fprintf(stderr, "Native Python DLL search setup failed: Windows error %lu\n", GetLastError());
++		return 2;
++	}
++	// CWD is deliberately retained. Original Environment.chroot/chback owns it.
++	PyConfig config;
++	PyConfig_InitIsolatedConfig(&config);
++	checked(PyConfig_SetString(&config, &config.program_name, ControllerPythonProgram));
++	checked(PyConfig_SetString(&config, &config.executable, ControllerPythonProgram));
++	checked(PyConfig_SetString(&config, &config.base_executable, ControllerPythonProgram));
++	checked(PyConfig_SetString(&config, &config.home, ControllerPythonHome));
++	const auto packagePath = (root / L"lib" / L"python").wstring();
++	checked(PyConfig_SetString(&config, &config.pythonpath_env, packagePath.c_str()));
++	config.write_bytecode = 0;
++	config.install_signal_handlers = 1;
++	std::vector<std::wstring> arguments;
++#if SC_CONTROLLER_FRONTEND
++	config.parse_argv = 0; // Controller flags remain controller flags.
++	const auto bootstrap = (bin / L"seiscomp-bootstrap.py").wstring();
++	checked(PyConfig_SetString(&config, &config.run_filename, bootstrap.c_str()));
++	arguments.push_back(bootstrap);
++#else
++	config.parse_argv = 1; // Native replacement for the configured seiscomp-python shell wrapper.
++	arguments.emplace_back(ControllerPythonProgram);
++#endif
++	for ( int i = 1; i < argc; ++i ) arguments.emplace_back(argv[i]);
++	std::vector<wchar_t *> pointers;
++	for ( auto &argument : arguments ) pointers.push_back(argument.data());
++	checked(PyConfig_SetArgv(&config, static_cast<Py_ssize_t>(pointers.size()), pointers.data()));
++	checked(Py_InitializeFromConfig(&config));
++	PyConfig_Clear(&config);
++	const int code = Py_RunMain();
++	// Preserve the signed C-int representation of all 32 process-exit bits,
++	// matching the existing windows.run_wait convention.
++	ExitProcess(static_cast<DWORD>(code));
++}
+diff --git a/src/system/apps/seiscomp/windows/python_config.h.in b/src/system/apps/seiscomp/windows/python_config.h.in
+new file mode 100644
+--- /dev/null
++++ b/src/system/apps/seiscomp/windows/python_config.h.in
+@@ -0,0 +1,4 @@
++/* Configured interpreter identity; no system installation is changed. */
++#pragma once
++constexpr const wchar_t *ControllerPythonProgram = LR"sc(@Python_EXECUTABLE@)sc";
++constexpr const wchar_t *ControllerPythonHome = LR"sc(@SC_WINDOWS_PYTHON_HOME@)sc";
+diff --git a/src/system/apps/seiscomp/windows/bootstrap.py b/src/system/apps/seiscomp/windows/bootstrap.py
+new file mode 100644
+--- /dev/null
++++ b/src/system/apps/seiscomp/windows/bootstrap.py
+@@ -0,0 +1,38 @@
++"""Native Windows bootstrap for the unchanged controller dispatch/ownership code.
++
++SeisComP Public License, as for seiscomp-control.py. This file is not a service.
++"""
++import os
++from pathlib import Path
++import runpy
++import struct
++import sys
++
++
++def main():
++    if os.name != 'nt' or sys.version_info[:3] != (3, 10, 11) or struct.calcsize('P') != 8:
++        raise RuntimeError('Native controller requires the configured CPython 3.10.11 x64 runtime')
++    root = Path(__file__).resolve().parent.parent
++    package = root / 'lib' / 'python'
++    controller = root / 'bin' / 'seiscomp-control.py'
++    if not (package / 'seiscomp' / '_config.pyd').is_file() or not controller.is_file():
++        raise RuntimeError('Native controller staging is incomplete: controller/_config.pyd missing')
++    # Before any SeisComP import. Retain handles through runpy and interpreter cleanup.
++    dll_directories = [os.add_dll_directory(str(root / folder)) for folder in ('bin', 'lib')]
++    sys.path.insert(0, str(package))
++    os.environ['SEISCOMP_ROOT'] = str(root)
++    os.environ['SEISCOMP_WRAP'] = 'TRUE'
++    os.environ['PATH'] = os.pathsep.join([str(root / p) for p in ('bin', 'sbin', 'lib')] +
++                                         [os.environ.get('PATH', '')])
++    os.environ['PYTHONPATH'] = os.pathsep.join([str(package), os.environ.get('PYTHONPATH', '')])
++    # No host-specific Unix shell file is sourced on Windows.
++    sys.argv[0] = str(controller)
++    try:
++        runpy.run_path(str(controller), run_name='__main__')
++    finally:
++        for directory in dll_directories:
++            directory.close()
++
++
++if __name__ == '__main__':
++    main()

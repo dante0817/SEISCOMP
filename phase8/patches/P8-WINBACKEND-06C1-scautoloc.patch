@@ -1,0 +1,15 @@
+diff --git a/apps/processing/scautoloc/main.cpp b/apps/processing/scautoloc/main.cpp
+--- a/apps/processing/scautoloc/main.cpp
++++ b/apps/processing/scautoloc/main.cpp
+@@ -26,6 +26,11 @@
+ 	// is destroyed when printing the overall objectcount
+ 	{
+ 		Seiscomp::Applications::AutolocApp app(argc, argv);
++#ifdef WIN32
++		// This application delegates to Client::Application::run and its done()
++		// performs the original Autoloc shutdown. Other run-loop families are not enrolled.
++		app.enableWindowsCooperativeStop();
++#endif
+ 		retCode = app.exec();
+ 	}
+ 

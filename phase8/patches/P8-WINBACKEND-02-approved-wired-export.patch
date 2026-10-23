@@ -1,0 +1,11 @@
+--- a/libs/seiscomp/wired/devices/socket.h
++++ b/libs/seiscomp/wired/devices/socket.h
+@@ -363,7 +363,7 @@
+ std::ostream &operator<<(std::ostream &, const Socket::IPAddress &ip);
+ std::ostream &operator<<(std::ostream &, const Anonymize<Socket::IPAddress> &ip);
+ 
+-std::string toString(const Socket::IPAddress &ip);
++SC_SYSTEM_CORE_API std::string toString(const Socket::IPAddress &ip);
+ 
+ 
+ }

@@ -1,0 +1,57 @@
+diff --git a/libs/seiscomp/gui/datamodel/pickerview.cpp b/libs/seiscomp/gui/datamodel/pickerview.cpp
+index be0d3c37..497f60cf 100644
+--- a/libs/seiscomp/gui/datamodel/pickerview.cpp
++++ b/libs/seiscomp/gui/datamodel/pickerview.cpp
+@@ -124,15 +124,23 @@ const char *Units[3] = {
+ 	"m"
+ };
+ 
++int compareGainUnit(const char *lhs, const char *rhs) {
++#ifdef WIN32
++	return _stricmp(lhs, rhs);
++#else
++	return strcasecmp(lhs, rhs);
++#endif
++}
++
+ 
+ PickerView::Config::UnitType fromGainUnit(const std::string &gainUnit) {
+-	if ( !strcasecmp(gainUnit.c_str(), Units[0]) ) {
++	if ( !compareGainUnit(gainUnit.c_str(), Units[0]) ) {
+ 		return PickerView::Config::UT_ACC;
+ 	}
+-	else if ( !strcasecmp(gainUnit.c_str(), Units[1]) ) {
++	else if ( !compareGainUnit(gainUnit.c_str(), Units[1]) ) {
+ 		return PickerView::Config::UT_VEL;
+ 	}
+-	else if ( !strcasecmp(gainUnit.c_str(), Units[2]) ) {
++	else if ( !compareGainUnit(gainUnit.c_str(), Units[2]) ) {
+ 		return PickerView::Config::UT_DISP;
+ 	}
+ 	return PickerView::Config::UT_RAW;
+@@ -5206,10 +5214,10 @@ bool PickerView::setOrigin(Seiscomp::DataModel::Origin* origin,
+ 			continue;
+ 
+ 		if ( (Core::Time)pick->time() < minTime )
+-			minTime = pick->time();
++			minTime = (Core::Time)pick->time();
+ 
+ 		if ( (Core::Time)pick->time() > maxTime )
+-			maxTime = pick->time();
++			maxTime = (Core::Time)pick->time();
+ 	}
+ 
+ 	if ( minTime > maxTime )
+@@ -5467,10 +5475,10 @@ bool PickerView::setOrigin(Seiscomp::DataModel::Origin* o) {
+ 			Pick* pick = Pick::Find(SC_D.origin->arrival(i)->pickID());
+ 			if ( pick ) {
+ 				if ( (Core::Time)pick->time() < minTime )
+-					minTime = pick->time();
++					minTime = (Core::Time)pick->time();
+ 
+ 				if ( (Core::Time)pick->time() > maxTime )
+-					maxTime = pick->time();
++					maxTime = (Core::Time)pick->time();
+ 
+ 				RecordViewItem* item = SC_D.recordView->item(adjustWaveformStreamID(pick->waveformID()));
+ 				if ( !item ) {

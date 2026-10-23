@@ -1,0 +1,167 @@
+diff --git a/libs/seiscomp/CMakeLists.txt b/libs/seiscomp/CMakeLists.txt
+--- a/libs/seiscomp/CMakeLists.txt
++++ b/libs/seiscomp/CMakeLists.txt
+@@ -213,6 +213,13 @@
+ SET(SYSTEM_CORE_HEADERS "")
+ SC_ADD_LIBRARY(SYSTEM_CORE core)
+ 
++IF(WIN32)
++	TARGET_SOURCES(seiscomp_core PRIVATE
++		${SC3_PACKAGE_ROOT_SOURCE_DIR}/src/system/apps/utils/win32/locking.c)
++	TARGET_INCLUDE_DIRECTORIES(seiscomp_core PRIVATE
++		${SC3_PACKAGE_ROOT_SOURCE_DIR}/src/system/apps/utils/win32)
++ENDIF()
++
+ SC_LIB_INSTALL_HEADERS(SYSTEM_CORE)
+ 
+ TARGET_LINK_LIBRARIES(seiscomp_core PUBLIC
+diff --git a/libs/seiscomp/system/CMakeLists.txt b/libs/seiscomp/system/CMakeLists.txt
+--- a/libs/seiscomp/system/CMakeLists.txt
++++ b/libs/seiscomp/system/CMakeLists.txt
+@@ -22,6 +22,10 @@
+ 	settings.ipp
+ )
+ 
++IF(WIN32)
++	LIST(APPEND SYSTEM_SOURCES windows_lock.cpp)
++ENDIF()
++
+ SET(SYSTEM_DEFINITIONS -DSEISCOMP_ROOT="${SC3_PACKAGE_INSTALL_PREFIX}")
+ SET(SYSTEM_DEFINITIONS ${SYSTEM_DEFINITIONS} -DSEISCOMP_SHARE_DIR="${PROJECT_SHARE_DIR}")
+ SET(SYSTEM_DEFINITIONS ${SYSTEM_DEFINITIONS} -DSEISCOMP_CONFIG_DIR="${PROJECT_CONFIG_DIR}/defaults")
+diff --git a/libs/seiscomp/system/application.cpp b/libs/seiscomp/system/application.cpp
+--- a/libs/seiscomp/system/application.cpp
++++ b/libs/seiscomp/system/application.cpp
+@@ -43,6 +43,7 @@
+ 
+ #ifdef WIN32
+ #include <windows.h>
++#include "windows_lock.h"
+ #endif
+ 
+ #include <cerrno>
+@@ -449,6 +450,10 @@
+ 	closeLogging();
+ 
+ 	PluginRegistry::Reset();
++
++#ifdef WIN32
++	Seiscomp::System::Detail::releaseWindowsApplicationLocks(this);
++#endif
+ 
+ 	if ( _instance == this ) {
+ 		_instance = nullptr;
+@@ -1808,7 +1813,7 @@
+ 	// locking successful
+ 	return fd;
+ #else
+-	return -1;
++	return Seiscomp::System::Detail::acquireWindowsApplicationLock(this, lockfile);
+ #endif
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+diff --git a/libs/seiscomp/system/windows_lock.cpp b/libs/seiscomp/system/windows_lock.cpp
+new file mode 100644
+--- /dev/null
++++ b/libs/seiscomp/system/windows_lock.cpp
+@@ -0,0 +1,85 @@
++/* Windows-only private application ownership adapter. Not an installed API.
++ * See application.cpp for SeisComP licensing and upstream provenance. */
++#define SEISCOMP_COMPONENT Application
++#include "windows_lock.h"
++#include "native.h"
++#include <seiscomp/logging/log.h>
++#include <map>
++#include <mutex>
++#include <vector>
++#include <utility>
++
++namespace Seiscomp { namespace System { namespace Detail {
++namespace {
++struct Lock {
++    HANDLE file;
++    std::wstring path;
++    Lock(HANDLE handle, std::wstring name) : file(handle), path(std::move(name)) {}
++    ~Lock() { if (file != INVALID_HANDLE_VALUE) CloseHandle(file); }
++    Lock(Lock &&other) noexcept : file(other.file), path(std::move(other.path)) {
++        other.file = INVALID_HANDLE_VALUE;
++    }
++    Lock(const Lock &) = delete;
++};
++struct Registry {
++    std::mutex mutex;
++    std::map<const void *, std::vector<Lock>> locks;
++};
++Registry &registry() { static Registry result; return result; }
++}
++
++int acquireWindowsApplicationLock(const void *owner, const std::string &path) {
++    try {
++        int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path.c_str(), -1, nullptr, 0);
++        if (!size) {
++            SEISCOMP_ERROR("Invalid UTF-8 lock path: Windows error %lu", GetLastError());
++            return -1;
++        }
++        std::wstring wide(static_cast<size_t>(size), L'\0');
++        if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path.c_str(), -1, &wide[0], size)) return -1;
++        wide.resize(static_cast<size_t>(size) - 1);
++        Registry &state = registry();
++        std::lock_guard<std::mutex> guard(state.mutex);
++        auto existing = state.locks.find(owner);
++        if (existing != state.locks.end()) {
++            for (const auto &lock : existing->second)
++                if (lock.path == wide) return 1;
++        }
++        // Deny deletion/replacement while owned, but permit PID readers and
++        // the 06A lock probes. Neither file nor kernel-lock handle is inherited.
++        HANDLE handle = CreateFileW(wide.c_str(), GENERIC_WRITE,
++            FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
++            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, nullptr);
++        if (handle == INVALID_HANDLE_VALUE) {
++            SEISCOMP_ERROR("Could not open lockfile %s: Windows error %lu", path.c_str(), GetLastError());
++            return -1;
++        }
++        Lock owned(handle, wide);
++        int result = sc_win_lock(handle, 1, 0);
++        if (result) {
++            DWORD error = GetLastError();
++            if (error == ERROR_LOCK_VIOLATION) return 0;
++            SEISCOMP_ERROR("Could not lock %s: Windows error %lu", path.c_str(), error);
++            return -1;
++        }
++        // Existing/stale text is overwritten only after exclusive ownership.
++        // Decimal PID text remains compatible with existing first-line readers.
++        if (!sc_win_write_pid(handle)) {
++            SEISCOMP_ERROR("Could not write PID %s: Windows error %lu", path.c_str(), GetLastError());
++            return -1;
++        }
++        state.locks[owner].push_back(std::move(owned));
++        return 1; // Status, never a truncated HANDLE / fabricated file descriptor.
++    }
++    catch (const std::exception &error) {
++        SEISCOMP_ERROR("Could not own application lock: %s", error.what());
++        return -1;
++    }
++}
++
++void releaseWindowsApplicationLocks(const void *owner) {
++    Registry &state = registry();
++    std::lock_guard<std::mutex> guard(state.mutex);
++    state.locks.erase(owner); // CloseHandle releases ownership; PID text may remain.
++}
++}}}
+diff --git a/libs/seiscomp/system/windows_lock.h b/libs/seiscomp/system/windows_lock.h
+new file mode 100644
+--- /dev/null
++++ b/libs/seiscomp/system/windows_lock.h
+@@ -0,0 +1,10 @@
++/* Windows-only private application ownership adapter. Not an installed API.
++ * See application.cpp for SeisComP licensing and upstream provenance. */
++#ifndef SEISCOMP_SYSTEM_WINDOWS_LOCK_H
++#define SEISCOMP_SYSTEM_WINDOWS_LOCK_H
++#include <string>
++namespace Seiscomp { namespace System { namespace Detail {
++int acquireWindowsApplicationLock(const void *owner, const std::string &path);
++void releaseWindowsApplicationLocks(const void *owner);
++}}}
++#endif

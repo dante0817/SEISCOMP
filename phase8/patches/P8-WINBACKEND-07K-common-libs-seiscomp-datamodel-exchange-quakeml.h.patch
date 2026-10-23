@@ -1,0 +1,47 @@
+--- a/src/base/common/libs/seiscomp/datamodel/exchange/quakeml.h
++++ b/src/base/common/libs/seiscomp/datamodel/exchange/quakeml.h
+@@ -35,17 +35,32 @@
+ 
+ 
+ /** @version 15.1 */
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ const char *QML_NS();
+ /** @version 15.1 */
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ const char *QML_NS_RT();
+ /** @version 15.1 */
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ const char *QML_NS_BED();
+ /** @version 15.1 */
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ const char *QML_NS_BED_RT();
+ 
+ /** @version 15.1 */
+ constexpr const char *QML_SMIPrefixEnvVar = "QML_SMI_PREFIX";
+ /** @version 15.1 */
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ const std::string &QML_SMIPrefix();
+ 
+ 
+@@ -55,7 +70,11 @@
+ namespace QML {
+ 
+ 
++#ifdef _WIN32
++class SC_SYSTEM_CORE_API TypeMapper {
++#else
+ class TypeMapper {
++#endif
+ 	public:
+ 		/**
+ 		 * @brief Maps an QML event type string to the EventType enumeration.

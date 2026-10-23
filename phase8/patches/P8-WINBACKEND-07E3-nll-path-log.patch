@@ -1,0 +1,29 @@
+--- a/src/base/contrib-sed/plugins/locator/nll/nll_locator.cpp
++++ b/src/base/contrib-sed/plugins/locator/nll/nll_locator.cpp
+@@ -493,16 +493,26 @@
+ 		}
+ 
+ 		if ( !fs::exists(tableDir) || !fs::is_directory(tableDir) ) {
++#ifdef _WIN32
++			SEISCOMP_ERROR("  + path to travel-time tables does not exist: %s",
++			               tableDir.string().c_str());
++#else
+ 			SEISCOMP_ERROR("  + path to travel-time tables does not exist: %s",
+ 			               tableDir.c_str());
++#endif
+ 			SEISCOMP_WARNING("+ ignoring NonLinLoc profile '%s'", it->c_str());
+ 			it = _profileNames.erase(it);
+ 			result = false;
+ 			continue;
+ 		}
+ 
++#ifdef _WIN32
++		SEISCOMP_DEBUG("  + testing existence of files in directory  : %s",
++		               tableDir.string().c_str());
++#else
+ 		SEISCOMP_DEBUG("  + testing existence of files in directory  : %s",
+ 		               tableDir.c_str());
++#endif
+ 		size_t fileCount = 0;
+ 		for ( const auto &entry : fs::directory_iterator(tableDir) ) {
+ 			std::string fileName = entry.path().filename().string();

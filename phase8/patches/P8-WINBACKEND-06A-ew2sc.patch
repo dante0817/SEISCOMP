@@ -1,0 +1,574 @@
+diff --git a/apps/ew2sc/CMakeLists.txt b/apps/ew2sc/CMakeLists.txt
+--- a/apps/ew2sc/CMakeLists.txt
++++ b/apps/ew2sc/CMakeLists.txt
+@@ -22,3 +22,8 @@
+ 
+ FILE(GLOB descs "${CMAKE_CURRENT_SOURCE_DIR}/descriptions/*.xml")
+ INSTALL(FILES ${descs} DESTINATION ${SC3_PACKAGE_APP_DESC_DIR})
++
++IF(WIN32)
++	TARGET_SOURCES(${EW2SC_TARGET} PRIVATE ew2sc_win32.cpp)
++	TARGET_LINK_LIBRARIES(${EW2SC_TARGET} ws2_32)
++ENDIF()
+diff --git a/apps/ew2sc/ew2sc.h b/apps/ew2sc/ew2sc.h
+--- a/apps/ew2sc/ew2sc.h
++++ b/apps/ew2sc/ew2sc.h
+@@ -25,7 +25,23 @@
+ 
+ #include <string>
+ #include <vector>
++#ifdef _WIN32
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <winsock2.h>
++#include <ws2tcpip.h>
++#include <atomic>
++// Preserve the SeisComP Notifier::GetMessage API at its provider ABI name.
++#ifdef GetMessage
++#undef GetMessage
++#endif
++#else
+ #include <netdb.h>
++#endif
+ #include <seiscomp/core/datamessage.h>
+ #include <seiscomp/client/application.h>
+ #include <seiscomp/client/inventory.h>
+@@ -95,7 +111,11 @@
+ 		 * @param msg the message
+ 		 * @return 0/1 pending on writing success
+ 		 */
++		#ifdef _WIN32
++		int ew_write(SOCKET sock, char* msg);
++#else
+ 		int ew_write(int sock, char* msg);
++#endif
+ 
+ 		/**
+ 		 * @brief  Initializes the application variables by reading values
+@@ -129,7 +149,18 @@
+ 		 * @param  timeout_msecs socket timeout
+ 		 * @return number integer value of sent bytes
+ 		 */
++		#ifdef _WIN32
++		int sendMessage(SOCKET sock, char* buf, int buflen, int flags, int timeout_msecs);
++		bool initWindowsNetwork();
++		void cleanupWindowsNetwork();
++		void stopWindowsConnection();
++		void disconnectWindows();
++		bool waitWindowsStop(DWORD milliseconds);
++		bool waitWindowsSocket(SOCKET sock, short events);
++		int receiveWindows(char *buffer, int size);
++#else
+ 		int sendMessage(int sock, char* buf, int buflen, int flags, int timeout_msecs);
++#endif
+ 
+ 		double getResidual(const std::string& res);
+ 
+@@ -200,11 +231,22 @@
+ 		struct sockaddr_in serv_addr;
+ 		struct hostent *server;
+ 
++#ifdef _WIN32
++		SOCKET socketDescriptor;
++		HANDLE _socketStopEvent;
++		bool _winsockInitialized;
++#else
+ 		int socketDescriptor;
++#endif
+ 		int senderPort;
+ 		int senderTimeout;
++#ifdef _WIN32
++		std::atomic<int> messageReceiverStatus;
++		std::atomic<int> heartThreadStatus;
++#else
+ 		int messageReceiverStatus;
+ 		int heartThreadStatus;
++#endif
+ 		int maxMsgSize;
+ 		int myAliveInt;
+ 
+@@ -212,7 +254,11 @@
+ 		char senderHeartText[256];
+ 		char myAliveString[256];
+ 
++#ifdef _WIN32
++		std::atomic<bool> _connected;
++#else
+ 		bool _connected;
++#endif
+ 		bool _archive;
+ 		bool _enableUncertainties;
+ 
+diff --git a/apps/ew2sc/ew2sc.cpp b/apps/ew2sc/ew2sc.cpp
+--- a/apps/ew2sc/ew2sc.cpp
++++ b/apps/ew2sc/ew2sc.cpp
+@@ -21,6 +21,11 @@
+ 
+ #define SEISCOMP_COMPONENT EW2SC
+ 
++#ifdef _WIN32
++// Winsock2 must precede framework headers which may include windows.h.
++#include "ew2sc.h"
++#endif
++
+ #include <seiscomp/logging/output/filerotator.h>
+ #include <seiscomp/logging/channel.h>
+ #include <seiscomp/client/inventory.h>
+@@ -53,6 +58,15 @@
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ EW2SC::EW2SC(int argc, char** argv) : Application(argc, argv) {
++#ifdef _WIN32
++	socketDescriptor = INVALID_SOCKET;
++	_socketStopEvent = NULL;
++	_winsockInitialized = false;
++	_connected = false;
++	messageReceiverStatus = heartThreadStatus = 1;
++	_listenerThread = _heartbeatThread = nullptr;
++	msgBuffer = nullptr;
++#endif
+ 	setLoadInventoryEnabled(false);
+ 	setLoadStationsEnabled(true);
+ 	setAutoApplyNotifierEnabled(true);
+@@ -85,6 +99,9 @@
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ EW2SC::~EW2SC() {
++#ifdef _WIN32
++	cleanupWindowsNetwork();
++#endif
+ 
+ 	delete _infoChannel;
+ 	delete _infoOutput;
+@@ -312,6 +329,7 @@
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
++#ifndef _WIN32
+ bool EW2SC::run() {
+ 
+ 	while ( !isExitRequested() ) {
+@@ -470,6 +488,8 @@
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
++#endif // original POSIX connection/thread lifecycle
++
+ int EW2SC::ew_read() {
+ 
+ 	static int state;
+@@ -489,15 +509,28 @@
+ 	nchar = 0;
+ 	messageReceiverStatus = 0;
+ 
++#ifdef _WIN32
++	// Keep the original parser and valid framing; own storage across reconnects
++	// and reserve the extra byte used by its terminating NUL / overflow guard.
++	std::vector<char> windowsMessageBuffer(static_cast<size_t>(maxMsgSize) + 1, 0);
++	msgBuffer = windowsMessageBuffer.data();
++#else
+ 	// Allocating the message buffer thru memory
+ 	if ( (msgBuffer = (char*) malloc(maxMsgSize)) == (char*) NULL )
+ 		SEISCOMP_LOG(_errorChannel, "Can't allocate buffer size %d", maxMsgSize);
++#endif
+ 
+ 	while ( _connected ) {
+ 
+ 		if ( ++inchar == nr ) {
++#ifdef _WIN32
++			nr = receiveWindows(inBuffer, INBUFFERSIZE);
++			if ( nr <= 0 ) {
++				disconnectWindows();
++#else
+ 			nr = read(socketDescriptor, inBuffer, INBUFFERSIZE);
+ 			if ( nr < 0 ) {
++#endif
+ 				SEISCOMP_ERROR("Failed to read socket content");
+ 				messageReceiverStatus = -1;
+ 				heartThreadStatus = -1;
+@@ -536,6 +569,14 @@
+ 		// Getting the data ready to be de-garbaged if end character matches ETX
+ 		if ( state == ASSEMBLING_MESSAGE ) {
+ 			if ( chr == endCharacter ) {
++#ifdef _WIN32
++				if ( nchar < 9 ) {
++					SEISCOMP_ERROR("Short Earthworm frame; re-synching");
++					state = SEARCHING_FOR_MESSAGE_START;
++					nchar = 0;
++					continue;
++				}
++#endif
+ 				msgBuffer[nchar] = 0;
+ 
+ 				if ( strcmp(&msgBuffer[9], senderHeartText) == 0 ) {
+@@ -600,15 +641,23 @@
+ 			else {
+ 				if ( chr == escape ) {
+ 					if ( ++inchar == nr ) {
++#ifdef _WIN32
++						nr = receiveWindows(inBuffer, INBUFFERSIZE);
++#else
+ 						nr = read(socketDescriptor, inBuffer, INBUFFERSIZE);
++#endif
+ 						if ( nr <= 0 ) {
+ 							// The socket is closed, we need to kill ourself and
+ 							// tell the main thread to restart us
+ 							SEISCOMP_ERROR("Can not read from network. Restarting");
+ 							messageReceiverStatus = -1;
+ 							heartThreadStatus = -1;
++#ifdef _WIN32
++							disconnectWindows();
++#else
+ 							_heartbeatThread->join();
+ 							_listenerThread->join();
++#endif
+ 							break;
+ 						}
+ 						inchar = 0;
+@@ -665,7 +714,11 @@
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
++#ifdef _WIN32
++int EW2SC::ew_write(SOCKET sock, char* msg) {
++#else
+ int EW2SC::ew_write(int sock, char* msg) {
++#endif
+ 
+ 	char asciilogo[11]; // ascii version of outgoing logo
+ 	char startmsg = STX; // flag for beginning of message
+@@ -678,21 +731,33 @@
+ 	sprintf(asciilogo, "%c%3d%3d%3d", startmsg, _instID, _modID, MSGID);
+ 	rc = sendMessage(sock, asciilogo, 10, 0, senderTimeout);
+ 	if ( rc != 10 ) {
++#ifdef _WIN32
++		SEISCOMP_ERROR("write() Winsock error %d", WSAGetLastError());
++#else
+ 		SEISCOMP_ERROR("write() %s", strerror(errno));
++#endif
+ 		return -1;
+ 	}
+ 
+ 	// "message" -> break it into chunks if it's big!
+ 	rc = sendMessage(sock, msg, msglength, 0, senderTimeout);
+ 	if ( rc == -1 ) {
++#ifdef _WIN32
++		SEISCOMP_ERROR("write() Winsock error %d", WSAGetLastError());
++#else
+ 		SEISCOMP_ERROR("write() %s", strerror(errno));
++#endif
+ 		return -1;
+ 	}
+ 
+ 	// "end of transmission" flag
+ 	rc = sendMessage(sock, &endmsg, 1, 0, senderTimeout);
+ 	if ( rc != 1 ) {
++#ifdef _WIN32
++		SEISCOMP_ERROR("write() Winsock error %d", WSAGetLastError());
++#else
+ 		SEISCOMP_ERROR("write() %s", strerror(errno));
++#endif
+ 		return -1;
+ 	}
+ 
+@@ -704,6 +769,7 @@
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
++#ifndef _WIN32
+ int EW2SC::sendMessage(int sock, char* buf, int buflen, int flags,
+                        int timeout_msecs) {
+ 
+@@ -746,6 +812,8 @@
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
++#endif // original POSIX send retry / timing behavior
++
+ int EW2SC::extractOrigin(char* msg) {
+ 
+ 	Notifier::SetEnabled(true);
+diff --git a/apps/ew2sc/ew2sc_win32.cpp b/apps/ew2sc/ew2sc_win32.cpp
+new file mode 100644
+--- /dev/null
++++ b/apps/ew2sc/ew2sc_win32.cpp
+@@ -0,0 +1,275 @@
++/*
++ * Copyright (C) 2012 OVSM/IPGP
++ * Native Windows transport adaptation, retaining ew2sc's original protocol.
++ * This program is free software under GNU GPL version 3 or later, without
++ * warranty. See the original license notice in ew2sc.cpp and ew2sc.h.
++ */
++#ifdef _WIN32
++#define SEISCOMP_COMPONENT EW2SC
++#include "ew2sc.h"
++#include <seiscomp/logging/log.h>
++#include <cstring>
++#include <cstdlib>
++#include <ctime>
++#include <exception>
++#include <limits>
++
++bool EW2SC::initWindowsNetwork() {
++    if (_winsockInitialized) return true;
++    if (maxMsgSize < 9 || maxMsgSize == (std::numeric_limits<int>::max)()) {
++        SEISCOMP_ERROR("Invalid Earthworm maxMsgSize: %d", maxMsgSize);
++        return false;
++    }
++    WSADATA data;
++    int error = WSAStartup(MAKEWORD(2, 2), &data);
++    if (error) {
++        SEISCOMP_ERROR("WSAStartup: Winsock error %d", error);
++        return false;
++    }
++    _winsockInitialized = true;
++    _socketStopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
++    if (!_socketStopEvent) {
++        SEISCOMP_ERROR("CreateEvent: Windows error %lu", GetLastError());
++        cleanupWindowsNetwork();
++        return false;
++    }
++    return true;
++}
++
++void EW2SC::disconnectWindows() {
++    _connected = false;
++    if (_socketStopEvent) SetEvent(_socketStopEvent);
++}
++
++void EW2SC::stopWindowsConnection() {
++    // Only the supervisor/destructor owns close and thread deletion. Workers
++    // publish disconnect; they never join themselves or close a reused SOCKET.
++    disconnectWindows();
++    if (socketDescriptor != INVALID_SOCKET) shutdown(socketDescriptor, SD_BOTH);
++    if (_listenerThread) {
++        if (_listenerThread->joinable()) _listenerThread->join();
++        delete _listenerThread;
++        _listenerThread = nullptr;
++    }
++    if (_heartbeatThread) {
++        if (_heartbeatThread->joinable()) _heartbeatThread->join();
++        delete _heartbeatThread;
++        _heartbeatThread = nullptr;
++    }
++    if (socketDescriptor != INVALID_SOCKET) {
++        closesocket(socketDescriptor);
++        socketDescriptor = INVALID_SOCKET;
++    }
++    messageReceiverStatus = heartThreadStatus = -1;
++    msgBuffer = nullptr;
++}
++
++void EW2SC::cleanupWindowsNetwork() {
++    stopWindowsConnection();
++    if (_socketStopEvent) { CloseHandle(_socketStopEvent); _socketStopEvent = nullptr; }
++    if (_winsockInitialized) { WSACleanup(); _winsockInitialized = false; }
++}
++
++bool EW2SC::waitWindowsStop(DWORD milliseconds) {
++    return WaitForSingleObject(_socketStopEvent, milliseconds) != WAIT_TIMEOUT;
++}
++
++bool EW2SC::waitWindowsSocket(SOCKET sock, short events) {
++    // Nonblocking Winsock + a finite poll emulates the original blocking I/O,
++    // while allowing the supervisor's stop event to cancel either worker.
++    while (_connected && !waitWindowsStop(0)) {
++        WSAPOLLFD descriptor = {};
++        descriptor.fd = sock;
++        descriptor.events = events;
++        int result = WSAPoll(&descriptor, 1, 100);
++        if (result > 0) {
++            if (descriptor.revents & POLLNVAL) { WSASetLastError(WSAENOTSOCK); return false; }
++            return true;
++        }
++        if (result == SOCKET_ERROR && WSAGetLastError() != WSAEINTR) return false;
++    }
++    WSASetLastError(WSAEINTR);
++    return false;
++}
++
++int EW2SC::receiveWindows(char *buffer, int size) {
++    while (waitWindowsSocket(socketDescriptor, POLLRDNORM)) {
++        int result = recv(socketDescriptor, buffer, size, 0);
++        if (result != SOCKET_ERROR) return result; // Includes orderly EOF (0).
++        int error = WSAGetLastError();
++        if (error != WSAEWOULDBLOCK && error != WSAEINTR) return SOCKET_ERROR;
++    }
++    return SOCKET_ERROR;
++}
++
++bool EW2SC::run() {
++    if (!initWindowsNetwork()) return false;
++    bool success = true;
++    try {
++        while (!isExitRequested()) {
++            Sleep(100); // Preserve the actual 100 ms POSIX outer-loop cadence.
++            if (isExitRequested()) break;
++            if (!_connected) {
++                stopWindowsConnection();
++                ResetEvent(_socketStopEvent);
++                ew_connect();
++            }
++            if (_connected && !_listenerThread) startListenerThread();
++            if (_connected && !_heartbeatThread) startHeartbeatThread();
++        }
++    }
++    catch (const std::exception &error) {
++        SEISCOMP_ERROR("Earthworm Windows transport: %s", error.what());
++        success = false;
++    }
++    catch (...) {
++        SEISCOMP_ERROR("Earthworm Windows transport failed");
++        success = false;
++    }
++    cleanupWindowsNetwork();
++    SEISCOMP_LOG(_infoChannel, "Received application stop request. Leaving...");
++    return success;
++}
++
++void EW2SC::runListenerThread() {
++    SEISCOMP_LOG(_infoChannel, "Earthworm listener thread launched");
++    try { ew_read(); }
++    catch (const std::exception &error) { SEISCOMP_ERROR("Earthworm listener: %s", error.what()); }
++    catch (...) { SEISCOMP_ERROR("Earthworm listener failed"); }
++    messageReceiverStatus = -1;
++    disconnectWindows();
++    SEISCOMP_LOG(_infoChannel, "Earthworm listener thread stopped");
++}
++
++void EW2SC::runHeartbeatThread() {
++    SEISCOMP_LOG(_infoChannel, "Earthworm heartbeat thread launched");
++    try { sendHeartbeat(); }
++    catch (const std::exception &error) { SEISCOMP_ERROR("Earthworm heartbeat: %s", error.what()); }
++    catch (...) { SEISCOMP_ERROR("Earthworm heartbeat failed"); }
++    heartThreadStatus = -1;
++    disconnectWindows();
++    SEISCOMP_LOG(_infoChannel, "Earthworm heartbeat thread stopped");
++}
++
++void EW2SC::startListenerThread() {
++    messageReceiverStatus = 0;
++    _listenerThread = new std::thread(&EW2SC::runListenerThread, this);
++}
++
++void EW2SC::startHeartbeatThread() {
++    heartThreadStatus = 0;
++    _heartbeatThread = new std::thread(&EW2SC::runHeartbeatThread, this);
++}
++
++int EW2SC::ew_connect() {
++    SEISCOMP_LOG(_infoChannel, "Trying to connect to %s on port %d", _senderHostName.c_str(), senderPort);
++    socketDescriptor = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
++    int error = socketDescriptor == INVALID_SOCKET ? WSAGetLastError() : 0;
++    if (!error) {
++        // Keep the original first IPv4 address resolution behavior.
++        server = gethostbyname(_senderHostName.c_str());
++        if (!server) {
++            SEISCOMP_ERROR("Host %s resolving failed: Winsock error %d", _senderHostName.c_str(), WSAGetLastError());
++            stopWindowsConnection();
++            // Original resolver failure exits with status 0. Request that exit
++            // through Application so Windows sockets/threads still get cleaned.
++            exit(0);
++            return EXIT_FAILURE;
++        }
++        memset(&serv_addr, 0, sizeof(serv_addr));
++        serv_addr.sin_family = AF_INET;
++        memcpy(&serv_addr.sin_addr, server->h_addr_list[0], sizeof(serv_addr.sin_addr));
++        serv_addr.sin_port = htons(static_cast<u_short>(senderPort));
++        WSAEVENT ready = WSACreateEvent();
++        if (ready == WSA_INVALID_EVENT) error = WSAGetLastError();
++        else {
++            if (WSAEventSelect(socketDescriptor, ready, FD_CONNECT) == SOCKET_ERROR)
++                error = WSAGetLastError();
++            else if (connect(socketDescriptor, reinterpret_cast<sockaddr *>(&serv_addr), sizeof(serv_addr)) == SOCKET_ERROR) {
++                error = WSAGetLastError();
++                if (error == WSAEWOULDBLOCK || error == WSAEINPROGRESS) {
++                    for (;;) {
++                        if (isExitRequested()) { error = WSAEINTR; break; }
++                        DWORD result = WSAWaitForMultipleEvents(1, &ready, FALSE, 100, FALSE);
++                        if (result == WSA_WAIT_TIMEOUT) continue;
++                        if (result == WSA_WAIT_FAILED) { error = WSAGetLastError(); break; }
++                        WSANETWORKEVENTS events = {};
++                        if (WSAEnumNetworkEvents(socketDescriptor, ready, &events) == SOCKET_ERROR)
++                            error = WSAGetLastError();
++                        else if (events.lNetworkEvents & FD_CONNECT)
++                            error = events.iErrorCode[FD_CONNECT_BIT];
++                        else continue;
++                        break;
++                    }
++                }
++            }
++            // WSAEventSelect made the socket nonblocking. Leave it nonblocking
++            // for cancellable worker polling; no SOCKET-to-int conversions.
++            if (WSAEventSelect(socketDescriptor, nullptr, 0) == SOCKET_ERROR && !error)
++                error = WSAGetLastError();
++            WSACloseEvent(ready);
++        }
++    }
++    if (error) {
++        stopWindowsConnection();
++        if (!isExitRequested()) {
++            SEISCOMP_LOG(_errorChannel, "Can't connect to %s:%d (Winsock error %d). New attempt after 9 seconds",
++                _senderHostName.c_str(), senderPort, error);
++            // Preserve the actual upstream 9-second failure delay, cancellably.
++            ULONGLONG begin = GetTickCount64();
++            while (!isExitRequested() && GetTickCount64() - begin < 9000) Sleep(100);
++        }
++        return EXIT_FAILURE;
++    }
++    _connected = true;
++    SEISCOMP_LOG(_infoChannel, "Network socket opened to Earthworm [%s]", _senderHostName.c_str());
++    return EXIT_SUCCESS;
++}
++
++int EW2SC::sendHeartbeat() {
++    heartThreadStatus = 0;
++    time(&_lastSocketBeat);
++    while (_connected && !waitWindowsStop(1000)) {
++        time_t now;
++        time(&now);
++        if (difftime(now, _lastSocketBeat) > static_cast<double>(myAliveInt) && myAliveInt != 0) {
++            if (ew_write(socketDescriptor, myAliveString) != 0) {
++                SEISCOMP_ERROR("Problem sending alive msg to socket");
++                disconnectWindows();
++                break;
++            }
++            SEISCOMP_DEBUG("Heartbeat sent to %s", _senderHostName.c_str());
++            _lastSocketBeat = now;
++        }
++    }
++    return EXIT_SUCCESS;
++}
++
++int EW2SC::sendMessage(SOCKET sock, char *buffer, int length, int flags, int timeout_msecs) {
++    int sent = 0, noProgressCount = 0;
++    while (sent < length) {
++        if (!waitWindowsSocket(sock, POLLWRNORM)) return -1;
++        int count = ::send(sock, buffer + sent, length - sent, flags);
++        if (count == SOCKET_ERROR) {
++            int error = WSAGetLastError();
++            // Emulate the original blocking send, not a new network deadline.
++            if (error == WSAEWOULDBLOCK || error == WSAEINTR) continue;
++            SEISCOMP_ERROR("sendMessage() Winsock error %d", error);
++            return -1;
++        }
++        sent += count;
++        if (!count) {
++            ++noProgressCount;
++            if (5LL * noProgressCount > timeout_msecs) {
++                SEISCOMP_ERROR("sendMessage() socket send timeout");
++                WSASetLastError(WSAETIMEDOUT);
++                return 0;
++            }
++            // Upstream literally sleeps 5*1000 SECONDS despite its 5 ms
++            // comment. Retain that behavior until a separate fix is approved.
++            if (waitWindowsStop(5000000)) { WSASetLastError(WSAEINTR); return -1; }
++        }
++    }
++    return sent;
++}
++#endif

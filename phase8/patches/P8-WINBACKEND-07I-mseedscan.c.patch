@@ -1,0 +1,394 @@
+--- a/src/base/seedlink/plugins/mseedscan_plugin/mseedscan.c
++++ b/src/base/seedlink/plugins/mseedscan_plugin/mseedscan.c
+@@ -42,15 +42,30 @@
+ #include <stdlib.h>
+ #include <fcntl.h>
+ #include <errno.h>
++#ifdef _WIN32
++#include "windows_files_private.h"
++#include "windows_regex.h"
++#include <io.h>
++#define regex_t ms_regex
++#define regcomp ms_regcomp
++#define regexec ms_regexec
++#define REG_EXTENDED 1
++#define REG_NOSUB 2
++#define off_t int64_t
++#define stat _stat64
++#else
+ #include <unistd.h>
++#endif
+ #include <string.h>
+ #include <stdarg.h>
+ #include <signal.h>
+ #include <time.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
++#ifndef _WIN32
+ #include <dirent.h>
+ #include <regex.h>
++#endif
+ 
+ #ifndef TESTING
+ #include <plugin.h>
+@@ -76,9 +91,22 @@
+  * processed.
+  */
+ 
++#ifdef _WIN32
++typedef ms_win_identity ms_scan_identity;
++#else
++typedef ino_t ms_scan_identity;
++#define ms_native_stat stat
++#define ms_native_fopen fopen
++#endif
++
+ /* Structure used as the key for B-tree of file entries (FileNode) */
+ typedef struct filekey {
+-  ino_t inode;           /* Inode number, assumed to be unsigned */
++#ifdef _WIN32
++  ms_win_identity inode;
++#else
++  ino_t inode;
++#endif
++ /* Inode number, assumed to be unsigned */
+   char filename[1];      /* File name, sized appropriately */
+ } FileKey;
+ 
+@@ -124,7 +152,7 @@
+ 
+ static int scanfiles (char *targetdir, char *basedir, int level, time_t scantime);
+ static FileNode *findfile (FileKey *fkey);
+-static FileNode *addfile (ino_t inode, char *filename, time_t modtime);
++static FileNode *addfile (ms_scan_identity inode, char *filename, time_t modtime);
+ static off_t processfile (char *filename, FileNode *fnode, off_t newsize, time_t newmodtime);
+ static void  prunefiles (time_t scantime);
+ static void  printfilelist (FILE *fd);
+@@ -141,14 +169,26 @@
+ static void  usage ();
+ 
+ 
++#ifdef _WIN32
++#include "windows_scanner_private.h"
++#endif
++
++#ifdef _WIN32
++#define main ms_scanner_main
++#endif
+ int
+ main (int argc, char** argv)
+ {
+   DirLink *dlp;
+   time_t scantime, statetime;
++#ifndef _WIN32
+   struct timespec treq, trem;
++#endif
+   int dirfilecount = DIRFILEINT;
+ 
++#ifdef _WIN32
++  if(ms_controls_init()<0)return 1;
++#else
+   /* Signal handling using POSIX routines */
+   struct sigaction sa;
+   
+@@ -166,26 +206,40 @@
+   sigaction(SIGHUP, &sa, NULL);
+   sigaction(SIGPIPE, &sa, NULL);
+   
++#endif
+   filetree = RBTreeCreate (keycompare, free, free);
+   
+   /* Process command line parameters */
+-  if (processparam (argc, argv) < 0)
++  if (processparam (argc, argv) < 0) {
++#ifdef _WIN32
++    ms_controls_close();
++#endif
+     return 1;
+-  
++  }
++  
++#ifndef _WIN32
+   treq.tv_sec = (time_t) scanint;
+   treq.tv_nsec = (long) 0;
++#endif
+   
+   statetime = time(NULL);
+   
+   while ( stopsig == 0 )
+     {
++#ifdef _WIN32
++      ms_controls_poll();
++#endif
+       dlp = dirlist;
+ 
+       scantime = time(NULL);
+       
+       while ( dlp != 0 && stopsig == 0 )
+ 	{
++#ifdef _WIN32
++          if(scanfiles(dlp->dirname,dlp->dirname,maxrecur,scantime)<0){ms_controls_close();return 1;}
++#else
+ 	  scanfiles (dlp->dirname, dlp->dirname, maxrecur, scantime);
++#endif
+ 	  
+ 	  dlp = dlp->next;
+ 	}
+@@ -217,15 +271,39 @@
+ 	  if ( nextnew ) nextnew = 0;
+ 	  
+ 	  /* Sleep for specified interval */
++#ifdef _WIN32
++          if(ms_win_wait_seconds(ms_wake,scanint)<0){lprintf(0,"Native wait failed");ms_controls_close();return 1;}
++          ms_controls_poll();
++#else
+ 	  nanosleep (&treq, &trem);
++#endif
+ 	}
+     }
+   
+   if ( statefile )
+     savestate (statefile);
+   
++#ifdef _WIN32
++  ms_controls_close();
++#endif
+   return 0;
+ }  /* End of main() */
++#ifdef _WIN32
++#undef main
++/* Native UTF-16 CRT entry preserves non-ASCII argv without ACP round trips. */
++int wmain(int argc, wchar_t **wideargv) {
++    char **argv;int i,result;
++    if(argc<0 || (size_t)argc>SIZE_MAX/sizeof(char*)-1)return 1;
++    argv=malloc(((size_t)argc+1)*sizeof(char*));if(!argv)return 1;
++    for(i=0;i<argc;++i) {
++        argv[i]=ms_utf8(wideargv[i]);
++        if(!argv[i]){while(i)free(argv[--i]);free(argv);return 1;}
++    }
++    argv[argc]=NULL;result=ms_scanner_main(argc,argv);
++    for(i=0;i<argc;++i)free(argv[i]);free(argv);return result;
++}
++#endif
++
+ 
+ 
+ /***************************************************************************
+@@ -247,6 +325,7 @@
+  *
+  * Return 0 on success and -1 on error.
+  ***************************************************************************/
++#ifndef _WIN32
+ static int
+ scanfiles (char *targetdir, char *basedir, int level, time_t scantime)
+ {
+@@ -448,7 +527,8 @@
+   close (rrootdir);
+   
+   return 0;
+-}  /* End of scanfiles() */
++}
++#endif  /* End of scanfiles() */
+ 
+ 
+ /***************************************************************************
+@@ -483,7 +563,7 @@
+  * Return a pointer to the added FileNode on success and 0 on error.
+  ***************************************************************************/
+ static FileNode*
+-addfile (ino_t inode, char *filename, time_t modtime)
++addfile (ms_scan_identity inode, char *filename, time_t modtime)
+ {
+   FileKey *newfkey;
+   FileNode *newfnode;
+@@ -498,8 +578,12 @@
+   /* Create new tree node */
+   newfnode = (FileNode *) malloc (sizeof(FileNode));
+   
+-  if ( ! newfkey || ! newfnode )
++  if ( ! newfkey || ! newfnode ) {
++#ifdef _WIN32
++    free(newfkey);free(newfnode);
++#endif
+     return 0;
++  }
+   
+   /* Populate the new key and node */
+   newfkey->inode = inode;
+@@ -523,6 +607,7 @@
+  *
+  * Return the new file offset on success and -1 on error.
+  ***************************************************************************/
++#ifndef _WIN32
+ static off_t
+ processfile (char *filename, FileNode *fnode, off_t newsize, time_t newmodtime)
+ {
+@@ -619,7 +704,8 @@
+ 	     reccnt, RECSIZE, filename);
+   
+   return newoffset;
+-}  /* End of processfile() */
++}
++#endif  /* End of processfile() */
+ 
+ 
+ /***************************************************************************
+@@ -662,6 +748,7 @@
+  *
+  * Print file tree to the specified descriptor.
+  ***************************************************************************/
++#ifndef _WIN32
+ static void
+ printfilelist (FILE *fp)
+ {
+@@ -686,7 +773,8 @@
+     }
+   
+   StackDestroy (stack, free);
+-}  /* End of printfilelist() */
++}
++#endif  /* End of printfilelist() */
+ 
+ 
+ /***************************************************************************
+@@ -696,6 +784,7 @@
+  *
+  * Returns 0 on success and -1 on error.
+  ***************************************************************************/
++#ifndef _WIN32
+ static int
+ savestate (char *statefile)
+ {
+@@ -714,7 +803,8 @@
+   fclose (fp);
+   
+   return 0;
+-}  /* End of savestate() */
++}
++#endif  /* End of savestate() */
+ 
+ 
+ /***************************************************************************
+@@ -724,6 +814,7 @@
+  *
+  * Returns 0 on success and -1 on error.
+  ***************************************************************************/
++#ifndef _WIN32
+ static int
+ recoverstate (char *statefile)
+ {
+@@ -774,7 +865,8 @@
+   fclose (fp);
+   
+   return 0;
+-}  /* End of recoverstate() */
++}
++#endif  /* End of recoverstate() */
+ 
+ 
+ /***************************************************************************
+@@ -916,6 +1008,9 @@
+   if ( matchstr )
+     {
+       fnmatch = (regex_t *) malloc (sizeof (regex_t));
++#ifdef _WIN32
++      if(!fnmatch)return -1;
++#endif
+       
+       if ( regcomp(fnmatch, matchstr, REG_EXTENDED|REG_NOSUB ) != 0 )
+ 	{
+@@ -928,6 +1023,9 @@
+   if ( rejectstr )
+     {
+       fnreject = (regex_t *) malloc (sizeof (regex_t));
++#ifdef _WIN32
++      if(!fnreject)return -1;
++#endif
+       
+       if ( regcomp(fnreject, rejectstr, REG_EXTENDED|REG_NOSUB ) != 0 )
+ 	{
+@@ -940,7 +1038,12 @@
+   if ( statefile )
+     {
+       /* Check if interval was specified for state saving */
++#ifdef _WIN32
++      tptr=strrchr(statefile,':');if(tptr==statefile+1)tptr=NULL;
++      if(tptr!=NULL)
++#else
+       if ( (tptr = strchr (statefile, ':')) != NULL )
++#endif
+         {
+           char *tail;
+           
+@@ -957,7 +1060,13 @@
+       
+       if ( recoverstate (statefile) < 0 )
+         {
++#ifdef _WIN32
++          int recovery_error=errno;
++#endif
+           lprintf (0, "state recovery failed");
++#ifdef _WIN32
++          if(recovery_error!=ENOENT)return -1;
++#endif
+         }
+       /* If nextnew (-z) was specified but state file read, turn it off */
+       else if ( nextnew == 2 )
+@@ -1024,7 +1133,7 @@
+     dirname[dirlen-1] = '\0';
+   
+   /* Verify that a directory exists, if not log a warning */
+-  if ( stat (dirname, &st) )
++  if ( ms_native_stat (dirname, &st) )
+     {
+       lprintf (0, "WARNING: Could not find '%s'", dirname);
+     }
+@@ -1078,7 +1187,7 @@
+ 
+   lprintf (3, "Checking directory list file '%s'", filename);
+ 
+-  if ( stat (filename, &st) )
++  if ( ms_native_stat (filename, &st) )
+     {
+       lprintf (0, "Cannot stat dir list file %s: %s", filename, strerror(errno));
+       return;
+@@ -1108,7 +1217,7 @@
+     }
+   dirlist = 0;
+   
+-  if ( ! (fp = fopen(filename, "r")) )
++  if ( ! (fp = ms_native_fopen(filename, "r")) )
+     {
+       lprintf (0, "Cannot open dir list file %s: %s", filename, strerror(errno));
+       return;
+@@ -1155,6 +1264,10 @@
+   int cmpval;
+   
+   /* Compare Inode values */
++#ifdef _WIN32
++  cmpval = ms_win_identity_compare(&((FileKey*)a)->inode,&((FileKey*)b)->inode);
++  if(cmpval)return cmpval;
++#else
+   if ( ((FileKey*)a)->inode > ((FileKey*)b)->inode )
+     return 1;
+   
+@@ -1162,6 +1275,7 @@
+     return -1;
+   
+   /* Compare filename values */
++#endif
+   cmpval = strcmp ( ((FileKey*)a)->filename, ((FileKey*)b)->filename );
+   
+   if ( cmpval > 0 )
+@@ -1186,7 +1300,11 @@
+ static void
+ print_handler (int sig)
+ {
++#ifdef _WIN32
++  fprintf(stderr,"Filename\tVolume\tFileID128\tOffset\tModtime\n");
++#else
+   fprintf (stderr, "Filename\tInode\tOffset\tModtime\n");
++#endif
+   printfilelist (stderr);
+ }
+ 

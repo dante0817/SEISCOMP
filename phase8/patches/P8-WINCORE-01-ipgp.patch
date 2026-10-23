@@ -1,0 +1,23 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 86a40cd..add5e74 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,6 +1,6 @@
+ SC_BEGIN_PACKAGE(IPGP)
+ 
+-OPTION(SC_IPGP_HYPO71 "Build Hypo71 which requires a fortran compiler" ON)
++OPTION(SC_IPGP_HYPO71 "Build the optional Hypo71 executable and locator plugin (disable for core-first builds)" ON)
+ 
+ IF(CMAKE_COMPILER_IS_GNUCC)
+ 	IF(GCC_VERSION VERSION_LESS "4.7")
+diff --git a/plugins/locator/CMakeLists.txt b/plugins/locator/CMakeLists.txt
+index 6058dd8..3e50c91 100644
+--- a/plugins/locator/CMakeLists.txt
++++ b/plugins/locator/CMakeLists.txt
+@@ -1 +1,5 @@
+-SUBDIRS(hypo71)
++IF(SC_IPGP_HYPO71)
++	SUBDIRS(hypo71)
++ELSE()
++	MESSAGE(STATUS "... Hypo71 locator plugin is not built, disabled by config")
++ENDIF()

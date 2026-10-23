@@ -1,0 +1,13 @@
+--- a/src/base/seedlink/plugins/scream2_plugin/oscompat.h
++++ b/src/base/seedlink/plugins/scream2_plugin/oscompat.h
+@@ -104,7 +104,9 @@
+ #endif
+ */
+ 
+-#if defined( _BIG_ENDIAN ) || defined ( __BIG_ENDIAN )
++#if defined(_WIN32) && (defined(_M_X64) || defined(_M_IX86))
++#define SCREAM2EW_DATATYPE "i4"
++#elif defined( _BIG_ENDIAN ) || defined ( __BIG_ENDIAN )
+ #define SCREAM2EW_DATATYPE "s4"
+ #elif defined ( _LITTLE_ENDIAN ) || ( __LITTLE_ENDIAN )
+ #define SCREAM2EW_DATATYPE "i4"

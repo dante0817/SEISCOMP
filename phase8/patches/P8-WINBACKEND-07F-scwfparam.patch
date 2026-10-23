@@ -1,0 +1,57 @@
+--- a/src/base/contrib-sed/apps/scwfparam/wfparam.cpp
++++ b/src/base/contrib-sed/apps/scwfparam/wfparam.cpp
+@@ -45,7 +45,11 @@
+ #include <seiscomp/system/hostinfo.h>
+ 
+ #include <functional>
++#ifdef _WIN32
++#include <seiscomp/utils/windows_child_private.h>
++#else
+ #include <sys/wait.h>
++#endif
+ 
+ 
+ using namespace std;
+@@ -175,6 +179,7 @@
+ OPT(Core::Time) now;
+ 
+ 
++#ifndef _WIN32
+ pid_t startExternalProcess(const vector<string> &cmdparams) {
+ 	pid_t pid;
+ 	string cmdline;
+@@ -201,6 +206,7 @@
+ 
+ 	return pid;
+ }
++#endif
+ 
+ 
+ }
+@@ -2704,6 +2710,18 @@
+ 			                 _currentProcess->event->publicID():string("-"));
+ 			params.push_back(eventID.empty()?string("-"):eventID);
+ 			params.push_back(eventPath);
++#ifdef _WIN32
++            try {
++                DWORD status = Seiscomp::Private::WindowsChild::run(params, _config.shakeMap.output.scriptWait);
++                if (_config.shakeMap.output.scriptWait) {
++                    SEISCOMP_DEBUG("%s: execution finished", _config.shakeMap.output.script.c_str());
++                    SEISCOMP_DEBUG("Native child exit status: %lu", static_cast<unsigned long>(status));
++                }
++            }
++            catch (const std::exception &error) {
++                SEISCOMP_ERROR("%s: execution failed: %s", _config.shakeMap.output.script.c_str(), error.what());
++            }
++#else
+ 			pid_t pid = startExternalProcess(params);
+ 			if ( pid < 0 )
+ 				SEISCOMP_ERROR("%s: execution failed", _config.shakeMap.output.script.c_str());
+@@ -2712,6 +2730,7 @@
+ 				waitpid(pid, &status, 0);
+ 				SEISCOMP_DEBUG("%s: execution finished", _config.shakeMap.output.script.c_str());
+ 			}
++#endif
+ 		}
+ 	}
+ }

@@ -1,0 +1,225 @@
+--- a/src/base/contrib-sed/libs/3rd-party/nll/GridLib.c
++++ b/src/base/contrib-sed/libs/3rd-party/nll/GridLib.c
+@@ -4785,6 +4785,21 @@
+ /** function to check for and expand wild card characters in filenames
+         and to return a list of equivalent files */
+ 
++#ifdef _WIN32
++#include "nll_windows_files.h"
++int ExpandWildCards(char* fileFilter, char fileList[][FILENAME_MAX], int maxNumFiles) {
++    int count = nll_windows_expand(fileFilter, fileList, maxNumFiles);
++    if (count < 0 && errno == E2BIG) {
++        sprintf(MsgStr,
++                "ERROR: too many files: expanding wildcard filenames in: %s, max number of files = %d",
++                fileFilter, maxNumFiles);
++        nll_puterr(MsgStr);
++    }
++    else if (count < 0)
++        nll_puterr2("ERROR: expanding wildcard filenames in: ", fileFilter);
++    return count;
++}
++#else
+ int ExpandWildCards(char* fileFilter, char fileList[][FILENAME_MAX], int maxNumFiles) {
+ 
+     int nfiles = 0;
+@@ -4865,6 +4880,8 @@
+ 
+ }
+ 
++#endif /* original POSIX expansion and fnmatch wrapper */
++
+ /** function to check for and expand wild card characters in filenames
+         and to return a list of equivalent files */
+ 
+--- a/src/base/contrib-sed/libs/3rd-party/nll/GridLib.h
++++ b/src/base/contrib-sed/libs/3rd-party/nll/GridLib.h
+@@ -47,8 +47,10 @@
+ #include <float.h>
+ #include <limits.h>
+ #include <time.h>
++#ifndef _WIN32
+ #include <dirent.h>
+ #include <fnmatch.h>
++#endif
+ /* SH 07222004 added */
+ #include <ctype.h>
+ /*
+@@ -891,7 +893,9 @@
+ 
+ /* file list functions */
+ int ExpandWildCards(char*, char[][FILENAME_MAX], int);
++#ifndef _WIN32
+ int fnmatch_wrapper(const struct dirent* entry);
++#endif
+ EXTERN_TXT char ExpandWildCards_pattern[FILENAME_MAX];
+ 
+ /* string / char functions */
+--- /dev/null
++++ b/src/base/contrib-sed/libs/3rd-party/nll/nll_windows_files.h
+@@ -0,0 +1,166 @@
++/* Private NLL filesystem adapter. No scientific computations or global POSIX
++ * replacements. Matching and collation below implement the C-locale contract;
++ * other locales fail explicitly rather than selecting different grid inputs.
++ * Native narrow paths use the CRT code page, round-tripped without best fit.
++ */
++#ifndef NLL_WINDOWS_FILES_H
++#define NLL_WINDOWS_FILES_H
++#include <windows.h>
++#include <errno.h>
++#include <locale.h>
++#include <ctype.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++static int nll_class(const char *p, size_t n, unsigned char c) {
++#define NLL_CLASS(name) if(n == sizeof(#name)-1 && !memcmp(p,#name,n)) return is##name(c)!=0
++    NLL_CLASS(alnum); NLL_CLASS(alpha); NLL_CLASS(cntrl); NLL_CLASS(digit);
++    NLL_CLASS(graph); NLL_CLASS(lower); NLL_CLASS(print); NLL_CLASS(punct);
++    NLL_CLASS(space); NLL_CLASS(upper); NLL_CLASS(xdigit);
++#undef NLL_CLASS
++    if(n==5 && !memcmp(p,"blank",5)) return c==' ' || c=='\t';
++    return 0;
++}
++
++/* Returns -1 for an unclosed bracket (literal '[' in POSIX fnmatch). */
++static int nll_bracket(const char **pattern, unsigned char c) {
++    const char *p=*pattern; int invert=0, hit=0, first=1;
++    if(*p=='!' || *p=='^') { invert=1; ++p; }
++    while(*p && (*p!=']' || first)) {
++        unsigned char low; first=0;
++        if(*p=='[' && p[1]==':') {
++            const char *end=strstr(p+2,":]");
++            if(!end) return -1;
++            hit |= nll_class(p+2,(size_t)(end-p-2),c); p=end+2; continue;
++        }
++        /* In the C locale collating/equivalence elements are single bytes. */
++        if(*p=='[' && (p[1]=='.' || p[1]=='=')) {
++            char close[3]={p[1],']',0}; const char *end=strstr(p+2,close);
++            if(!end || end!=p+3) return -1;
++            low=(unsigned char)p[2]; p=end+2;
++        }
++        else { if(*p=='\\' && p[1]) ++p; low=(unsigned char)*p++; }
++        if(*p=='-' && p[1] && p[1]!=']') {
++            unsigned char high; ++p; if(*p=='\\' && p[1]) ++p;
++            high=(unsigned char)*p++; if(low<=c && c<=high) hit=1;
++        }
++        else if(low==c) hit=1;
++    }
++    if(*p!=']') return -1;
++    *pattern=p+1; return invert ? !hit : hit;
++}
++
++/* fnmatch flags=0: case sensitive, leading dots ordinary, backslash escapes,
++ * '*', '?', ranges, inverted lists, POSIX classes/collation/equivalence. */
++static int nll_match(const char *p,const char *s) {
++    const char *star=NULL,*retry=NULL;
++    while(*s) {
++        const char *next=p; int hit=0;
++        if(*p=='*') { while(*p=='*') ++p; star=p; retry=s; if(!*p) return 1; continue; }
++        if(*p=='?') { next=p+1; hit=1; }
++        else if(*p=='[') { next=p+1; hit=nll_bracket(&next,(unsigned char)*s); if(hit<0) {hit=*s=='[';next=p+1;} }
++        else if(*p=='\\') { next=p+1; if(*next) {hit=*next==*s;++next;} }
++        else if(*p) { hit=*p==*s; next=p+1; }
++        if(hit) { p=next; ++s; continue; }
++        if(star) { p=star; s=++retry; continue; }
++        return 0;
++    }
++    while(*p=='*') ++p;
++    return !*p;
++}
++
++static int nll_name_compare(const void *a,const void *b) {
++    return strcoll((const char*)a,(const char*)b);
++}
++
++static int nll_pattern_supported(const char *p) {
++    /* C collation has no multi-byte collating elements. Complex range-end
++     * constructs need an oracle-qualified parser before they can be accepted. */
++    for(;*p;++p) {
++        if(*p=='\\' && p[1]) {++p;continue;}
++        if(*p=='-' && p[1]=='[' && (p[2]=='.' || p[2]=='=' || p[2]==':')) return 0;
++        if(*p=='[' && (p[1]=='.' || p[1]=='=')) {
++            char close[3]={p[1],']',0}; const char *end=strstr(p+2,close);
++            if(end && end!=p+3) return 0;
++        }
++        if(*p=='[' && p[1]==':') {
++            const char *end=strstr(p+2,":]"); size_t n; int c,known=0;
++            if(!end) continue;
++            n=(size_t)(end-p-2);
++            for(c=0;c<128;++c) if(nll_class(p+2,n,(unsigned char)c)) {known=1;break;}
++            if(!known) return 0;
++        }
++    }
++    return 1;
++}
++
++static int nll_windows_expand(const char *filter,char files[][FILENAME_MAX],int maxfiles) {
++    char directory[FILENAME_MAX],search[FILENAME_MAX+3],name[FILENAME_MAX];
++    const char *slash,*back,*pattern; size_t length,dirlen; int count=0,failed=0;
++    wchar_t wide[FILENAME_MAX+3]; HANDLE handle; WIN32_FIND_DATAW entry;
++    char (*selected)[FILENAME_MAX]=NULL;
++    if(!filter || maxfiles<1) {errno=EINVAL;return -1;}
++    length=strlen(filter);
++    if(length>=FILENAME_MAX) {errno=ENAMETOOLONG;return -1;}
++    /* Original fast path returns a single literal, including bracket-only
++     * patterns, without checking existence. Preserve that trigger exactly. */
++    if(!strchr(filter,'*') && !strchr(filter,'?')) {strcpy(files[0],filter);return 1;}
++    if(strcmp(setlocale(LC_COLLATE,NULL),"C") || strcmp(setlocale(LC_CTYPE,NULL),"C")) {
++        fprintf(stderr,"NLL Windows wildcard expansion requires C collation and character locale\n");
++        errno=EINVAL; return -1;
++    }
++    slash=strrchr(filter,'/'); back=strrchr(filter,'\\');
++    if(back && (!slash || back>slash)) slash=back;
++    if(slash) {
++        dirlen=(size_t)(slash-filter); pattern=slash+1;
++        /* Preserve native drive/root interpretation, unlike POSIX's empty
++         * directory on a root-only prefix. Keep original spelling otherwise. */
++        if(!dirlen || (dirlen==2 && filter[1]==':')) ++dirlen;
++        memcpy(directory,filter,dirlen); directory[dirlen]=0;
++    }
++    else if(length>=2 && filter[1]==':') {directory[0]=filter[0];directory[1]=':';directory[2]=0;pattern=filter+2;}
++    else {strcpy(directory,".");pattern=filter;}
++    if(!nll_pattern_supported(pattern)) {
++        fprintf(stderr,"NLL Windows wildcard pattern requires unsupported collation/range syntax\n");
++        errno=EINVAL;return -1;
++    }
++    dirlen=strlen(directory);
++    strcpy(search,directory);
++    if(dirlen && directory[dirlen-1]!='/' && directory[dirlen-1]!='\\' && directory[dirlen-1]!=':') strcat(search,"/");
++    strcat(search,"*");
++    if(!MultiByteToWideChar(CP_ACP,MB_ERR_INVALID_CHARS,search,-1,wide,FILENAME_MAX+3)) {errno=EILSEQ;return -1;}
++    handle=FindFirstFileW(wide,&entry);
++    if(handle==INVALID_HANDLE_VALUE) {errno=ENOENT;return -1;}
++    if((size_t)maxfiles>SIZE_MAX/sizeof(*selected)) {FindClose(handle);errno=ENOMEM;return -1;}
++    selected=malloc((size_t)maxfiles*sizeof(*selected));
++    if(!selected) {FindClose(handle);errno=ENOMEM;return -1;}
++    /* FindFirstFile is enumeration only. No Windows wildcard matching. */
++    do {
++        BOOL replaced=FALSE;
++        UINT cp=GetACP();
++        int converted=WideCharToMultiByte(cp,cp==CP_UTF8?WC_ERR_INVALID_CHARS:WC_NO_BEST_FIT_CHARS,entry.cFileName,-1,name,FILENAME_MAX,NULL,cp==CP_UTF8?NULL:&replaced);
++        if(!converted || replaced) {errno=EILSEQ;failed=1;break;}
++        if(!nll_match(pattern,name)) continue;
++        if(count==maxfiles) {errno=E2BIG;failed=1;break;}
++        /* files have a fixed original FILENAME_MAX stride: reject overflow. */
++        if(dirlen+1+strlen(name)>=FILENAME_MAX) {errno=ENAMETOOLONG;failed=1;break;}
++        strcpy(selected[count++],name);
++    } while(FindNextFileW(handle,&entry));
++    if(!failed && GetLastError()!=ERROR_NO_MORE_FILES) {errno=EIO;failed=1;}
++    FindClose(handle);
++    if(!failed && count) {
++        int i; qsort(selected,(size_t)count,sizeof(*selected),nll_name_compare);
++        for(i=0;i<count;++i) {
++            strcpy(files[i],directory);
++            /* Drive-relative C:foo must not become drive-absolute C:/foo. */
++            if(directory[dirlen-1]!=':' && directory[dirlen-1]!='/' && directory[dirlen-1]!='\\') strcat(files[i],"/");
++            strcat(files[i],selected[i]);
++        }
++    }
++    free(selected);
++    if(failed || !count) return -1;
++    return count;
++}
++#endif

@@ -1,0 +1,82 @@
+diff --git a/libs/seiscomp/core/typedarray.cpp b/libs/seiscomp/core/typedarray.cpp
+index f7bd2b4b..a6f9ee0e 100644
+--- a/libs/seiscomp/core/typedarray.cpp
++++ b/libs/seiscomp/core/typedarray.cpp
+@@ -568,6 +568,15 @@ void TypedArray<T>::serialize(Archive& ar) {
+ IMPLEMENT_TEMPLATE_RTTI_METHODS(TypedArray, "TypedArray")
+ IMPLEMENT_TEMPLATE_RTTI_METHODS(NumericArray, "NumericArray")
+ 
++template SC_SYSTEM_CORE_API Array::DataType TypedArray<char>::ArrayType;
++template SC_SYSTEM_CORE_API Array::DataType TypedArray<std::int32_t>::ArrayType;
++template SC_SYSTEM_CORE_API Array::DataType TypedArray<float>::ArrayType;
++template SC_SYSTEM_CORE_API Array::DataType TypedArray<double>::ArrayType;
++template SC_SYSTEM_CORE_API Array::DataType TypedArray<Core::Time>::ArrayType;
++template SC_SYSTEM_CORE_API Array::DataType TypedArray<std::string>::ArrayType;
++template SC_SYSTEM_CORE_API Array::DataType TypedArray<std::complex<float>>::ArrayType;
++template SC_SYSTEM_CORE_API Array::DataType TypedArray<std::complex<double>>::ArrayType;
++
+ IMPLEMENT_TEMPLATE_RTTI(CharArray, "CharArray", Array)
+ REGISTER_CLASS(Seiscomp::Core::BaseObject, CharArray);
+ template class SC_SYSTEM_CORE_API TypedArray<char>;
+diff --git a/libs/seiscomp/core/typedarray.h b/libs/seiscomp/core/typedarray.h
+index 4b7642af..fc2384b3 100644
+--- a/libs/seiscomp/core/typedarray.h
++++ b/libs/seiscomp/core/typedarray.h
+@@ -300,6 +300,16 @@ inline typename TypedArray<T>::const_iterator TypedArray<T>::end() const {
+ }
+ 
+ 
++// These specializations are instantiated and exported by seiscomp_core.
++extern template class SC_SYSTEM_CORE_API TypedArray<char>;
++extern template class SC_SYSTEM_CORE_API TypedArray<std::int32_t>;
++extern template class SC_SYSTEM_CORE_API TypedArray<float>;
++extern template class SC_SYSTEM_CORE_API TypedArray<double>;
++extern template class SC_SYSTEM_CORE_API TypedArray<Core::Time>;
++extern template class SC_SYSTEM_CORE_API TypedArray<std::string>;
++extern template class SC_SYSTEM_CORE_API TypedArray<std::complex<float>>;
++extern template class SC_SYSTEM_CORE_API TypedArray<std::complex<double>>;
++
+ }
+ 
+ 
+diff --git a/libs/seiscomp/logging/publishloc.h b/libs/seiscomp/logging/publishloc.h
+index ea9dc06e..327dc9ec 100644
+--- a/libs/seiscomp/logging/publishloc.h
++++ b/libs/seiscomp/logging/publishloc.h
+@@ -21,6 +21,8 @@
+ #ifndef SC_LOGGING_PUBLISHLOC_H
+ #define SC_LOGGING_PUBLISHLOC_H
+ 
++#include <seiscomp/core.h>
++
+ 
+ #include <seiscomp/core.h>
+ 
+@@ -71,8 +73,8 @@ struct SC_SYSTEM_CORE_API PublishLoc {
+ };
+ 
+ 
+-void Publish(PublishLoc *, Channel *, const char *msg);
+-void Publish(PublishLoc *, Channel *, const std::string &msg);
++SC_SYSTEM_CORE_API void Publish(PublishLoc *, Channel *, const char *msg);
++SC_SYSTEM_CORE_API void Publish(PublishLoc *, Channel *, const std::string &msg);
+ 
+ template <typename S, typename... Args>
+ void PublishF(PublishLoc *, Channel *,
+@@ -82,13 +84,13 @@ template <typename S, typename... Args>
+ void PublishP(PublishLoc *, Channel *,
+               const S &format, Args &&...args);
+ 
+-void VPublish(PublishLoc *, Channel *,
++SC_SYSTEM_CORE_API void VPublish(PublishLoc *, Channel *,
+               const char *format,
+               va_list args);
+-void VPublish(PublishLoc *, Channel *,
++SC_SYSTEM_CORE_API void VPublish(PublishLoc *, Channel *,
+               fmt::string_view format,
+               fmt::format_args args);
+-void VPublish(PublishLoc *, Channel *,
++SC_SYSTEM_CORE_API void VPublish(PublishLoc *, Channel *,
+               fmt::string_view format,
+               fmt::printf_args args);
+ 

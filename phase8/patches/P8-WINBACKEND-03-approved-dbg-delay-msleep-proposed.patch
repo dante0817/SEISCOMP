@@ -1,0 +1,24 @@
+--- a/apps/messaging/scmaster/plugins/dbg-delay/dbg-delay.cpp
++++ b/apps/messaging/scmaster/plugins/dbg-delay/dbg-delay.cpp
+@@ -30,7 +30,9 @@
+ #include <seiscomp/broker/messageprocessor.h>
+ 
+ #include <cstdlib>
++#ifndef _WIN32
+ #include <unistd.h>
++#endif
+ 
+ 
+ using namespace Seiscomp;
+@@ -74,7 +76,11 @@
+ 			}
+ 
+ 			SEISCOMP_DEBUG("Delay message processing by %d ms", delay);
++			#ifdef _WIN32
++			Core::msleep(delay);
++			#else
+ 			usleep(delay * 1000);
++			#endif
+ 			return true;
+ 		}
+ 

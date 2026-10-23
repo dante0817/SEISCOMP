@@ -1,0 +1,16 @@
+--- a/src/base/common/libs/swig/datamodel_python_wrap.cxx
++++ b/src/base/common/libs/swig/datamodel_python_wrap.cxx
+@@ -6503,6 +6503,13 @@
+  * --------------------------------------------------- */
+ 
+ #include "datamodel_python_wrap.h"
++
++/* Windows SDK macro must not rename the original Notifier::GetMessage API. */
++#ifdef _WIN32
++#ifdef GetMessage
++#undef GetMessage
++#endif
++#endif
+ 
+ SwigDirector_CachePopCallback::SwigDirector_CachePopCallback(PyObject *self): Seiscomp::DataModel::CachePopCallback(), Swig::Director(self) {
+   SWIG_DIRECTOR_RGTR((Seiscomp::DataModel::CachePopCallback *)this, this); 

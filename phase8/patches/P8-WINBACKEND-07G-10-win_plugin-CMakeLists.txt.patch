@@ -1,0 +1,18 @@
+--- a/src/base/seedlink/plugins/win_plugin/CMakeLists.txt
++++ b/src/base/seedlink/plugins/win_plugin/CMakeLists.txt
+@@ -1,6 +1,6 @@
+ SET(WINPLUGIN_SOURCES
+ 	win_plugin.c
+-	../plugin.c
++	../../libs/plugin/plugin.c
+ )
+ 
+ INCLUDE_DIRECTORIES(.)
+@@ -11,3 +11,7 @@
+ 
+ FILE(GLOB descs "${CMAKE_CURRENT_SOURCE_DIR}/descriptions/*.xml")
+ INSTALL(FILES ${descs} DESTINATION ${SC3_PACKAGE_APP_DESC_DIR})
++
++IF(WIN32)
++ TARGET_LINK_LIBRARIES(win_plugin slplugin)
++ENDIF()

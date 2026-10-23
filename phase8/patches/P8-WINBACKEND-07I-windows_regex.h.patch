@@ -1,0 +1,17 @@
+--- /dev/null
++++ b/src/base/seedlink/plugins/mseedscan_plugin/windows_regex.h
+@@ -0,0 +1,14 @@
++#pragma once
++#include <stddef.h>
++#ifdef _WIN32
++#ifdef __cplusplus
++extern "C" {
++#endif
++typedef struct { void *engine; } ms_regex;
++int ms_regcomp(ms_regex*,const char*,int);
++int ms_regexec(const ms_regex*,const char*,size_t,void*,int);
++void ms_regfree(ms_regex*);
++#ifdef __cplusplus
++}
++#endif
++#endif

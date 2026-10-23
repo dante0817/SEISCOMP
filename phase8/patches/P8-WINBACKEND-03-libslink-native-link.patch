@@ -1,0 +1,23 @@
+--- a/libs/3rd-party/libslink/CMakeLists.txt
++++ b/libs/3rd-party/libslink/CMakeLists.txt
+@@ -14,3 +14,6 @@
+ )
+ 
+ ADD_LIBRARY(slink STATIC ${SLINK_SOURCES})
++IF (WIN32)
++	TARGET_LINK_LIBRARIES(slink PUBLIC ws2_32)
++ENDIF ()
+--- a/libs/3rd-party/libslink/statefile.c
++++ b/libs/3rd-party/libslink/statefile.c
+@@ -41,7 +41,11 @@
+     return -1;
+   }
+ 
++  #if defined(_WIN32)
++  if (_chsize(statefd, 0) < 0)
++  #else
+   if (ftruncate(statefd, 0) < 0)
++  #endif
+   {
+     sl_log_r (slconn, 2, 0, "cannot truncate state file\n");
+     return -1;

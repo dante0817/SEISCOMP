@@ -1,0 +1,506 @@
+diff --git a/libs/seiscomp/CMakeLists.txt b/libs/seiscomp/CMakeLists.txt
+--- a/libs/seiscomp/CMakeLists.txt
++++ b/libs/seiscomp/CMakeLists.txt
+@@ -218,6 +218,7 @@
+ 		${SC3_PACKAGE_ROOT_SOURCE_DIR}/src/system/apps/utils/win32/locking.c)
+ 	TARGET_INCLUDE_DIRECTORIES(seiscomp_core PRIVATE
+ 		${SC3_PACKAGE_ROOT_SOURCE_DIR}/src/system/apps/utils/win32)
++	TARGET_LINK_LIBRARIES(seiscomp_core PRIVATE advapi32)
+ ENDIF()
+ 
+ SC_LIB_INSTALL_HEADERS(SYSTEM_CORE)
+diff --git a/libs/seiscomp/system/CMakeLists.txt b/libs/seiscomp/system/CMakeLists.txt
+--- a/libs/seiscomp/system/CMakeLists.txt
++++ b/libs/seiscomp/system/CMakeLists.txt
+@@ -23,7 +23,7 @@
+ )
+ 
+ IF(WIN32)
+-	LIST(APPEND SYSTEM_SOURCES windows_lock.cpp)
++ LIST(APPEND SYSTEM_SOURCES windows_lock.cpp windows_control.cpp)
+ ENDIF()
+ 
+ SET(SYSTEM_DEFINITIONS -DSEISCOMP_ROOT="${SC3_PACKAGE_INSTALL_PREFIX}")
+diff --git a/libs/seiscomp/system/windows_control.h b/libs/seiscomp/system/windows_control.h
+new file mode 100644
+--- /dev/null
++++ b/libs/seiscomp/system/windows_control.h
+@@ -0,0 +1,30 @@
++/* Windows-only private control support; same AGPLv3/commercial terms as
++ * system/application.cpp. Original application and scientific code preserved. */
++#ifndef SEISCOMP_SYSTEM_WINDOWS_CONTROL_H
++#define SEISCOMP_SYSTEM_WINDOWS_CONTROL_H
++#ifdef WIN32
++#include <seiscomp/core.h>
++#include <memory>
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++
++namespace Seiscomp { namespace System { namespace Detail {
++// Owns a newly created pair for this process incarnation. Never adopts objects.
++// Same-user/session trust boundary; not authentication against hostile same-SID code.
++class SC_SYSTEM_CORE_API WindowsStopEvents {
++public:
++	WindowsStopEvents();
++	~WindowsStopEvents();
++	WindowsStopEvents(const WindowsStopEvents &) = delete;
++	WindowsStopEvents &operator=(const WindowsStopEvents &) = delete;
++	HANDLE request() const;
++	HANDLE accepted() const;
++private:
++	struct Impl;
++	std::unique_ptr<Impl> _impl;
++};
++}}}
++#endif
++#endif
+diff --git a/libs/seiscomp/system/windows_control.cpp b/libs/seiscomp/system/windows_control.cpp
+new file mode 100644
+--- /dev/null
++++ b/libs/seiscomp/system/windows_control.cpp
+@@ -0,0 +1,145 @@
++/* Windows-only private control support; same AGPLv3/commercial terms as
++ * system/application.cpp. No signal emulation, services or networking. */
++#include "windows_control.h"
++#ifdef WIN32
++#include <aclapi.h>
++#include <iomanip>
++#include <sstream>
++#include <stdexcept>
++#include <system_error>
++#include <vector>
++
++namespace Seiscomp { namespace System { namespace Detail {
++namespace {
++struct Handle {
++	HANDLE value = nullptr;
++	~Handle() { if ( value ) CloseHandle(value); }
++	Handle() = default;
++	Handle(const Handle &) = delete;
++	Handle &operator=(const Handle &) = delete;
++};
++struct LocalMemory {
++	HLOCAL value = nullptr;
++	~LocalMemory() { if ( value ) LocalFree(value); }
++};
++void require(BOOL result, const char *operation) {
++	if ( !result ) throw std::system_error(GetLastError(), std::system_category(), operation);
++}
++void check(DWORD error, const char *operation) {
++	if ( error ) throw std::system_error(error, std::system_category(), operation);
++}
++std::vector<unsigned char> tokenInfo(HANDLE token, TOKEN_INFORMATION_CLASS type) {
++	DWORD size = 0;
++	GetTokenInformation(token, type, nullptr, 0, &size);
++	if ( GetLastError() != ERROR_INSUFFICIENT_BUFFER || !size || size > 65536 )
++		throw std::runtime_error("STOP token information unavailable");
++	std::vector<unsigned char> data(size);
++	require(GetTokenInformation(token, type, data.data(), size, &size), "GetTokenInformation");
++	return data;
++}
++void verifySecurity(HANDLE event, PSID user, PSID system) {
++	PSID owner = nullptr;
++	PACL acl = nullptr;
++	PSECURITY_DESCRIPTOR sd = nullptr;
++	check(GetSecurityInfo(event, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
++	                      &owner, nullptr, &acl, nullptr, &sd), "GetSecurityInfo(STOP)");
++	LocalMemory memory; memory.value = sd;
++	SECURITY_DESCRIPTOR_CONTROL control = 0;
++	DWORD revision = 0;
++	require(GetSecurityDescriptorControl(sd, &control, &revision), "GetSecurityDescriptorControl");
++	if ( !owner || !EqualSid(owner, user) || !(control & SE_DACL_PROTECTED) ||
++	     !acl || !IsValidAcl(acl) || acl->AceCount != 2 )
++		throw std::runtime_error("STOP endpoint owner/protected DACL mismatch");
++	bool foundUser = false, foundSystem = false;
++	for ( DWORD i = 0; i < 2; ++i ) {
++		void *raw = nullptr;
++		require(GetAce(acl, i, &raw), "GetAce");
++		auto *ace = static_cast<ACCESS_ALLOWED_ACE *>(raw);
++		PSID sid = &ace->SidStart;
++		if ( ace->Header.AceType != ACCESS_ALLOWED_ACE_TYPE || ace->Header.AceFlags || !IsValidSid(sid) )
++			throw std::runtime_error("STOP endpoint has an unexpected ACE");
++		if ( EqualSid(sid, user) && !foundUser &&
++		     ace->Mask == (READ_CONTROL | SYNCHRONIZE | EVENT_MODIFY_STATE) ) foundUser = true;
++		else if ( EqualSid(sid, system) && !foundSystem && ace->Mask == EVENT_ALL_ACCESS ) foundSystem = true;
++		else throw std::runtime_error("STOP endpoint grants unexpected rights");
++	}
++	if ( !foundUser || !foundSystem ) throw std::runtime_error("STOP endpoint ACL incomplete");
++}
++}
++
++struct WindowsStopEvents::Impl {
++	Handle request, accepted;
++};
++
++WindowsStopEvents::WindowsStopEvents() : _impl(new Impl) {
++	Handle threadToken;
++	if ( OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, TRUE, &threadToken.value) )
++		throw std::runtime_error("STOP capability refuses an impersonating thread");
++	if ( GetLastError() != ERROR_NO_TOKEN ) require(FALSE, "OpenThreadToken");
++	Handle token;
++	require(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token.value), "OpenProcessToken");
++	auto userData = tokenInfo(token.value, TokenUser);
++	auto ownerData = tokenInfo(token.value, TokenOwner);
++	auto integrityData = tokenInfo(token.value, TokenIntegrityLevel);
++	auto sessionData = tokenInfo(token.value, TokenSessionId);
++	auto elevationData = tokenInfo(token.value, TokenElevation);
++	auto typeData = tokenInfo(token.value, TokenType);
++	PSID user = reinterpret_cast<TOKEN_USER *>(userData.data())->User.Sid;
++	PSID owner = reinterpret_cast<TOKEN_OWNER *>(ownerData.data())->Owner;
++	PSID integrity = reinterpret_cast<TOKEN_MANDATORY_LABEL *>(integrityData.data())->Label.Sid;
++	DWORD session = 0;
++	require(ProcessIdToSessionId(GetCurrentProcessId(), &session), "ProcessIdToSessionId");
++	if ( !IsValidSid(user) || !IsValidSid(owner) || !EqualSid(user, owner) ||
++	     !IsValidSid(integrity) || !*GetSidSubAuthorityCount(integrity) ||
++	     *GetSidSubAuthority(integrity, *GetSidSubAuthorityCount(integrity) - 1) != SECURITY_MANDATORY_MEDIUM_RID ||
++	     !session || session != *reinterpret_cast<DWORD *>(sessionData.data()) ||
++	     reinterpret_cast<TOKEN_ELEVATION *>(elevationData.data())->TokenIsElevated ||
++	     *reinterpret_cast<TOKEN_TYPE *>(typeData.data()) != TokenPrimary )
++		throw std::runtime_error("STOP capability requires a non-elevated medium-integrity user-owned primary token in a client session");
++	unsigned char systemStorage[SECURITY_MAX_SID_SIZE];
++	PSID system = systemStorage;
++	DWORD systemSize = sizeof(systemStorage);
++	require(CreateWellKnownSid(WinLocalSystemSid, nullptr, system, &systemSize), "CreateWellKnownSid");
++	EXPLICIT_ACCESSW entries[2] = {};
++	entries[0].grfAccessPermissions = READ_CONTROL | SYNCHRONIZE | EVENT_MODIFY_STATE;
++	entries[1].grfAccessPermissions = EVENT_ALL_ACCESS;
++	for ( unsigned i = 0; i < 2; ++i ) {
++		entries[i].grfAccessMode = SET_ACCESS;
++		entries[i].grfInheritance = NO_INHERITANCE;
++		entries[i].Trustee.TrusteeForm = TRUSTEE_IS_SID;
++		entries[i].Trustee.TrusteeType = TRUSTEE_IS_USER;
++		entries[i].Trustee.ptstrName = reinterpret_cast<LPWSTR>(i ? system : user);
++	}
++	PACL acl = nullptr;
++	check(SetEntriesInAclW(2, entries, nullptr, &acl), "SetEntriesInAclW");
++	LocalMemory aclMemory; aclMemory.value = acl;
++	SECURITY_DESCRIPTOR sd;
++	require(InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION), "InitializeSecurityDescriptor");
++	require(SetSecurityDescriptorOwner(&sd, user, FALSE), "SetSecurityDescriptorOwner");
++	require(SetSecurityDescriptorDacl(&sd, TRUE, acl, FALSE), "SetSecurityDescriptorDacl");
++	require(SetSecurityDescriptorControl(&sd, SE_DACL_PROTECTED, SE_DACL_PROTECTED), "SetSecurityDescriptorControl");
++	SECURITY_ATTRIBUTES attributes = {sizeof(attributes), &sd, FALSE};
++	FILETIME created, ended, kernel, cpu;
++	require(GetProcessTimes(GetCurrentProcess(), &created, &ended, &kernel, &cpu), "GetProcessTimes");
++	const auto time = (static_cast<unsigned long long>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
++	std::wostringstream prefix;
++	prefix << L"Local\\SeisComP.Control." << GetCurrentProcessId() << L'.'
++	       << std::hex << std::nouppercase << std::setfill(L'0') << std::setw(16) << time;
++	auto create = [&](Handle &destination, const wchar_t *suffix) {
++		const auto name = prefix.str() + suffix;
++		SetLastError(ERROR_SUCCESS);
++		destination.value = CreateEventExW(&attributes, name.c_str(), CREATE_EVENT_MANUAL_RESET,
++		                                  READ_CONTROL | SYNCHRONIZE | EVENT_MODIFY_STATE);
++		const DWORD error = GetLastError(); // Capture before any other API call.
++		if ( !destination.value || error == ERROR_ALREADY_EXISTS )
++			throw std::system_error(error, std::system_category(), "New STOP endpoint creation (collision is refused)");
++		verifySecurity(destination.value, user, system);
++	};
++	create(_impl->request, L".StopRequest");
++	create(_impl->accepted, L".StopAccepted");
++}
++WindowsStopEvents::~WindowsStopEvents() = default;
++HANDLE WindowsStopEvents::request() const { return _impl->request.value; }
++HANDLE WindowsStopEvents::accepted() const { return _impl->accepted.value; }
++}}}
++#endif
+diff --git a/libs/seiscomp/client/CMakeLists.txt b/libs/seiscomp/client/CMakeLists.txt
+--- a/libs/seiscomp/client/CMakeLists.txt
++++ b/libs/seiscomp/client/CMakeLists.txt
+@@ -17,4 +17,8 @@
+ 	monitor.h
+ )
+ 
++IF(WIN32)
++	LIST(APPEND CLIENT_SOURCES windows_stop.cpp)
++ENDIF()
++
+ SC_SETUP_LIB_SUBDIR(CLIENT)
+diff --git a/libs/seiscomp/client/application.h b/libs/seiscomp/client/application.h
+--- a/libs/seiscomp/client/application.h
++++ b/libs/seiscomp/client/application.h
+@@ -112,6 +112,9 @@
+ 		Timeout,
+ 		AcquisitionFinished,
+ 		StateOfHealth
++#ifdef WIN32
++		, WindowsStop = 0x53430001
++#endif
+ 	};
+ 
+ 	Notification() : object(nullptr), type(Object) {}
+@@ -197,6 +200,13 @@
+ 		 */
+ 		virtual void exit(int returnCode) override;
+ 
++#ifdef WIN32
++		//! Explicit pre-exec opt-in. Endpoints exist only inside this class's
++		//! qualified run loop. Does not qualify overrides/Qt/reactors by inheritance.
++		//! Call only after reviewing the application's existing shutdown semantics.
++		void enableWindowsCooperativeStop();
++#endif
++
+ 		//! Returns the application's messaging connection interface
+ 		Client::Connection *connection() const;
+ 
+diff --git a/libs/seiscomp/client/application.cpp b/libs/seiscomp/client/application.cpp
+--- a/libs/seiscomp/client/application.cpp
++++ b/libs/seiscomp/client/application.cpp
+@@ -73,6 +73,7 @@
+ #endif
+ 
+ #ifdef WIN32
++#include "windows_stop.h"
+ #define snprintf _snprintf
+ #define popen _popen
+ #define pclose _pclose
+@@ -501,6 +502,9 @@
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ Application::~Application() {
++#ifdef WIN32
++	Detail::forgetWindowsStop(this);
++#endif
+ 	if ( _inputMonitor ) delete _inputMonitor;
+ 	if ( _outputMonitor ) delete _outputMonitor;
+ 
+@@ -1394,6 +1398,16 @@
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ bool Application::run() {
++#ifdef WIN32
++	std::unique_ptr<Detail::WindowsClientStop> windowsStop;
++	if ( Detail::windowsStopOptedIn(this) && !_exitRequested ) {
++		try { windowsStop.reset(new Detail::WindowsClientStop(this, _queue)); }
++		catch ( const std::exception &error ) {
++			SEISCOMP_ERROR("Windows Client STOP capability setup failed: %s", error.what());
++			return false; // Collision/security/lifetime setup never silently degrades.
++		}
++	}
++#endif
+ 	if ( _connection ) {
+ 		startMessageThread();
+ 	}
+@@ -1424,6 +1438,17 @@
+ 		Notification evt = _queue.pop();
+ 		BaseObjectPtr obj = evt.object;
+ 		switch ( evt.type ) {
++#ifdef WIN32
++			case Notification::WindowsStop:
++				if ( !Detail::isWindowsStopOwner(this) ) {
++					SEISCOMP_ERROR("Windows STOP notification outside its qualified owner loop");
++					return false;
++				}
++				// Preserve the signal path's application AND registered I/O wakeups,
++				// dispatched here on the owner thread, never by the event listener.
++				Core::InterruptibleObject::Interrupt(SIGTERM);
++				break;
++#endif
+ 			case Notification::Object:
+ 				if ( !obj ) {
+ 					SEISCOMP_ERROR("Got nullptr object");
+@@ -2465,6 +2490,12 @@
+ 	System::Application::exit(returnCode);
+ 	_queue.close();
+ }
++
++#ifdef WIN32
++void Application::enableWindowsCooperativeStop() {
++	Detail::optInWindowsStop(this);
++}
++#endif
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+ 
+diff --git a/libs/seiscomp/client/queue.h b/libs/seiscomp/client/queue.h
+--- a/libs/seiscomp/client/queue.h
++++ b/libs/seiscomp/client/queue.h
+@@ -25,6 +25,9 @@
+ #include <vector>
+ #include <condition_variable>
+ #include <thread>
++#ifdef WIN32
++#include <atomic>
++#endif
+ 
+ #include <seiscomp/core/baseobject.h>
+ 
+@@ -98,6 +101,14 @@
+ 		 */
+ 		bool pushUnique(T v);
+ 
++#ifdef WIN32
++		// STOP only: no waiting for a lock or capacity. Ticket 0 is pending,
++		// 1 commits insertion, 2 cancels it. Commit/cancel have one atomic
++		// linearization point; close/capacity/insertion share _monitor.
++		enum class WindowsPushResult { Queued, Busy, Closed, Cancelled };
++		WindowsPushResult tryPushWindowsControl(T v, std::atomic<unsigned> &ticket);
++#endif
++
+ 		/**
+ 		 * @brief Checks whether an item can be popped or not.
+ 		 * Actually it returns whether the queue is empty or not.
+diff --git a/libs/seiscomp/client/queue.ipp b/libs/seiscomp/client/queue.ipp
+--- a/libs/seiscomp/client/queue.ipp
++++ b/libs/seiscomp/client/queue.ipp
+@@ -180,6 +180,27 @@
+ 
+ 	return _buffered > 0;
+ }
++
++#ifdef WIN32
++template <typename T>
++typename ThreadedQueue<T>::WindowsPushResult
++ThreadedQueue<T>::tryPushWindowsControl(T v, std::atomic<unsigned> &ticket) {
++	static_assert(std::is_nothrow_copy_assignable<T>::value,
++	              "Windows control insertion must not throw after committing");
++	lock lk(_monitor, std::try_to_lock);
++	if ( !lk.owns_lock() ) return WindowsPushResult::Busy;
++	if ( ticket.load() != 0 ) return WindowsPushResult::Cancelled;
++	if ( _closed ) return WindowsPushResult::Closed;
++	if ( _buffered == _buffer.size() ) return WindowsPushResult::Busy;
++	unsigned pending = 0;
++	if ( !ticket.compare_exchange_strong(pending, 1) ) return WindowsPushResult::Cancelled;
++	_buffer[_end] = v;
++	_end = (_end + 1) % _buffer.size();
++	++_buffered;
++	_notEmpty.notify_all();
++	return WindowsPushResult::Queued;
++}
++#endif
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+ 
+diff --git a/libs/seiscomp/client/windows_stop.h b/libs/seiscomp/client/windows_stop.h
+new file mode 100644
+--- /dev/null
++++ b/libs/seiscomp/client/windows_stop.h
+@@ -0,0 +1,36 @@
++/* Private Windows Client-loop adapter; same AGPLv3/commercial terms as
++ * client/application.cpp. No generic System/Qt/reactor STOP support. */
++#ifndef SEISCOMP_CLIENT_WINDOWS_STOP_H
++#define SEISCOMP_CLIENT_WINDOWS_STOP_H
++#ifdef WIN32
++#include <seiscomp/client/application.h>
++#include "../system/windows_control.h"
++#include <atomic>
++#include <thread>
++
++namespace Seiscomp { namespace Client { namespace Detail {
++void optInWindowsStop(const Application *);
++void forgetWindowsStop(const Application *);
++bool windowsStopOptedIn(const Application *);
++bool isWindowsStopOwner(const Application *);
++
++// Stack lifetime is nested in the qualified run loop, before done/destruction.
++// The worker captures only this queue adapter; never Application or its state.
++class WindowsClientStop {
++public:
++	WindowsClientStop(const Application *, ThreadedQueue<Notification> &);
++	~WindowsClientStop();
++	WindowsClientStop(const WindowsClientStop &) = delete;
++	WindowsClientStop &operator=(const WindowsClientStop &) = delete;
++private:
++	void listen() noexcept;
++	ThreadedQueue<Notification> &_queue;
++	System::Detail::WindowsStopEvents _events;
++	HANDLE _cancel = nullptr;
++	std::atomic<unsigned> _ticket{0};
++	std::atomic<DWORD> _error{0};
++	std::thread _listener;
++};
++}}}
++#endif
++#endif
+diff --git a/libs/seiscomp/client/windows_stop.cpp b/libs/seiscomp/client/windows_stop.cpp
+new file mode 100644
+--- /dev/null
++++ b/libs/seiscomp/client/windows_stop.cpp
+@@ -0,0 +1,85 @@
++/* Private Windows Client-loop adapter; same AGPLv3/commercial terms as
++ * client/application.cpp. Same SID/session trust; no networking or signals. */
++#define SEISCOMP_COMPONENT Application
++#include "windows_stop.h"
++#ifdef WIN32
++#include <seiscomp/client/queue.ipp>
++#include <seiscomp/logging/log.h>
++#include <mutex>
++#include <set>
++#include <stdexcept>
++#include <system_error>
++
++namespace Seiscomp { namespace Client { namespace Detail {
++namespace {
++std::mutex RegistryMutex;
++std::set<const Application *> OptedIn;
++thread_local const Application *Owner = nullptr;
++bool CapabilityAttempted = false;
++ThreadedQueue<Notification> &claimCapability(const Application *app, ThreadedQueue<Notification> &queue) {
++	std::lock_guard<std::mutex> lock(RegistryMutex);
++	if ( !OptedIn.count(app) || CapabilityAttempted || Owner )
++		throw std::runtime_error("Windows Client STOP requires explicit opt-in and a single capability attempt per process");
++	CapabilityAttempted = true; // No name reuse/rearm even after failure or loop reentry.
++	return queue;
++}
++}
++void optInWindowsStop(const Application *app) {
++	std::lock_guard<std::mutex> lock(RegistryMutex);
++	OptedIn.insert(app);
++}
++void forgetWindowsStop(const Application *app) {
++	std::lock_guard<std::mutex> lock(RegistryMutex);
++	OptedIn.erase(app);
++}
++bool windowsStopOptedIn(const Application *app) {
++	std::lock_guard<std::mutex> lock(RegistryMutex);
++	return OptedIn.count(app) != 0;
++}
++bool isWindowsStopOwner(const Application *app) { return Owner == app; }
++
++WindowsClientStop::WindowsClientStop(const Application *app, ThreadedQueue<Notification> &queue)
++: _queue(claimCapability(app, queue)) {
++	if ( Owner ) throw std::runtime_error("A Windows STOP owner loop is already active on this thread");
++	_cancel = CreateEventW(nullptr, TRUE, FALSE, nullptr); // Unnamed, private, noninherited.
++	if ( !_cancel ) throw std::system_error(GetLastError(), std::system_category(), "STOP cancellation event");
++	try { _listener = std::thread(&WindowsClientStop::listen, this); }
++	catch ( ... ) { CloseHandle(_cancel); _cancel = nullptr; throw; }
++	Owner = app;
++}
++WindowsClientStop::~WindowsClientStop() {
++	// Cancellation wins against a pending insertion, or an already committed
++	// no-throw insertion finishes before join. No queue lock/capacity wait in worker.
++	_ticket.exchange(2);
++	SetEvent(_cancel);
++	_listener.join();
++	CloseHandle(_cancel);
++	Owner = nullptr;
++	if ( auto error = _error.load() ) SEISCOMP_ERROR("Windows STOP listener failed: %lu", error);
++}
++void WindowsClientStop::listen() noexcept {
++	HANDLE handles[] = {_cancel, _events.request()};
++	while ( _ticket.load() == 0 ) {
++		DWORD status = WaitForMultipleObjects(2, handles, FALSE, 20);
++		if ( status == WAIT_OBJECT_0 ) return;
++		if ( status == WAIT_TIMEOUT ) continue;
++		if ( status != WAIT_OBJECT_0 + 1 ) { _error = GetLastError(); return; }
++		const ULONGLONG deadline = GetTickCount64() + 5000;
++		while ( _ticket.load() == 0 && GetTickCount64() < deadline ) {
++			auto result = _queue.tryPushWindowsControl(Notification(Notification::WindowsStop), _ticket);
++			using Result = ThreadedQueue<Notification>::WindowsPushResult;
++			if ( result == Result::Queued ) {
++				if ( !SetEvent(_events.accepted()) ) _error = GetLastError();
++				return; // One-shot, duplicate requests cannot enqueue another STOP.
++			}
++			if ( result != Result::Busy ) return;
++			status = WaitForSingleObject(_cancel, 10);
++			if ( status == WAIT_OBJECT_0 ) return;
++			if ( status != WAIT_TIMEOUT ) { _error = GetLastError(); return; }
++		}
++		if ( _ticket.load() == 0 ) _error = ERROR_TIMEOUT;
++		return; // Full queue/deadline expires without acknowledgement.
++	}
++}
++}}}
++#endif

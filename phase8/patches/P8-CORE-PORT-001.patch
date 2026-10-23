@@ -1,0 +1,79 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b83c673..a808fd8 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -186,6 +186,14 @@ IF (CMAKE_COMPILER_IS_GNUCC)
+ 	ENDIF ()
+ ENDIF (CMAKE_COMPILER_IS_GNUCC)
+ 
++# The common sources use C++17 library types (e.g. std::optional and
++# std::string_view) on every platform. The GCC branch above already enables
++# this standard; select it explicitly for the native MSVC build as well.
++IF (MSVC)
++	SET(CMAKE_CXX_STANDARD 17)
++	SET(CMAKE_CXX_STANDARD_REQUIRED ON)
++ENDIF ()
++
+ # Set the platform specific suffix for dynamic libraries
+ ADD_DEFINITIONS(
+ 	-DSHARED_LIBRARY_SUFFIX="${CMAKE_SHARED_LIBRARY_SUFFIX}"
+diff --git a/src/system/libs/seiscomp/config/config.cpp b/src/system/libs/seiscomp/config/config.cpp
+index 8b1fff2..9c6922f 100644
+--- a/src/system/libs/seiscomp/config/config.cpp
++++ b/src/system/libs/seiscomp/config/config.cpp
+@@ -28,31 +28,37 @@
+ #include <climits>
+ #include <cstdlib>
+ #include <unordered_set>
+-#include <unistd.h>
+ 
+ #if WIN32
+ 
+ #include <direct.h>
+-#define PATH_MAX MAX_PATH
++#define PATH_MAX 260
++#define getcwd _getcwd
++#define chdir _chdir
+ 
+ char *realpath(const char *relPath, char *absPath) {
+ 	return _fullpath(absPath, relPath, PATH_MAX);
+ }
+ 
++#else
++
++#include <unistd.h>
++
+ #endif
+ 
+ 
++std::string homeDir() {
+ #ifndef WIN32
+-const char *homeDir() {
+ 	const char *dir = getenv("HOME");
+ 	if ( !dir )
+-		dir = ".";
++		return ".";
++	return dir;
+ #else
+-	char dir[MAX_PATH];
+-	if ( SHGetFolderPath(NULL, CSIDL_LOCAL_APPDATA, NULL, SHGFP_TYPE_CURRENT, dir) != S_OK )
+-		dir = ".";
++	const char *dir = getenv("USERPROFILE");
++	if ( dir && *dir )
++		return dir;
++	return ".";
+ #endif
+-	return dir;
+ }
+ 
+ 
+@@ -962,7 +968,8 @@ bool Config::reference(const std::string &name,
+ 		std::string content;
+ 		content.resize(length);
+ 		ifs.seekg(0, std::ios_base::beg);
+-		if ( !ifs.read(content.data(), content.length()) ) {
++		if ( !content.empty()
++		  && !ifs.read(&content[0], static_cast<std::streamsize>(content.length())) ) {
+ 			if ( errmsg ) {
+ 				*errmsg = "Reference file '" + filename + "' could not be read";
+ 			}

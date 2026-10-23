@@ -1,0 +1,12 @@
+--- a/src/base/seedlink/plugins/scream_plugin/CMakeLists.txt
++++ b/src/base/seedlink/plugins/scream_plugin/CMakeLists.txt
+@@ -13,7 +13,9 @@
+ INCLUDE_DIRECTORIES(..)
+ 
+ ADD_EXECUTABLE(scream_plugin ${SCREAMPLUGIN_SOURCES})
++IF(NOT WIN32)
+ TARGET_LINK_LIBRARIES(scream_plugin m)
++ENDIF()
+ 
+ INSTALL(TARGETS scream_plugin RUNTIME DESTINATION ${SEEDLINK_PLUGIN_OUTPUT_DIR})
+ 

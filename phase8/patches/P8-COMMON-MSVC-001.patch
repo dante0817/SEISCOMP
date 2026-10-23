@@ -1,0 +1,327 @@
+diff --git a/libs/seiscomp/core/strings.cpp b/libs/seiscomp/core/strings.cpp
+index 99ff0d94..bf6cdc92 100644
+--- a/libs/seiscomp/core/strings.cpp
++++ b/libs/seiscomp/core/strings.cpp
+@@ -511,7 +511,7 @@ const char *tokenizeExt(size_t &lenTok, size_t &lenSource, const char *&source,
+ 		}
+ 
+ 		// check for unprotected delimiter outside of quotes
+-		if ( quote == 0 and strchr(delimiter, *source) != nullptr ) {
++		if ( quote == 0 && strchr(delimiter, *source) != nullptr ) {
+ 			delimFound = *source;
+ 			--lenSource; ++source;
+ 			lenTok -= trailing_spaces;
+@@ -523,13 +523,13 @@ const char *tokenizeExt(size_t &lenTok, size_t &lenSource, const char *&source,
+ 			quote = 0;
+ 		}
+ 		// check for beginning quote
+-		else if ( quote == 0 and strchr(quotes, *source) != nullptr ) {
++		else if ( quote == 0 && strchr(quotes, *source) != nullptr ) {
+ 			quote = *source;
+ 			trailing_spaces = 0;
+ 		}
+ 		// trimming outside unprotected characters outside of quotes
+ 		else if ( trim ) {
+-			if ( !quote and strchr(whitespaces, *source) != nullptr ) {
++			if ( !quote && strchr(whitespaces, *source) != nullptr ) {
+ 				// trim leading whitespaces
+ 				if ( lenTok == 0 )
+ 					continue;
+@@ -613,7 +613,7 @@ const char *tokenizeUnescape(size_t &lenTok, size_t &lenSource, char *&source,
+ 		}
+ 
+ 		// check for unprotected delimiter outside of quotes
+-		if ( quote == 0 and strchr(delimiter, *source) != nullptr ) {
++		if ( quote == 0 && strchr(delimiter, *source) != nullptr ) {
+ 			delimFound = *source;
+ 			--lenSource; ++source;
+ 			lenTok -= trailing_spaces;
+@@ -626,14 +626,14 @@ const char *tokenizeUnescape(size_t &lenTok, size_t &lenSource, char *&source,
+ 			continue;
+ 		}
+ 		// check for beginning quote
+-		else if ( quote == 0 and strchr(quotes, *source) != nullptr ) {
++		else if ( quote == 0 && strchr(quotes, *source) != nullptr ) {
+ 			quote = *source;
+ 			trailing_spaces = 0;
+ 			continue;
+ 		}
+ 		// trim outside unprotected characters outside of quotes
+ 		else if ( trim ) {
+-			if ( !quote and strchr(whitespaces, *source) != nullptr ) {
++			if ( !quote && strchr(whitespaces, *source) != nullptr ) {
+ 				// trim leading whitespaces
+ 				if ( lenTok == 0 )
+ 					continue;
+diff --git a/libs/seiscomp/core/strings.h b/libs/seiscomp/core/strings.h
+index 5f5fb493..5839c404 100644
+--- a/libs/seiscomp/core/strings.h
++++ b/libs/seiscomp/core/strings.h
+@@ -200,12 +200,12 @@ size_t splitExt(std::vector<std::string> &tokens, const char *source,
+  * @param separator[in] The optional separator string
+  * @return The resulting string
+  */
+-SC_SYSTEM_CORE_API
+ template <class CONT>
++SC_SYSTEM_CORE_API
+ std::string join(const CONT &tokens, const char *separator = nullptr);
+ 
+-SC_SYSTEM_CORE_API
+ template <class CONT>
++SC_SYSTEM_CORE_API
+ std::string join(const CONT &tokens, const std::string &separator);
+ 
+ SC_SYSTEM_CORE_API bool isEmpty(const char*);
+diff --git a/libs/seiscomp/io/records/mseed/encoder/steim1.h b/libs/seiscomp/io/records/mseed/encoder/steim1.h
+index 85929901..51a9d59a 100644
+--- a/libs/seiscomp/io/records/mseed/encoder/steim1.h
++++ b/libs/seiscomp/io/records/mseed/encoder/steim1.h
+@@ -31,14 +31,21 @@ namespace Seiscomp::IO::MSEED {
+ /**
+  * @brief A Steim1 frame with 64 bytes payload
+  */
++#if defined(_MSC_VER)
++#pragma pack(push, 1)
++#endif
+ struct Steim1Frame {
+-	u_int32_t nibbleWord;
+-	u_int32_t sampleWord[15];
++	uint32_t nibbleWord;
++	uint32_t sampleWord[15];
+ }
+-#if defined (__GNUC__)
++#if defined(__GNUC__) && !defined(_MSC_VER)
+ __attribute__((packed))
+ #endif
+ ;
++#if defined(_MSC_VER)
++#pragma pack(pop)
++#endif
++static_assert(sizeof(Steim1Frame) == 64, "Steim1 frame layout changed");
+ 
+ 
+ template<typename T>
+@@ -67,7 +74,7 @@ class Steim1 : public Encoder {
+ 		int       _spw{4};
+ 		int32_t   _lastSample{0};
+ 		int32_t   _buf[5];
+-		u_int32_t _nibbleWord{0};
++		uint32_t _nibbleWord{0};
+ };
+ 
+ 
+diff --git a/libs/seiscomp/io/records/mseed/encoder/steim2.h b/libs/seiscomp/io/records/mseed/encoder/steim2.h
+index a9c255dd..0e439998 100644
+--- a/libs/seiscomp/io/records/mseed/encoder/steim2.h
++++ b/libs/seiscomp/io/records/mseed/encoder/steim2.h
+@@ -32,14 +32,21 @@ namespace Seiscomp::IO::MSEED {
+ /**
+  * @brief A Steim2 frame with 64 bytes payload
+  */
++#if defined(_MSC_VER)
++#pragma pack(push, 1)
++#endif
+ struct Steim2Frame {
+ 	uint32_t nibbleWord;
+ 	uint32_t sampleWord[15];
+ }
+-#if defined (__GNUC__)
++#if defined(__GNUC__) && !defined(_MSC_VER)
+ __attribute__((packed))
+ #endif
+ ;
++#if defined(_MSC_VER)
++#pragma pack(pop)
++#endif
++static_assert(sizeof(Steim2Frame) == 64, "Steim2 frame layout changed");
+ 
+ 
+ template<typename T>
+diff --git a/libs/seiscomp/io/recordstream/seedlink4.cpp b/libs/seiscomp/io/recordstream/seedlink4.cpp
+index e118ac04..5502c9f9 100644
+--- a/libs/seiscomp/io/recordstream/seedlink4.cpp
++++ b/libs/seiscomp/io/recordstream/seedlink4.cpp
+@@ -41,6 +41,9 @@ namespace {
+ 
+ 
+ // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
++#if defined(_MSC_VER)
++#pragma pack(push, 1)
++#endif
+ struct SL4FixedHeader {
+ 	char signature[2];
+ 	char format;
+@@ -48,7 +51,15 @@ struct SL4FixedHeader {
+ 	uint32_t payloadLength;
+ 	uint64_t seq;
+ 	uint8_t stationIdLength;
+-} __attribute__ ((packed));
++}
++#if defined(__GNUC__) && !defined(_MSC_VER)
++__attribute__ ((packed))
++#endif
++;
++#if defined(_MSC_VER)
++#pragma pack(pop)
++#endif
++static_assert(sizeof(SL4FixedHeader) == 17, "SeedLink4 fixed header layout changed");
+ 
+ /* Seedlink4 packets consist of a fixed header ... */
+ #define HEADSIZE sizeof(SL4FixedHeader)
+diff --git a/libs/seiscomp/logging/log.cpp b/libs/seiscomp/logging/log.cpp
+index 7bdb18b7..d689f6a4 100644
+--- a/libs/seiscomp/logging/log.cpp
++++ b/libs/seiscomp/logging/log.cpp
+@@ -25,7 +25,9 @@
+ #include <seiscomp/logging/publisher.h>
+ #include <seiscomp/logging/output/fd.h>
+ 
++#ifndef WIN32
+ #include <unistd.h>
++#endif
+ #include <mutex>
+ 
+ 
+diff --git a/libs/seiscomp/logging/output/filerotator.cpp b/libs/seiscomp/logging/output/filerotator.cpp
+index 20d441ad..5db5ba1b 100644
+--- a/libs/seiscomp/logging/output/filerotator.cpp
++++ b/libs/seiscomp/logging/output/filerotator.cpp
+@@ -25,8 +25,8 @@
+ 
+ #include <cstdarg>
+ #include <cstdio>
+-#include <unistd.h>
+ #include <sstream>
++#include <cstdio>
+ 
+ #ifndef WIN32
+ #include <sys/stat.h>
+@@ -143,7 +143,7 @@ void FileRotatorOutput::log(const char* channelName,
+ void FileRotatorOutput::removeLog(int index) {
+ 	std::stringstream ss;
+ 	ss << _filename << "." << index;
+-	unlink(ss.str().c_str());
++	std::remove(ss.str().c_str());
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+@@ -163,7 +163,7 @@ void FileRotatorOutput::renameLog(int oldIndex, int newIndex) {
+ 		newFile << "." << newIndex;
+ 	}
+ 
+-	rename(oldFile.str().c_str(), newFile.str().c_str());
++	std::rename(oldFile.str().c_str(), newFile.str().c_str());
+ }
+ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ 
+diff --git a/libs/seiscomp/wired/device.h b/libs/seiscomp/wired/device.h
+index 0fe244d9..c3b94487 100644
+--- a/libs/seiscomp/wired/device.h
++++ b/libs/seiscomp/wired/device.h
+@@ -21,15 +21,26 @@
+ #ifndef SEISCOMP_WIRED_DEVICE_H
+ #define SEISCOMP_WIRED_DEVICE_H
+ 
++#ifdef WIN32
++#include <winsock2.h>
++#endif
++
+ #include <seiscomp/core/platform/platform.h>
+ #include <seiscomp/core/interruptible.h>
+ 
++#ifdef WIN32
++#include <chrono>
++#include <vector>
++#endif
++
+ #if defined(SC_HAS_EPOLL)
+ 	#define SEISCOMP_WIRED_EPOLL
+ #elif defined(SC_HAS_KQUEUE)
+ 	#define SEISCOMP_WIRED_KQUEUE
++#elif defined(SC_HAS_WSAPOLL)
++	#define SEISCOMP_WIRED_WSAPOLL
+ #else
+-	#error "Require either epoll or kqueue support"
++	#error "Require epoll, kqueue, or WSAPoll support"
+ #endif
+ 
+ #ifdef SEISCOMP_WIRED_EPOLL
+@@ -101,6 +112,11 @@ class SC_SYSTEM_CORE_API Device : public Core::BaseObject {
+ 		};
+ 
+ 		typedef uint64_t count_t;
++#ifdef WIN32
++		typedef SOCKET handle_type;
++#else
++		typedef int handle_type;
++#endif
+ 
+ 
+ 	// ----------------------------------------------------------------------
+@@ -114,7 +130,7 @@ class SC_SYSTEM_CORE_API Device : public Core::BaseObject {
+ 		 * @brief Device constructor
+ 		 * @param fd The file descriptor of the device
+ 		 */
+-		Device(int fd);
++		Device(handle_type fd);
+ 
+ 		//! D'tor
+ 		~Device() override;
+@@ -154,8 +170,8 @@ class SC_SYSTEM_CORE_API Device : public Core::BaseObject {
+ 		 *        file descriptor to invalid
+ 		 * @return The current file descriptor
+ 		 */
+-		int takeFd();
+-		int fd() const;
++		handle_type takeFd();
++		handle_type fd() const;
+ 
+ 		virtual Status setNonBlocking(bool nb);
+ 
+@@ -166,7 +182,7 @@ class SC_SYSTEM_CORE_API Device : public Core::BaseObject {
+ 	protected:
+ 		Session     *_session;
+ 
+-		int          _fd;
++		handle_type  _fd;
+ 		int          _selectMode;
+ #ifdef SEISCOMP_WIRED_KQUEUE
+ 		int          _activeMode;
+@@ -261,8 +277,8 @@ class SC_SYSTEM_CORE_API DeviceGroup : public Core::BaseObject {
+ 		bool timedOut() const;
+ 		bool interrupted() const { return _isInterrupted; }
+ 
+-		//! Set the trigger mode which is only supported when epoll or kqueue
+-		//! is used. The default trigger mode is LevelTriggered.
++		//! Edge triggering is available with epoll/kqueue. WSAPoll supports
++		//! level triggering only. The default trigger mode is LevelTriggered.
+ 		bool setTriggerMode(TriggerMode);
+ 		TriggerMode triggerMode() const;
+ 
+@@ -294,10 +310,25 @@ class SC_SYSTEM_CORE_API DeviceGroup : public Core::BaseObject {
+ 		TimeoutFunc          _fnTimeout;
+ 		int                  _timerFd;
+ 
++#ifdef SEISCOMP_WIRED_WSAPOLL
++		SOCKET               _interrupt_read_fd;
++		SOCKET               _interrupt_write_fd;
++		bool                 _wsaInitialized;
++		bool                 _timerActive;
++		std::chrono::steady_clock::time_point _timerDeadline;
++		std::chrono::milliseconds _timerInterval;
++		struct PollEvent {
++			WSAPOLLFD pollfd;
++			Device *device;
++		};
++		std::vector<PollEvent> _devices;
++		std::vector<PollEvent> _pollEvents;
++#else
+ 		int                  _interrupt_read_fd;
+ 		int                  _interrupt_write_fd;
++#endif
+ 
+-#if defined(SEISCOMP_WIRED_EPOLL) || defined(SEISCOMP_WIRED_KQUEUE)
++#if defined(SEISCOMP_WIRED_EPOLL) || defined(SEISCOMP_WIRED_KQUEUE) || defined(SEISCOMP_WIRED_WSAPOLL)
+ 		unsigned int         _defaultOps;
+ 		size_t               _count;
+ #ifdef SEISCOMP_WIRED_EPOLL

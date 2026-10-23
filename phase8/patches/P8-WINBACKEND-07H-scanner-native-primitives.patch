@@ -1,0 +1,102 @@
+--- /dev/null
++++ b/src/base/seedlink/plugins/mseedscan_plugin/windows_files_private.h
+@@ -0,0 +1,99 @@
++/* Windows scanner foundation only. Integration awaits lossless persistent-state
++ * and regex/signal contracts; do not use pathname equality as file identity.
++ * No MiniSEED decoding, timing substitution or fake POSIX implementation. */
++#ifndef MS_SCAN_WINDOWS_FILES_PRIVATE_H
++#define MS_SCAN_WINDOWS_FILES_PRIVATE_H
++#ifdef _WIN32
++#include <windows.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
++#include <wchar.h>
++
++typedef struct {
++    uint64_t volume;
++    unsigned char file[16];
++} ms_win_identity;
++
++/* Open follows the target, like original stat/open; query the open handle to
++ * avoid enumeration-to-stat identity confusion. No truncated fallback. */
++static int ms_win_file_identity(HANDLE file, ms_win_identity *out) {
++    FILE_ID_INFO info;
++    if (!out) { SetLastError(ERROR_INVALID_PARAMETER); return -1; }
++    if (!GetFileInformationByHandleEx(file, FileIdInfo, &info, sizeof(info))) return -1;
++    out->volume = info.VolumeSerialNumber;
++    memcpy(out->file, info.FileId.Identifier, sizeof(out->file));
++    return 0;
++}
++/* Caller owns the returned handle. Follow reparse targets as stat did, retain
++ * rename/delete sharing, and inspect identity on this same open target. */
++static HANDLE ms_win_open_target(const wchar_t *path) {
++    return CreateFileW(path,FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
++                       NULL,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,NULL);
++}
++/* Timing primitive only: caller-owned wake event, no installed handlers or new
++ * termination policy. Current scanner requests integral seconds (tv_nsec=0).
++ * Return 1 on interruption, 0 on elapsed duration, -1 on actual API failure. */
++static int ms_win_wait_seconds(HANDLE wake, int seconds) {
++    uint64_t remaining;
++    if(seconds<0 || !wake || wake==INVALID_HANDLE_VALUE){SetLastError(ERROR_INVALID_PARAMETER);return -1;}
++    remaining=(uint64_t)seconds*1000;
++    do {
++        DWORD chunk=remaining>0xfffffffeULL?0xfffffffeUL:(DWORD)remaining;
++        DWORD result=WaitForSingleObject(wake,chunk);
++        if(result==WAIT_OBJECT_0)return 1;
++        if(result!=WAIT_TIMEOUT)return -1;
++        remaining-=chunk;
++    }while(remaining);
++    return 0;
++}
++static int ms_win_identity_compare(const ms_win_identity *a,const ms_win_identity *b) {
++    if (a->volume != b->volume) return a->volume < b->volume ? -1 : 1;
++    return memcmp(a->file,b->file,sizeof(a->file));
++}
++/* Dynamic, caller-owned path: no MAX_PATH truncation or process cwd changes.
++ * Caller supplies a rooted base; child must be one enumeration leaf. */
++static wchar_t *ms_win_child_path(const wchar_t *base,const wchar_t *leaf) {
++    size_t a,b; wchar_t *path;
++    if (!base || !leaf || !leaf[0] || wcschr(leaf,L'/') || wcschr(leaf,L'\\') || wcschr(leaf,L':')
++            || !wcscmp(leaf,L".") || !wcscmp(leaf,L"..")) {
++        SetLastError(ERROR_INVALID_NAME); return NULL;
++    }
++    a=wcslen(base);b=wcslen(leaf);
++    if (a>SIZE_MAX/sizeof(wchar_t)-2 || b>SIZE_MAX/sizeof(wchar_t)-a-2) {
++        SetLastError(ERROR_FILENAME_EXCED_RANGE); return NULL;
++    }
++    path=(wchar_t*)malloc((a+b+2)*sizeof(wchar_t));
++    if (!path) {SetLastError(ERROR_NOT_ENOUGH_MEMORY);return NULL;}
++    memcpy(path,base,a*sizeof(wchar_t));
++    if(a && base[a-1]!=L'/' && base[a-1]!=L'\\')path[a++]=L'\\';
++    memcpy(path+a,leaf,(b+1)*sizeof(wchar_t));return path;
++}
++typedef struct { HANDLE search; WIN32_FIND_DATAW current; int exhausted; } ms_win_directory;
++/* Native enumeration order retained, no sorting/filtering or reparse skipping.
++ * Caller must track visited directory target IDs before following reparses. */
++static int ms_win_directory_open(const wchar_t *root, ms_win_directory *dir) {
++    wchar_t *pattern;
++    if(!dir){SetLastError(ERROR_INVALID_PARAMETER);return -1;}
++    dir->search=INVALID_HANDLE_VALUE;dir->exhausted=1;
++    pattern=ms_win_child_path(root,L"*");
++    if (!pattern) return -1;
++    dir->exhausted=0;dir->search=FindFirstFileW(pattern,&dir->current);free(pattern);
++    if(dir->search==INVALID_HANDLE_VALUE) {
++        if(GetLastError()==ERROR_FILE_NOT_FOUND){dir->exhausted=1;return 0;}
++        return -1;
++    }
++    return 1;
++}
++static int ms_win_directory_next(ms_win_directory *dir) {
++    if(dir->exhausted)return 0;
++    if(FindNextFileW(dir->search,&dir->current))return 1;
++    if(GetLastError()!=ERROR_NO_MORE_FILES)return -1;
++    dir->exhausted=1;return 0;
++}
++static void ms_win_directory_close(ms_win_directory *dir) {
++    if(dir->search!=INVALID_HANDLE_VALUE)FindClose(dir->search);
++    dir->search=INVALID_HANDLE_VALUE;dir->exhausted=1;
++}
++#endif
++#endif

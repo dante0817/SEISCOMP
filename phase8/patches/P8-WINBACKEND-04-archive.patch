@@ -1,0 +1,258 @@
+diff --git a/apps/3rd-party/slarchive/src/CMakeLists.txt b/apps/3rd-party/slarchive/src/CMakeLists.txt
+--- a/apps/3rd-party/slarchive/src/CMakeLists.txt
++++ b/apps/3rd-party/slarchive/src/CMakeLists.txt
+@@ -1,4 +1,12 @@
+-FIND_PACKAGE(OpenSSL REQUIRED)
++IF (WIN32)
++ SET(_SLARCH_MODULE_PATH ${CMAKE_MODULE_PATH})
++ SET(CMAKE_MODULE_PATH "")
++ FIND_PACKAGE(OpenSSL CONFIG REQUIRED)
++ SET(CMAKE_MODULE_PATH ${_SLARCH_MODULE_PATH})
++ UNSET(_SLARCH_MODULE_PATH)
++ELSE ()
++ FIND_PACKAGE(OpenSSL REQUIRED)
++ENDIF ()
+ 
+ SET(SLARCHIVE_SOURCES
+ 	archive.c
+@@ -10,7 +18,11 @@
+ 
+ ADD_EXECUTABLE(slarchive ${SLARCHIVE_SOURCES})
+ 
+-TARGET_LINK_LIBRARIES(slarchive slink crypto)
++IF (WIN32)
++ TARGET_LINK_LIBRARIES(slarchive slink OpenSSL::Crypto)
++ELSE ()
++ TARGET_LINK_LIBRARIES(slarchive slink crypto)
++ENDIF ()
+ 
+ INSTALL(TARGETS slarchive
+ 	RUNTIME DESTINATION ${SC3_PACKAGE_BIN_DIR})
+diff --git a/apps/3rd-party/slarchive/src/dsarchive.c b/apps/3rd-party/slarchive/src/dsarchive.c
+--- a/apps/3rd-party/slarchive/src/dsarchive.c
++++ b/apps/3rd-party/slarchive/src/dsarchive.c
+@@ -15,14 +15,21 @@
+ 
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#ifndef _WIN32
+ #include <sys/resource.h>
++#endif
+ #include <fcntl.h>
+ #include <string.h>
+ #include <errno.h>
+ #include <time.h>
++#ifndef _WIN32
+ #include <glob.h>
++#endif
+ 
+ #include "dsarchive.h"
++#ifdef _WIN32
++#include "win_archive.h"
++#endif
+ 
+ /* Functions internal to this source file */
+ static DataStreamGroup *ds_getstream (DataStream *datastream, SLMSrecord *msr,
+@@ -493,6 +500,9 @@
+ {
+   DataStreamGroup *foundgroup = NULL;
+   char *matchedfilename = 0;
++#ifdef _WIN32
++  char matched_storage[MAX_FILENAME_LEN+1];
++#endif
+   static int closeidle_counter = 0;
+   
+   HASH_FIND_STR(datastream->grouphash, defkey, foundgroup);
+@@ -536,6 +546,10 @@
+ 		    pglob.gl_pathc, globmatch);
+ 
+ 	  matchedfilename = pglob.gl_pathv[pglob.gl_pathc-1];
++#ifdef _WIN32
++  if(strlen(matchedfilename)>=sizeof(matched_storage)){globfree(&pglob);errno=ENAMETOOLONG;return NULL;}
++  strcpy(matched_storage,matchedfilename);matchedfilename=matched_storage;
++#endif
+ 	  sl_log (1, 2, "Found matching file for non-defining flags: %s\n", matchedfilename);
+ 	  
+ 	  /* Now that we have a match use it instead of filename */
+@@ -675,7 +689,9 @@
+ ds_openfile (DataStream *datastream, const char *filename)
+ {
+   static char rlimit = 0;
++#ifndef _WIN32
+   struct rlimit rlim;
++#endif
+   int idletimeout = datastream->idletimeout;
+   int oret = 0;
+   
+@@ -740,7 +756,10 @@
+ 	  sl_log (1, 1, "Too many open files, trying to increase limit\n");
+ 	  
+ 	  /* Set the soft open file limit to the hard open file limit */
+-	  if ( getrlimit (RLIMIT_NOFILE, &rlim) == -1 )
++	#ifdef _WIN32
++          sl_log(1,1,"Native low-level descriptor limit is fixed; recovering by closing idle stream files\n");
++#else
++  if ( getrlimit (RLIMIT_NOFILE, &rlim) == -1 )
+ 	    {
+ 	      sl_log (2, 0, "getrlimit failed to get open file limit\n");
+ 	    }
+@@ -764,6 +783,7 @@
+ 		    return oret;
+ 		}
+ 	    }
++#endif
+ 	}
+       
+       if ( errno == EMFILE || errno == ENFILE )
+diff --git a/apps/3rd-party/slarchive/src/slarchive.c b/apps/3rd-party/slarchive/src/slarchive.c
+--- a/apps/3rd-party/slarchive/src/slarchive.c
++++ b/apps/3rd-party/slarchive/src/slarchive.c
+@@ -15,7 +15,9 @@
+ #include <string.h>
+ #include <signal.h>
+ #include <time.h>
++#ifndef _WIN32
+ #include <dirent.h>
++#endif
+ 
+ #include <openssl/asn1.h>
+ #include <openssl/ecdsa.h>
+@@ -27,6 +29,9 @@
+ #include <libslink.h>
+ 
+ #include "archive.h"
++#ifdef _WIN32
++#include "win_archive.h"
++#endif
+ 
+ #define PACKAGE   "slarchive"
+ #define VERSION   "1.8-sc3"
+@@ -85,6 +90,10 @@
+ 	int packetcnt = 0;
+ 
+ 	/* Signal handling, use POSIX calls with standardized semantics */
++#ifdef _WIN32
++ signal(SIGINT,term_handler);
++ signal(SIGTERM,term_handler);
++#else
+ 	  struct sigaction sa;
+ 
+ 	sa.sa_flags   = SA_RESTART;
+@@ -98,6 +107,8 @@
+ 	sa.sa_handler = SIG_IGN;
+ 	sigaction (SIGHUP, &sa, NULL);
+ 	sigaction (SIGPIPE, &sa, NULL);
++
++#endif
+ 
+ 	dsarchive = NULL;
+ 
+@@ -550,6 +561,9 @@
+ static int
+ parameter_proc (int argcount, char **argvec)
+ {
++#ifdef _WIN32
++ int optind;
++#endif
+   int futurecontflag= 0;  /* continuous future check flag */
+   int futurecont    = 2;  /* continuous future check overlap */
+   int futureinitflag= 0;  /* initial future check (opening files) flag */
+diff --git a/apps/3rd-party/slarchive/src/win_archive.h b/apps/3rd-party/slarchive/src/win_archive.h
+new file mode 100644
+--- /dev/null
++++ b/apps/3rd-party/slarchive/src/win_archive.h
+@@ -0,0 +1,94 @@
++/* Native Windows filesystem operations for slarchive; Linux keeps its original APIs. */
++#ifndef SL_WIN_ARCHIVE_H
++#define SL_WIN_ARCHIVE_H
++#include <winsock2.h>
++#include <windows.h>
++#include <io.h>
++#include <direct.h>
++#include <fcntl.h>
++#include <stdlib.h>
++#include <string.h>
++#include <errno.h>
++#include "globmatch.h"
++#define DT_REG 8
++#define DT_LNK 10
++struct dirent {char d_name[MAX_PATH];unsigned char d_type;};
++typedef struct {HANDLE find;WIN32_FIND_DATAA data;int first;struct dirent entry;} DIR;
++static int slwin_directory_errno(DWORD error){switch(error){case ERROR_FILE_NOT_FOUND:case ERROR_PATH_NOT_FOUND:return ENOENT;case ERROR_ACCESS_DENIED:case ERROR_SHARING_VIOLATION:return EACCES;case ERROR_DIRECTORY:return ENOTDIR;case ERROR_NOT_ENOUGH_MEMORY:return ENOMEM;default:return EIO;}}
++static DIR *slwin_opendir(const char *path){
++ size_t len=strlen(path);char *search;DIR *dir;DWORD attrs=GetFileAttributesA(path);
++ if(attrs==INVALID_FILE_ATTRIBUTES){errno=slwin_directory_errno(GetLastError());return NULL;}
++ if(!(attrs&FILE_ATTRIBUTE_DIRECTORY)){errno=ENOTDIR;return NULL;}
++ search=(char*)malloc(len+3);if(!search){errno=ENOMEM;return NULL;}
++ memcpy(search,path,len);strcpy(search+len,"/*");dir=(DIR*)calloc(1,sizeof(DIR));if(!dir){free(search);errno=ENOMEM;return NULL;}
++ dir->find=FindFirstFileA(search,&dir->data);free(search);
++ if(dir->find==INVALID_HANDLE_VALUE){DWORD error=GetLastError();if(error==ERROR_FILE_NOT_FOUND)return dir;free(dir);errno=slwin_directory_errno(error);return NULL;}
++ dir->first=1;return dir;
++}
++static struct dirent *slwin_readdir(DIR *dir){
++ if(dir->find==INVALID_HANDLE_VALUE)return NULL;
++ if(!dir->first && !FindNextFileA(dir->find,&dir->data)){DWORD error=GetLastError();if(error!=ERROR_NO_MORE_FILES)errno=slwin_directory_errno(error);return NULL;}
++ dir->first=0;strcpy(dir->entry.d_name,dir->data.cFileName);dir->entry.d_type=(dir->data.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)?DT_LNK:((dir->data.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)?4:DT_REG);return &dir->entry;
++}
++static int slwin_closedir(DIR *dir){BOOL ok=dir->find==INVALID_HANDLE_VALUE?TRUE:FindClose(dir->find);DWORD error=ok?0:GetLastError();free(dir);if(!ok){errno=slwin_directory_errno(error);return -1;}return 0;}
++#define opendir slwin_opendir
++#define readdir slwin_readdir
++#define closedir slwin_closedir
++#define F_OK 0
++#define access _access
++#define close _close
++#define write _write
++#define read _read
++#define lseek _lseek
++#define fstat _fstat
++#define stat _stat
++#define mkdir(path,mode) _mkdir(path)
++static int slwin_open(const char *path,int flags,int mode){return _open(path,flags|_O_BINARY,mode);}
++#define open slwin_open
++#ifndef S_IRWXU
++#define S_IRWXU 0700
++#define S_IRGRP 0040
++#define S_IXGRP 0010
++#define S_IROTH 0004
++#define S_IXOTH 0001
++#endif
++#ifndef ENFILE
++#define ENFILE EMFILE
++#endif
++#define GLOB_NOMATCH 1
++#define GLOB_ABORTED 2
++#define GLOB_NOSPACE 3
++#define GLOB_NOSYS 4
++typedef struct {size_t gl_pathc;char **gl_pathv;} glob_t;
++static int slwin_glob_add(glob_t *out,const char *path){char **more=(char**)realloc(out->gl_pathv,(out->gl_pathc+1)*sizeof(char*));if(!more)return GLOB_NOSPACE;out->gl_pathv=more;more[out->gl_pathc]=_strdup(path);if(!more[out->gl_pathc])return GLOB_NOSPACE;++out->gl_pathc;return 0;}
++static char *slwin_join(const char *prefix,const char *name){size_t a=strlen(prefix),b=strlen(name);char *p=(char*)malloc(a+b+2);if(!p)return NULL;strcpy(p,prefix);if(a && p[a-1]!='/')strcat(p,"/");strcat(p,name);return p;}
++static int slwin_expand(const char *prefix,const char *pattern,glob_t *out){
++ const char *slash=strchr(pattern,'/');size_t len=slash?(size_t)(slash-pattern):strlen(pattern);char *part=(char*)malloc(len+1);int result=0;
++ if(!part)return GLOB_NOSPACE;memcpy(part,pattern,len);part[len]=0;
++ if(!len){free(part);return slash?slwin_expand(*prefix?prefix:"/",slash+1,out):slwin_glob_add(out,*prefix?prefix:".");}
++ if(!strpbrk(part,"*?[")){
++  char *path=slwin_join(prefix,part);DWORD attrs;free(part);if(!path)return GLOB_NOSPACE;
++  attrs=GetFileAttributesA(path);
++  if(attrs!=INVALID_FILE_ATTRIBUTES && (!slash || (attrs&FILE_ATTRIBUTE_DIRECTORY)))result=slash?slwin_expand(path,slash+1,out):slwin_glob_add(out,path);
++  else if(attrs==INVALID_FILE_ATTRIBUTES){DWORD e=GetLastError();if(e!=ERROR_FILE_NOT_FOUND && e!=ERROR_PATH_NOT_FOUND)result=GLOB_ABORTED;}
++  free(path);return result;
++ }
++ {char *search=slwin_join(prefix,"*");WIN32_FIND_DATAA item;HANDLE find;if(!search){free(part);return GLOB_NOSPACE;}find=FindFirstFileA(search,&item);free(search);
++  if(find==INVALID_HANDLE_VALUE){DWORD e=GetLastError();free(part);return (e==ERROR_FILE_NOT_FOUND || e==ERROR_PATH_NOT_FOUND)?0:GLOB_ABORTED;}
++  do{char *path;if(!strcmp(item.cFileName,".") || !strcmp(item.cFileName,".."))continue;
++   if(item.cFileName[0]=='.' && part[0]!='.')continue;
++   if(!sl_globmatch(item.cFileName,part))continue;
++   if(slash && !(item.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY))continue;
++   path=slwin_join(prefix,item.cFileName);if(!path){result=GLOB_NOSPACE;break;}
++   result=slash?slwin_expand(path,slash+1,out):slwin_glob_add(out,path);free(path);if(result)break;
++  }while(FindNextFileA(find,&item));
++  if(!result && GetLastError()!=ERROR_NO_MORE_FILES)result=GLOB_ABORTED;
++  FindClose(find);free(part);return result;
++ }
++}
++static int slwin_path_compare(const void *a,const void *b){return strcmp(*(const char * const*)a,*(const char * const*)b);}
++static void slwin_globfree(glob_t *out){size_t i;for(i=0;i<out->gl_pathc;++i)free(out->gl_pathv[i]);free(out->gl_pathv);out->gl_pathv=NULL;out->gl_pathc=0;}
++static int slwin_glob(const char *pattern,int flags,void *callback,glob_t *out){int r;memset(out,0,sizeof(*out));if(flags || callback)return GLOB_NOSYS;r=slwin_expand("",pattern,out);if(r){slwin_globfree(out);return r;}if(!out->gl_pathc)return GLOB_NOMATCH;qsort(out->gl_pathv,out->gl_pathc,sizeof(char*),slwin_path_compare);return 0;}
++#define glob slwin_glob
++#define globfree slwin_globfree
++#endif

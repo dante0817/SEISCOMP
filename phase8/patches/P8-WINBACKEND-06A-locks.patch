@@ -1,0 +1,400 @@
+diff --git a/src/system/apps/utils/CMakeLists.txt b/src/system/apps/utils/CMakeLists.txt
+--- a/src/system/apps/utils/CMakeLists.txt
++++ b/src/system/apps/utils/CMakeLists.txt
+@@ -1,7 +1,14 @@
+-ADD_EXECUTABLE(timeout timeout.c)
+-ADD_EXECUTABLE(trylock trylock.c)
+-ADD_EXECUTABLE(run_with_lock run_with_lock.c lockutil.c)
+-ADD_EXECUTABLE(waitlock waitlock.c)
++IF(WIN32)
++	ADD_EXECUTABLE(timeout win32/timeout.c win32/process.c win32/locking.c)
++	ADD_EXECUTABLE(trylock win32/trylock.c win32/locking.c)
++	ADD_EXECUTABLE(run_with_lock win32/run_with_lock.c win32/process.c win32/locking.c)
++	ADD_EXECUTABLE(waitlock win32/waitlock.c win32/locking.c)
++ELSE()
++	ADD_EXECUTABLE(timeout timeout.c)
++	ADD_EXECUTABLE(trylock trylock.c)
++	ADD_EXECUTABLE(run_with_lock run_with_lock.c lockutil.c)
++	ADD_EXECUTABLE(waitlock waitlock.c)
++ENDIF()
+ 
+ INSTALL(
+ 	TARGETS
+diff --git a/src/system/apps/utils/win32/locking.c b/src/system/apps/utils/win32/locking.c
+new file mode 100644
+--- /dev/null
++++ b/src/system/apps/utils/win32/locking.c
+@@ -0,0 +1,116 @@
++#include "native.h"
++#include <string.h>
++
++/* A common byte beyond EOF emulates an advisory lock without making the
++ * PID text unreadable (Win32 byte locks otherwise deny ordinary file reads).
++ * All four utilities use this same range. Locking beyond EOF does not grow it.
++ * The kernel releases this noninherited handle's lock on process termination. */
++static void lock_position(OVERLAPPED *operation) {
++    memset(operation, 0, sizeof(*operation));
++    operation->Offset = 0xfffffffeUL;
++    operation->OffsetHigh = 0x7fffffffUL;
++}
++
++void sc_win_error(const wchar_t *operation, const wchar_t *path, DWORD error) {
++    wchar_t message[512];
++    DWORD size = FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM |
++        FORMAT_MESSAGE_IGNORE_INSERTS, NULL, error, 0, message, 512, NULL);
++    fwprintf(stderr, L"%ls%ls%ls: Windows error %lu%ls%ls\n", operation,
++        path ? L" " : L"", path ? path : L"", error,
++        size ? L": " : L"", size ? message : L"");
++}
++
++DWORD sc_win_wait(HANDLE object, uint64_t timeout_ms) {
++    ULONGLONG start = GetTickCount64();
++    for (;;) {
++        ULONGLONG elapsed = GetTickCount64() - start;
++        uint64_t remaining;
++        DWORD result, interval;
++        if (!timeout_ms) return WaitForSingleObject(object, INFINITE);
++        remaining = elapsed >= timeout_ms ? 0 : timeout_ms - elapsed;
++        interval = remaining > MAXDWORD - 1ULL ? MAXDWORD - 1 : (DWORD)remaining;
++        result = WaitForSingleObject(object, interval);
++        if (result != WAIT_TIMEOUT) return result;
++        if (GetTickCount64() - start >= timeout_ms) return WAIT_TIMEOUT;
++    }
++}
++
++HANDLE sc_win_open_lock(const wchar_t *path, int create) {
++    return CreateFileW(path, GENERIC_WRITE,
++        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
++        NULL, create ? OPEN_ALWAYS : OPEN_EXISTING,
++        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
++}
++
++int sc_win_probe_open_error(const wchar_t *path, DWORD error) {
++    /* Match upstream's open/stat fallback, including its existing-file case. */
++    if (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) return 0;
++    error = GetLastError();
++    if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) return 0;
++    sc_win_error(L"could not open file", path, error);
++    return 1;
++}
++
++int sc_win_lock(HANDLE file, int immediate, uint64_t timeout_ms) {
++    OVERLAPPED operation;
++    DWORD error, transferred = 0, wait_result;
++    BOOL result;
++    lock_position(&operation);
++    operation.hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
++    if (!operation.hEvent) return 1;
++    result = LockFileEx(file, LOCKFILE_EXCLUSIVE_LOCK |
++        (immediate ? LOCKFILE_FAIL_IMMEDIATELY : 0), 0, 1, 0, &operation);
++    error = result ? ERROR_SUCCESS : GetLastError();
++    if (!result && error == ERROR_IO_PENDING) {
++        wait_result = sc_win_wait(operation.hEvent, timeout_ms);
++        if (wait_result == WAIT_OBJECT_0) {
++            result = GetOverlappedResult(file, &operation, &transferred, FALSE);
++            error = result ? ERROR_SUCCESS : GetLastError();
++        }
++        else {
++            DWORD wait_error = GetLastError();
++            /* Drain cancellation before destroying the OVERLAPPED/event. A
++             * concurrently completed lock must also be released on timeout. */
++            CancelIoEx(file, &operation);
++            if (GetOverlappedResult(file, &operation, &transferred, TRUE))
++                sc_win_unlock(file);
++            CloseHandle(operation.hEvent);
++            SetLastError(wait_result == WAIT_TIMEOUT ? ERROR_TIMEOUT : wait_error);
++            return wait_result == WAIT_TIMEOUT ? 2 : 1;
++        }
++    }
++    CloseHandle(operation.hEvent);
++    SetLastError(error);
++    return result ? 0 : 1;
++}
++
++void sc_win_unlock(HANDLE file) {
++    OVERLAPPED operation;
++    lock_position(&operation);
++    UnlockFileEx(file, 0, 1, 0, &operation);
++}
++
++int sc_win_write_pid(HANDLE file) {
++    char text[32];
++    int size = snprintf(text, sizeof(text), "%lu\n", GetCurrentProcessId());
++    DWORD written = 0, error;
++    LARGE_INTEGER zero;
++    OVERLAPPED operation;
++    BOOL result;
++    zero.QuadPart = 0;
++    if (!SetFilePointerEx(file, zero, NULL, FILE_BEGIN) || !SetEndOfFile(file))
++        return 0;
++    memset(&operation, 0, sizeof(operation));
++    operation.hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
++    if (!operation.hEvent) return 0;
++    result = WriteFile(file, text, (DWORD)size, &written, &operation);
++    error = result ? ERROR_SUCCESS : GetLastError();
++    if (!result && error == ERROR_IO_PENDING) {
++        result = GetOverlappedResult(file, &operation, &written, TRUE);
++        error = result ? ERROR_SUCCESS : GetLastError();
++    }
++    CloseHandle(operation.hEvent);
++    if (result && written != (DWORD)size) { result = FALSE; error = ERROR_WRITE_FAULT; }
++    SetLastError(error);
++    return result != FALSE;
++}
+diff --git a/src/system/apps/utils/win32/native.h b/src/system/apps/utils/win32/native.h
+new file mode 100644
+--- /dev/null
++++ b/src/system/apps/utils/win32/native.h
+@@ -0,0 +1,25 @@
++/* Native Windows implementation of the existing lock/process utilities. */
++#ifndef SEISCOMP_UTILS_WIN32_NATIVE_H
++#define SEISCOMP_UTILS_WIN32_NATIVE_H
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <wchar.h>
++
++void sc_win_error(const wchar_t *operation, const wchar_t *path, DWORD error);
++/* 0 acquired, 1 error/contended, 2 timed out. timeout_ms == 0 is infinite. */
++int sc_win_lock(HANDLE file, int immediate, uint64_t timeout_ms);
++void sc_win_unlock(HANDLE file);
++HANDLE sc_win_open_lock(const wchar_t *path, int create);
++int sc_win_probe_open_error(const wchar_t *path, DWORD error);
++int sc_win_write_pid(HANDLE file);
++DWORD sc_win_wait(HANDLE object, uint64_t timeout_ms);
++int sc_win_spawn(wchar_t **argv, PROCESS_INFORMATION *process);
++void sc_win_reap(PROCESS_INFORMATION *process);
++#endif
+diff --git a/src/system/apps/utils/win32/process.c b/src/system/apps/utils/win32/process.c
+new file mode 100644
+--- /dev/null
++++ b/src/system/apps/utils/win32/process.c
+@@ -0,0 +1,61 @@
++#include "native.h"
++#include <stdlib.h>
++#include <string.h>
++
++int sc_win_spawn(wchar_t **argv, PROCESS_INFORMATION *process) {
++    /* Inverse MSVC argv parsing: quote every argument, double trailing slashes
++     * and slashes before a quote. No shell expansion or fixed-size argv buffer. */
++    size_t capacity = 1, index;
++    wchar_t *command, *out;
++    STARTUPINFOW startup;
++    BOOL result;
++    for (index = 0; argv[index]; ++index) {
++        size_t size = wcslen(argv[index]);
++        if (size > 32767 || capacity > SIZE_MAX - 3 ||
++            size > (SIZE_MAX - capacity - 3) / 2) {
++            SetLastError(ERROR_FILENAME_EXCED_RANGE); return 0;
++        }
++        capacity += 2 * size + 3;
++    }
++    if (capacity > SIZE_MAX / sizeof(wchar_t)) {
++        SetLastError(ERROR_NOT_ENOUGH_MEMORY); return 0;
++    }
++    command = (wchar_t *)malloc(capacity * sizeof(wchar_t));
++    if (!command) { SetLastError(ERROR_NOT_ENOUGH_MEMORY); return 0; }
++    out = command;
++    for (index = 0; argv[index]; ++index) {
++        const wchar_t *in = argv[index];
++        if (index) *out++ = L' ';
++        *out++ = L'"';
++        for (;;) {
++            size_t slashes = 0;
++            while (*in == L'\\') { ++slashes; ++in; }
++            if (!*in || *in == L'"') {
++                size_t count = 2 * slashes + (*in == L'"' ? 1 : 0);
++                while (count--) *out++ = L'\\';
++            }
++            else while (slashes--) *out++ = L'\\';
++            if (!*in) break;
++            *out++ = *in++;
++        }
++        *out++ = L'"';
++    }
++    *out = 0;
++    if ((size_t)(out - command) >= 32767) {
++        free(command); SetLastError(ERROR_FILENAME_EXCED_RANGE); return 0;
++    }
++    memset(&startup, 0, sizeof(startup)); startup.cb = sizeof(startup);
++    memset(process, 0, sizeof(*process));
++    /* Remain in the caller's console group: Ctrl+C/Break reach both processes
++     * natively, with no lossy translation to a different control event. */
++    result = CreateProcessW(NULL, command, NULL, NULL, TRUE, CREATE_SUSPENDED,
++        NULL, NULL, &startup, process);
++    { DWORD error = GetLastError(); free(command); SetLastError(error); }
++    return result != FALSE;
++}
++
++void sc_win_reap(PROCESS_INFORMATION *process) {
++    if (process->hThread) CloseHandle(process->hThread);
++    if (process->hProcess) CloseHandle(process->hProcess);
++    memset(process, 0, sizeof(*process));
++}
+diff --git a/src/system/apps/utils/win32/run_with_lock.c b/src/system/apps/utils/win32/run_with_lock.c
+new file mode 100644
+--- /dev/null
++++ b/src/system/apps/utils/win32/run_with_lock.c
+@@ -0,0 +1,74 @@
++#include "native.h"
++#include <string.h>
++
++/* Process-lifetime events intentionally survive until ExitProcess so a
++ * concurrently dispatched console handler never observes a closed handle. */
++static HANDLE notification, completed;
++static BOOL WINAPI console_control(DWORD event) {
++    switch (event) {
++    case CTRL_C_EVENT: case CTRL_BREAK_EVENT:
++        SetEvent(notification);
++        return TRUE; /* Child receives this same console event from Windows. */
++    case CTRL_CLOSE_EVENT: case CTRL_LOGOFF_EVENT: case CTRL_SHUTDOWN_EVENT:
++        SetEvent(notification);
++        WaitForSingleObject(completed, INFINITE);
++        return TRUE;
++    default: return FALSE;
++    }
++}
++
++int wmain(int argc, wchar_t **argv) {
++    HANDLE file;
++    PROCESS_INFORMATION process;
++    DWORD code = 1, result;
++    int quiet = argc > 1 && !wcscmp(argv[1], L"-q");
++    int first = quiet ? 3 : 2;
++    if (argc <= first) { fputs("Usage: run_with_lock [-q] <lock_file> <command> <arg1>...\n", stderr); return 1; }
++    file = sc_win_open_lock(argv[first - 1], 1);
++    if (file == INVALID_HANDLE_VALUE) { sc_win_error(L"could not open file", argv[first - 1], GetLastError()); return 1; }
++    result = sc_win_lock(file, 1, 0);
++    if (result) {
++        DWORD error = GetLastError(); CloseHandle(file);
++        if (error == ERROR_LOCK_VIOLATION) return 255;
++        sc_win_error(L"could not lock file", argv[first - 1], error); return 1;
++    }
++    if (!sc_win_write_pid(file)) {
++        sc_win_error(L"could not write PID file", argv[first - 1], GetLastError()); CloseHandle(file); return 1;
++    }
++    notification = CreateEventW(NULL, TRUE, FALSE, NULL);
++    completed = CreateEventW(NULL, TRUE, FALSE, NULL);
++    if (!notification || !completed || !SetConsoleCtrlHandler(console_control, TRUE)) {
++        sc_win_error(L"could not install console control", NULL, GetLastError());
++        CloseHandle(file); ExitProcess(1);
++    }
++    if (WaitForSingleObject(notification, 0) == WAIT_OBJECT_0) {
++        CloseHandle(file); SetEvent(completed); ExitProcess(0xc000013aUL);
++    }
++    if (!sc_win_spawn(argv + first, &process)) {
++        sc_win_error(L"couldn't exec", argv[first], GetLastError());
++        CloseHandle(file); SetEvent(completed); ExitProcess(1);
++    }
++    /* Cancellation before resume must not leave a newly created orphan. */
++    if (WaitForSingleObject(notification, 0) == WAIT_OBJECT_0) {
++        TerminateProcess(process.hProcess, 0xc000013aUL);
++    }
++    else if (ResumeThread(process.hThread) == (DWORD)-1) {
++        sc_win_error(L"couldn't resume", argv[first], GetLastError());
++        TerminateProcess(process.hProcess, 1);
++    }
++    result = WaitForSingleObject(process.hProcess, INFINITE);
++    if (result == WAIT_OBJECT_0) {
++        if (!GetExitCodeProcess(process.hProcess, &code)) code = 1;
++    }
++    else {
++        sc_win_error(L"couldn't wait for", argv[first], GetLastError());
++        TerminateProcess(process.hProcess, 1); WaitForSingleObject(process.hProcess, INFINITE);
++    }
++    if (code && !quiet)
++        fwprintf(stderr, L"run_with_lock: process \"%ls\" (%lu) exited with error status %lu\n",
++            argv[first], process.dwProcessId, code);
++    sc_win_reap(&process);
++    sc_win_unlock(file); CloseHandle(file); /* Parent alone owns the lock. */
++    SetEvent(completed);
++    ExitProcess(code);
++}
+diff --git a/src/system/apps/utils/win32/timeout.c b/src/system/apps/utils/win32/timeout.c
+new file mode 100644
+--- /dev/null
++++ b/src/system/apps/utils/win32/timeout.c
+@@ -0,0 +1,33 @@
++#include "native.h"
++#include <stdlib.h>
++
++int wmain(int argc, wchar_t **argv) {
++    unsigned int seconds = 10;
++    int first = 1;
++    DWORD result, code;
++    PROCESS_INFORMATION process;
++    if (argc > 1 && argv[1][0] == L'-') { seconds = (unsigned int)_wtoi(argv[1] + 1); ++first; }
++    if (argc <= first) { fputs("Usage : timeout [-10] command\n", stderr); return 255; }
++    if (!sc_win_spawn(argv + first, &process)) {
++        sc_win_error(L"couldn't exec", argv[first], GetLastError()); return 255;
++    }
++    if (ResumeThread(process.hThread) == (DWORD)-1) {
++        sc_win_error(L"couldn't resume", argv[first], GetLastError());
++        TerminateProcess(process.hProcess, 255); WaitForSingleObject(process.hProcess, INFINITE);
++        sc_win_reap(&process); return 255;
++    }
++    result = sc_win_wait(process.hProcess, (uint64_t)seconds * 1000);
++    if (result != WAIT_OBJECT_0) {
++        if (result == WAIT_TIMEOUT)
++            fwprintf(stderr, L"%ls killed, timed out after %u sec\n", argv[first], seconds);
++        else sc_win_error(L"couldn't wait for", argv[first], GetLastError());
++        /* Only the direct child is owned, matching the original kill(pid). */
++        if (!TerminateProcess(process.hProcess, 255) && GetLastError() != ERROR_ACCESS_DENIED)
++            sc_win_error(L"couldn't terminate", argv[first], GetLastError());
++        WaitForSingleObject(process.hProcess, INFINITE);
++        sc_win_reap(&process); return 255;
++    }
++    if (!GetExitCodeProcess(process.hProcess, &code)) code = 255;
++    sc_win_reap(&process);
++    ExitProcess(code);
++}
+diff --git a/src/system/apps/utils/win32/trylock.c b/src/system/apps/utils/win32/trylock.c
+new file mode 100644
+--- /dev/null
++++ b/src/system/apps/utils/win32/trylock.c
+@@ -0,0 +1,15 @@
++#include "native.h"
++
++int wmain(int argc, wchar_t **argv) {
++    HANDLE file;
++    int result;
++    if (argc != 2) { fputs("Usage: trylock <lock_file>\n", stdout); return 1; }
++    file = sc_win_open_lock(argv[1], 0);
++    if (file == INVALID_HANDLE_VALUE) return sc_win_probe_open_error(argv[1], GetLastError());
++    result = sc_win_lock(file, 1, 0);
++    if (result && GetLastError() != ERROR_LOCK_VIOLATION)
++        sc_win_error(L"could not lock file", argv[1], GetLastError());
++    /* This utility exits immediately; explicit close has process-exit lifetime. */
++    CloseHandle(file);
++    return result ? 1 : 0;
++}
+diff --git a/src/system/apps/utils/win32/waitlock.c b/src/system/apps/utils/win32/waitlock.c
+new file mode 100644
+--- /dev/null
++++ b/src/system/apps/utils/win32/waitlock.c
+@@ -0,0 +1,19 @@
++#include "native.h"
++#include <stdlib.h>
++
++int wmain(int argc, wchar_t **argv) {
++    HANDLE file;
++    unsigned long seconds;
++    wchar_t *tail;
++    int result;
++    if (argc != 3) { fputs("Usage: waitlock <timeout> <lock_file>\n", stdout); return 1; }
++    seconds = wcstoul(argv[1], &tail, 10);
++    if (*tail) { fputs("Usage: waitlock <timeout> <lock_file>\n", stdout); return 1; }
++    file = sc_win_open_lock(argv[2], 0);
++    if (file == INVALID_HANDLE_VALUE) return sc_win_probe_open_error(argv[2], GetLastError());
++    /* alarm(0) disables the original timeout; retain an unbounded wait for zero. */
++    result = sc_win_lock(file, 0, (uint64_t)seconds * 1000);
++    if (result == 1) sc_win_error(L"could not lock file", argv[2], GetLastError());
++    CloseHandle(file);
++    return result;
++}

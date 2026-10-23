@@ -1,0 +1,31 @@
+--- a/plugins/caps_plugin/CMakeLists.txt
++++ b/plugins/caps_plugin/CMakeLists.txt
+@@ -27,7 +27,15 @@
+ 
+ ADD_EXECUTABLE(caps_plugin ${CAPSPLUGIN_SOURCES})
+ 
+-FIND_PACKAGE(OpenSSL REQUIRED)
++IF (WIN32)
++	SET(_CAPS_MODULE_PATH ${CMAKE_MODULE_PATH})
++	SET(CMAKE_MODULE_PATH "")
++	FIND_PACKAGE(OpenSSL CONFIG REQUIRED)
++	SET(CMAKE_MODULE_PATH ${_CAPS_MODULE_PATH})
++	UNSET(_CAPS_MODULE_PATH)
++ELSE ()
++	FIND_PACKAGE(OpenSSL REQUIRED)
++ENDIF ()
+ FIND_PACKAGE(Boost REQUIRED COMPONENTS program_options OPTIONAL_COMPONENTS system)
+ 
+ TARGET_LINK_LIBRARIES(
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,6 +1,8 @@
+ SC_BEGIN_PACKAGE(SEEDLINK)
+ 
+ INCLUDE(CheckFunctionExists)
+-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-incompatible-pointer-types")
++IF (CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
++	SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-incompatible-pointer-types")
++ENDIF ()
+ 
+ SUBDIRS(libs apps plugins templates)

@@ -1,0 +1,19 @@
+--- a/src/base/seedlink/plugins/sockplugin/CMakeLists.txt
++++ b/src/base/seedlink/plugins/sockplugin/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ SET(SOCKPLUGIN_SOURCES
+ 	seedutils.c
+ 	sock_plugin.c
+-	../plugin.c
++	../../libs/plugin/plugin.c
+ )
+ 
+ INCLUDE_DIRECTORIES(.)
+@@ -11,3 +11,7 @@
+ TARGET_LINK_LIBRARIES(sock_plugin m)
+ 
+ INSTALL(TARGETS sock_plugin RUNTIME DESTINATION ${SEEDLINK_PLUGIN_OUTPUT_DIR})
++
++IF(WIN32)
++ TARGET_LINK_LIBRARIES(sock_plugin slplugin)
++ENDIF()

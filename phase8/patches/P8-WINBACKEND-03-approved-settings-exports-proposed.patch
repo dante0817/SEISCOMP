@@ -1,0 +1,18 @@
+--- a/libs/seiscomp/system/settings.h
++++ b/libs/seiscomp/system/settings.h
+@@ -112,6 +112,15 @@
+ template <typename T>
+ T getConfig(const Config::Config *cfg, const std::string &symbol, bool asPath);
+ 
++// Existing out-of-line settings specializations cross the core DLL boundary.
++template <>
++SC_SYSTEM_CORE_API int getConfig<int>(const Config::Config *cfg, const std::string &symbol, bool asPath);
++template <>
++SC_SYSTEM_CORE_API bool getConfig<bool>(const Config::Config *cfg, const std::string &symbol, bool asPath);
++template <>
++SC_SYSTEM_CORE_API std::string getConfig<std::string>(const Config::Config *cfg, const std::string &symbol, bool asPath);
++
++
+ 
+ }
+ 

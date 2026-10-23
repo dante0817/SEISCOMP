@@ -1,0 +1,25 @@
+--- a/src/base/common/libs/seiscomp/wired/protocols/http.h
++++ b/src/base/common/libs/seiscomp/wired/protocols/http.h
+@@ -240,9 +240,19 @@
+ 
+ 	URLInsituOptions(char *src, size_t l) : _source(src), _source_len(l) {}
+ 
+-	bool next();
+-
+-	bool nameEquals(const char *s) const;
++	
++#ifdef _WIN32
++ SC_SYSTEM_CORE_API bool next();
++#else
++ bool next();
++#endif
++
++	
++#ifdef _WIN32
++ SC_SYSTEM_CORE_API bool nameEquals(const char *s) const;
++#else
++ bool nameEquals(const char *s) const;
++#endif
+ 	bool valueEquals(const char *s) const;
+ 
+ 	bool operator==(const URLOptionName &wrapper) const {

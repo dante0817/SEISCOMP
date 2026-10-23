@@ -1,0 +1,15 @@
+--- a/src/base/seedlink/plugins/scream_plugin/oscompat.h
++++ b/src/base/seedlink/plugins/scream_plugin/oscompat.h
+@@ -47,6 +47,12 @@
+ #include <endian.h>
+ #elif defined (__sun)
+ #include <sys/int_types.h>
++#elif defined (_WIN32) && defined (_MSC_VER) && _MSC_VER >= 1900
++/* MSVC's fixed-width types include the original decoder's 64-bit accumulator. */
++#include <stdint.h>
++#define strcasecmp _stricmp
++typedef char scream_int_widths[(sizeof(int8_t) == 1 && sizeof(int16_t) == 2 &&
++                               sizeof(int32_t) == 4 && sizeof(int64_t) == 8) ? 1 : -1];
+ #elif defined (WIN32)
+ #if 0
+ #include <basetsd.h>

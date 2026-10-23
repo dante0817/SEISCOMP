@@ -1,0 +1,13 @@
+--- a/apps/3rd-party/slinktool/src/dsarchive.c
++++ b/apps/3rd-party/slinktool/src/dsarchive.c
+@@ -15,6 +15,10 @@
+ #include <sys/types.h>
+ 
+ #include "dsarchive.h"
++
++#if defined(_WIN32) && !defined(F_OK)
++#define F_OK 0
++#endif
+ 
+ /* Functions internal to this source file */
+ static DataStream *ds_getstream (DataStream **dstream, const SLMSrecord *msr,

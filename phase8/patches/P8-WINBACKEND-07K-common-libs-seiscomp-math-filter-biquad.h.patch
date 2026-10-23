@@ -1,0 +1,32 @@
+--- a/src/base/common/libs/seiscomp/math/filter/biquad.h
++++ b/src/base/common/libs/seiscomp/math/filter/biquad.h
+@@ -46,10 +46,19 @@
+  * to be 1. This is not checked.
+  */
+ struct BiquadCoefficients {
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ 	BiquadCoefficients(double b0 = 0, double b1 = 0, double b2 = 0,
+ 	                   double a0 = 1, double a1 = 0, double a2 = 0);
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ 	BiquadCoefficients(BiquadCoefficients const &bq);
+ 
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ 	void set(double b0, double b1, double b2,
+ 	         double a0, double a1, double a2);
+ 
+@@ -62,6 +71,9 @@
+ typedef std::vector<BiquadCoefficients> Biquads;
+ 
+ 
++#ifdef _WIN32
++SC_SYSTEM_CORE_API
++#endif
+ std::ostream &operator<<(std::ostream &os, const BiquadCoefficients &biq);
+ 
+ 

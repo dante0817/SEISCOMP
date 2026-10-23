@@ -1,0 +1,15 @@
+--- a/src/base/common/apps/waveforms/scwfas/session.cpp
++++ b/src/base/common/apps/waveforms/scwfas/session.cpp
+@@ -22,7 +22,12 @@
+ 
+ #include "session.h"
+ #include "version.h"
++#ifdef _WIN32
++#include <string.h>
++#define strncasecmp _strnicmp
++#else
+ #include "strings.h"
++#endif
+ 
+ #define SEISCOMP_COMPONENT WFAS
+ #include <seiscomp/logging/log.h>

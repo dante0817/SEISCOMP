@@ -1,0 +1,24 @@
+--- a/src/base/trunk/apps/tools/scardac/scardac.cpp
++++ b/src/base/trunk/apps/tools/scardac/scardac.cpp
+@@ -16,6 +16,9 @@
+ 
+ #include "scardac.h"
+ 
++#ifdef WIN32
++#include <seiscomp/core/system.h>
++#endif
+ #include <ctime>
+ #include <vector>
+ 
+@@ -743,7 +746,11 @@
+ 		else {
+ 			SEISCOMP_DEBUG("[%i] Trying to reconnect in 5s", _id);
+ 			for ( int i = 0; i < 5 && !_app->_exitRequested; ++i ) {
++#ifdef WIN32
++				Seiscomp::Core::msleep(1000);
++#else
+ 				sleep(1);
++#endif
+ 			}
+ 		}
+ 	}

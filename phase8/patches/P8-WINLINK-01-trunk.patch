@@ -1,0 +1,14 @@
+diff --git a/apps/processing/scautoloc/stationconfig.cpp b/apps/processing/scautoloc/stationconfig.cpp
+index 256d524..3291e38 100644
+--- a/apps/processing/scautoloc/stationconfig.cpp
++++ b/apps/processing/scautoloc/stationconfig.cpp
+@@ -24,7 +24,9 @@
+ #include <vector>
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#ifndef _WIN32
+ #include <unistd.h>
++#endif
+ 
+ #include <seiscomp/logging/log.h>
+ 

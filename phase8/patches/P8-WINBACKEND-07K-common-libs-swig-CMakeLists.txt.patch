@@ -1,0 +1,39 @@
+--- a/src/base/common/libs/swig/CMakeLists.txt
++++ b/src/base/common/libs/swig/CMakeLists.txt
+@@ -1,16 +1,30 @@
+ IF(WIN32 AND SC_WINDOWS_CONTROLLER_ONLY)
+- FOREACH(_module core logging system)
++ # Original SDK module list; reuse retained SWIG 4.4.1 wrappers and pinned Python ABI.
++ FOREACH(_module core logging system io utils datamodel math seismology client geo)
+   ADD_LIBRARY(_${_module} MODULE ${_module}_python_wrap.cxx)
+   TARGET_INCLUDE_DIRECTORIES(_${_module} PRIVATE "${PYTHON_INCLUDE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../../../system/libs/swig")
+   TARGET_COMPILE_OPTIONS(_${_module} PRIVATE "/FI${SC_WINDOWS_PYTHON_GUARD}")
++  IF(_module STREQUAL "datamodel")
++   TARGET_COMPILE_OPTIONS(_${_module} PRIVATE /bigobj)
++  ENDIF()
+   TARGET_LINK_LIBRARIES(_${_module} PRIVATE Python::Python seiscomp_core)
++  IF(_module STREQUAL "client")
++   TARGET_LINK_LIBRARIES(_${_module} PRIVATE seiscomp_client)
++  ENDIF()
++  SET(_native_module_dir "lib/python/seiscomp")
++  SET(_native_module_file "${_module}.py")
++  IF(_module STREQUAL "datamodel")
++   SET(_native_module_dir "lib/python/seiscomp/datamodel")
++   SET(_native_module_file "__init__.py")
++  ENDIF()
++  STRING(REPLACE "lib/python/" "lib/python/$<CONFIG>/" _native_build_dir "${_native_module_dir}")
+   SET_TARGET_PROPERTIES(_${_module} PROPERTIES PREFIX "" SUFFIX ".pyd"
+-   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/python/$<CONFIG>/seiscomp"
+-   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/python/$<CONFIG>/seiscomp"
++   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${_native_build_dir}"
++   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${_native_build_dir}"
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/$<CONFIG>/python")
+-  INSTALL(TARGETS _${_module} LIBRARY DESTINATION lib/python/seiscomp COMPONENT WindowsController
+-   RUNTIME DESTINATION lib/python/seiscomp COMPONENT WindowsController)
+-  INSTALL(FILES ${_module}.py DESTINATION lib/python/seiscomp COMPONENT WindowsController)
++  INSTALL(TARGETS _${_module} LIBRARY DESTINATION ${_native_module_dir} COMPONENT WindowsController
++   RUNTIME DESTINATION ${_native_module_dir} COMPONENT WindowsController)
++  INSTALL(FILES ${_module}.py DESTINATION ${_native_module_dir} RENAME ${_native_module_file} COMPONENT WindowsController)
+  ENDFOREACH()
+  RETURN()
+ ENDIF()
