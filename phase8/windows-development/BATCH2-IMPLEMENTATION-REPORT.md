@@ -89,3 +89,18 @@ The operator ran a bounded read-only search for `qoffscreen.dll` in two historic
 Both are consistent with the pinned Qt provider version, but **the table output truncated file sizes and SHA-256 values**. Their byte identity, staged provenance, AMD64 PE architecture, and cross-dependency compatibility with the approved R9 Qt libraries remain to be independently confirmed. No plugin has been copied, executed, or installed. R9 still lacks the plugin.
 
 **Next bounded checks:** display complete SHA-256 for both candidates without column truncation, establish byte identity, inspect `dumpbin /HEADERS` and `/DEPENDENTS` on the selected candidate and compare against the packaged Qt provider set, verify each against a staged hash receipt if available, and inspect `share/windows/gui-package.json` object shape before implementing manifest and catalog updates in a **new** versioned candidate. Do not edit R9, do not use an arbitrary Qt installation, and do not claim GUI runtime qualification.
+
+## 2026-10-30 operator evidence — staged offscreen copies are identical
+
+The operator's full read-only hash and version check returned exactly:
+
+| Staged origin | File version | Size (bytes) | SHA-256 |
+|---|---|---:|---|
+| `phase8/staging/scmapcut-offline/platforms/qoffscreen.dll` | 5.15.18.0 | 102912 | `111CD9A0E512545DCD7E4BCC130E70ABA4EA1B9A1B1068545F5D1B193B0C04A6` |
+| `phase8/staging/scshowevent-offline/platforms/qoffscreen.dll` | 5.15.18.0 | 102912 | `111CD9A0E512545DCD7E4BCC130E70ABA4EA1B9A1B1068545F5D1B193B0C04A6` |
+
+Operator's comparison: `BOTH PLUGINS ARE BYTE-IDENTICAL`.
+
+**Interpretation:** two historical sources contain exactly matching candidate plugin bytes consistent with Qt 5.15.18. This is sufficient to identify a deterministic candidate for a new separate packaging revision; it does not yet prove x64 PE architecture, import closure, original staging manifest provenance, or runtime compatibility. No file has been moved or installed. R9 remains intact.
+
+**Next static read-only inspections:** `dumpbin /HEADERS` and `/DEPENDENTS` on the identified staged candidate; compare Qt provider module file versions; check historical staging receipts/hashes if present. Prepare a new candidate only after verification, with new `SHA256SUMS.json` and `gui-package.json` entries, preserving externally pinned R9 identity.
