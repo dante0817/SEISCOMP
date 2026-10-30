@@ -55,3 +55,18 @@ The selected local listener-port query returned **two entries for TCP port 5432,
 The adapter inventory reported `Ethernet`, `Tailscale`, `vEthernet (Default Switch)`, and `vEthernet (WSL (Hyper-V firewall))` as `Up`. This is not an isolation guarantee. Do not stop or modify these connections or PID 8148 as part of GUI smoke testing.
 
 **Next focused, read-only inventory:** `Get-CimInstance Win32_Process -Filter 'ProcessId=8148' | Select-Object Name,ProcessId` and `Get-NetTCPConnection -State Listen -LocalPort 5432 | Select-Object LocalAddress,LocalPort,OwningProcess` (sanitize local addresses before publicly sharing). No SeisComP GUI launch was reported; runtime boundary and explicit application authorization remain pending.
+
+## 2026-10-30 operator verification — GUI and Qt package layout
+
+The operator inspected the **verified R9 per-user development installation** with read-only PowerShell commands. Findings:
+
+- Original GUI executables `bin/scconfig.exe`, `bin/scrttv.exe`, and `bin/scolv.exe` all exist.
+- `bin/qt.conf` contents: `[Paths]`, `Prefix=.`, `Plugins=qt-plugins`.
+- `bin/qt5core.dll`, `qt5gui.dll`, `qt5network.dll`, `qt5printsupport.dll`, `qt5svg.dll`, and `qt5widgets.dll` all exist.
+- Windows Qt platform plugin is at `bin/qt-plugins/platforms/qwindows.dll`, consistent with the configured plugin-relative path.
+
+**Interpretation:** the GUI-package file layout is consistent with a Qt5 Windows application. File presence is not proof of complete dependency loading, DLL ABI consistency, platform-plugin initialization, GUI startup, or scientific functionality. Do not mark `GUI_PASS` or change the reported build coverage.
+
+**Next source/read-only checks:** verify the Qt DLL and platform plugin hashes against the approved R9 manifest (if listed), then inspect native imports/dependencies with the available MSVC tooling. Continue source-only remediation until an approved isolated GUI test environment is available.
+
+Do not publish internal hostnames, usernames, private local directories, addresses, or network information in this public repository.
