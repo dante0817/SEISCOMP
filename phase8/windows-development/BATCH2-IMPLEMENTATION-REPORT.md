@@ -38,3 +38,13 @@ The positive result is `STATIC_GUI_PACKAGE_AUDIT_PASS`. If `NEEDS_REVIEW`, inspe
 5. Continue acquisition/parser and remaining backend development separately under applicable authorization.
 
 **Validation in this environment:** inspected the archived Phase 8 evidence, created a self-contained script, and reviewed source for prohibited execution/write operations; actual PowerShell AST and Windows GUI runtime were not available and are not claimed.
+
+## Operator execution checkpoint — RemoteSigned / ZoneId=3
+
+The first operator attempt to run `Test-NativeGuiPackage.ps1` on the mapped `Y:` development volume was blocked **before script execution** with PowerShell `PSSecurityException` / `AuthorizationManager check failed`.
+
+Read-only diagnosis: MachinePolicy and UserPolicy both Undefined; CurrentUser and LocalMachine `RemoteSigned`, effective `RemoteSigned`; script `NotSigned`; `Zone.Identifier` reports `ZoneId=3`. No GUI or audit execution is claimed. This is consistent with PowerShell marking the unsigned downloaded script as Internet-origin; the mapped-drive location may introduce additional zone classification.
+
+Operator-safe continuation: compare the script SHA-256 with the published original (`CF94FADD595686DB51F218D8E618F156B1938A9C5216DDFD4CE856649D64CBB2`), then use a separate local development-directory copy and `Unblock-File` **only if allowed by organizational policy**, without changing execution policy or administrator rights. Verify the local copy hash before any execution. If permissions still deny execution, seek IT authorization; do not use execution-policy bypass.
+
+R9 installation remains immutable. Static GUI package-audit result is **NOT_RUN** until the operator supplies its actual output.
