@@ -88,3 +88,12 @@ The operator subsequently checked the expected `WindowsSandbox.exe` path and Sta
 Do not launch the prepared `.wsb` or enable optional Windows features without the applicable workstation authorization. Next read-only action: `Get-Command Get-VM -ErrorAction SilentlyContinue; Get-VM -ErrorAction SilentlyContinue | Select-Object Name,State,Generation` to see whether an isolated Windows test VM already exists. A separately approved elevated feature inspection is the alternative. Preserve the R9 install and the host Ethernet/Tailscale/PostgreSQL processes unchanged.
 
 No GUI launch or isolation verification has occurred. Status remains `R9_PREFLIGHT_PASS / RUNTIME_NOT_RUN`.
+
+
+## 2026-10-30 operator checkpoint — Hyper-V inventory authorization denied
+
+The operator ran `Get-VM -ErrorAction Stop` on the development host. The command returned `You do not have the required permission to complete this task`. The command's availability establishes that Hyper-V management tooling is present, but it **does not** establish whether any VMs exist. The earlier empty results with `-ErrorAction SilentlyContinue` must not be interpreted as an empty VM inventory.
+
+**Policy:** Do not attempt elevation, group membership changes, firewall/adapter changes or Windows feature enablement to bypass the managed-host restrictions. An authorized workstation administrator can supply a separately approved isolated Windows test environment or grant limited delegated management access, if appropriate.
+
+**Development-first continuation:** keep the verified R9 candidate immutable; progress the source-only Qt/path/dependency audit and offline MiniSEED/SCML fixture preparation without launching unqualified SeisComP executables on the connected host. No `scconfig` GUI launch has yet been observed. Do not publish the internal computer hostname or other sensitive workstation details in the public repository.
