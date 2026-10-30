@@ -175,3 +175,15 @@ Next bounded **read-only** checks on the exact local V2 path: `Test-Path -PathTy
 Following `Get-FileHash` and `Parser.ParseFile` access-denied failures, the operator performed **read-only** inspection of the local V2 builder. The file exists, has length **12259 bytes**, and ordinary `Archive` attributes. `icacls` succeeded and reported inherited read/execute and full-control entries, while guarded `Get-Content -TotalCount 1` returned **FILE READ PASS**.
 
 These observations demonstrate that the file was readable at the latest check; they do **not** establish why the previous reads failed or that hash verification and parser validation have now passed. **Next:** guarded SHA-256 recheck against published `D0E929D2B23447C31D3200BEDE45689F8EE6790E37E169A0BBD6683647EEC709`, PowerShell parser validation, and `-WhatIf` only. Do not alter ACLs or bypass execution policy. R10 build/runtime remain NOT_RUN.
+
+## 2026-10-30 operator V2 preflight — exact PID state discovered and builder V3 prepared
+
+The operator's V2 file SHA-256 verified against the published source, and the PowerShell syntax parser returned PASS. V2's `-WhatIf` printed `EXCLUDED_LOCAL_STATE: var/run/seiscomp.init` but then fail-closed on `Unexpected unmanifested R9 file: var/run/seiscomp.pid`. This is an additional **unmanifested installation-local path** consistent with PID state; its presence does not by itself demonstrate a currently running process. R10 candidate creation remains **NOT_RUN**.
+
+**Batch 2 builder V3 source update:** add the *exact* `var/run/seiscomp.pid` path to the local-state exclusion set; only specific `seiscomp.init` / `seiscomp.pid` and files within the environment helper's `work/config` and `work/temp` are exempt from the unmanifested-file check. These paths are **never copied**, never added to the R10 manifest, and never removed from R9. Every manifest-listed file continues to receive SHA-256 verification.
+
+To avoid serial operator checks, collect and print **all** additional non-exempt unmanifested R9 paths as `UNEXPECTED_UNMANIFESTED_R9`, then stop with a single aggregate error before any candidate copy. Symlinks and reparse points remain rejected. This does not silently expand exclusions to all `var/run` content.
+
+Verified GitHub readback of maintained script. V3 source SHA-256: `702912BB1889828C78CA179840793FA869C8773C4380D6B6F61174BDCAF53207` (12871 ASCII bytes). **V3 Windows parsing, preview and package generation still NOT_RUN**. The old V2 file hash is not applicable to V3. Download V3 under a new filename and verify its exact hash before organizational trust approval.
+
+Next operator check: SHA-256 and AST of V3, then isolated `-WhatIf`. A clean preview should show the two `EXCLUDED_LOCAL_STATE` entries, its intended destination, and `R10_CANDIDATE_NOT_CREATED`. A new unknown entry will now be reported alongside all other unexpected entries in one pass. No service, GUI or source installation was executed.
