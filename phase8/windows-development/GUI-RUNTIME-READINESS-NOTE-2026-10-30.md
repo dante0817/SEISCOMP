@@ -86,3 +86,15 @@ Operator ran a read-only SHA-256 comparison between seven installed R9 Qt files 
 This establishes integrity relative to the recorded R9 package manifest, not external upstream provenance, DLL dependency closure, runtime loading, successful GUI startup, or scientific qualification. The approved manifest digest had previously been verified by the R9 preflight.
 
 **Next read-only task:** inspect imported dependencies for `bin/scconfig.exe` and `bin/qt-plugins/platforms/qwindows.dll` with the existing MSVC `dumpbin /dependents` utility, where available. Do not infer resolution of every imported module from the import listing alone; dynamic and delay-loaded modules may need separate runtime checks in an authorized isolated environment.
+
+## 2026-10-30 operator verification — PE direct-import inspection
+
+Operator successfully ran `dumpbin /DEPENDENTS` against the R9 `bin/scconfig.exe` and `bin/qt-plugins/platforms/qwindows.dll`. No process launch or write was performed.
+
+**scconfig.exe direct imports:** `seiscomp_qt.dll`, `Qt5Network.dll`, `Qt5Svg.dll`, `seiscomp_core.dll`, `boost_program_options-vc145-mt-x64-1_90.dll`, `seiscomp_config.dll`, `Qt5Widgets.dll`, `Qt5Gui.dll`, `Qt5Core.dll`, `MSVCP140.dll`, `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll`, several `api-ms-win-crt-*` API-set names, and `KERNEL32.dll`.
+
+**qwindows.dll direct imports:** `dwmapi.dll`, `IMM32.dll`, `WTSAPI32.dll`, `freetype.dll`, `KERNEL32.dll`, `USER32.dll`, `GDI32.dll`, `SHELL32.dll`, `ole32.dll`, `OLEAUT32.dll`, `Qt5Gui.dll`, `Qt5Core.dll`, `WINMM.dll`, `MSVCP140.dll`, `VCRUNTIME140.dll`, and `api-ms-win-crt-*` API-set names.
+
+**Interpretation:** both PE import tables were readable. Import names alone do not establish DLL presence, loader search-path resolution, ABI compatibility, transitive/delay-loaded closure, GUI startup or scientific qualification. The import listing does not reveal an inherently incorrect module name. Focus next checks on the exact packaged Boost library, `freetype.dll`, SeisComP core libraries, and VC++ runtime availability; do not treat API-set names as ordinary missing files. Do not infer the build compiler from the version of the external `dumpbin` inspection utility.
+
+**Next:** compare exact filenames/manifest SHA-256 for non-system DLLs. Retain runtime qualification pending an authorized isolated Windows test. No R9 files have been modified.
