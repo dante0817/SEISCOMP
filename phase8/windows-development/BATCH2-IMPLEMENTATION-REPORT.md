@@ -116,3 +116,30 @@ The installed R9 `Qt5Core.dll`, `Qt5Gui.dll`, and `qwindows.dll` all have file v
 **Conclusion:** confirmed byte-identified AMD64 Qt 5.15.18 offscreen-plugin candidate with direct import names consistent with the existing R9 package. This is not proof of full recursive import resolution, Qt platform plugin loading, GUI startup, or scientific functionality. No application was executed and R9 remains unchanged.
 
 **Next release-engineering input needed:** inspect the on-disk `share/windows/gui-package.json` structure and the recorded `qwindows.dll` entry so the new versioned candidate can update the catalog accurately rather than guessing its schema. Candidate construction must separately verify the source plugin and all files, produce fresh manifest and external manifest identity, and install into a separate R10 development directory. Do not repoint R9 receipts to the new manifest.
+
+## Batch 2 release preparation — R10 offscreen recovery builder added
+
+The operator inspected the R9 GUI catalog structure and confirmed it contains `original_applications` and `Qt` child objects, alongside `qt_conf_sha256`, `private_provider_manifest`, `config_and_resource_manifest`, and `inspection`. A representative `Qt.qwindows.dll` item has `path` and `sha256` members. The recovered offscreen plugin is x64 / Qt 5.15.18.0 with the pinned SHA-256 from the previous checkpoint.
+
+Prepared `phase8/windows-development/New-NativeGuiR10Candidate.ps1` in **draft PR #3**. This source-only packaging utility:
+
+- Pins the approved R9 manifest digest and the confirmed Qt offscreen plugin hash, checks PE AMD64 and version.
+- Re-verifies every manifest-listed R9 source file and rejects unmanifested source files and reparse points.
+- Validates that the existing GUI catalog includes a consistent `Qt.qwindows.dll` `path`/`sha256` and does not already list `qoffscreen.dll`.
+- Supports a mandatory fresh, local fixed NTFS candidate destination; will not replace the installed R9 copy.
+- Adds a `Qt.qoffscreen.dll` object with path/hash to `share/windows/gui-package.json` in a new copy; updates only that changed catalog entry and adds the plugin to the new flat `SHA256SUMS.json`.
+- Re-verifies all new payload hashes, manifest entry count, filesystem file count, and updated Qt catalog; writes a separate build receipt containing the new manifest identity and explicit NOT_RUN runtime status.
+- Never executes SeisComP or Qt; uses `SupportsShouldProcess` so `-WhatIf` validates and previews without creating the candidate.
+
+**Operator read-only preflight:** after a script trust review, run
+
+```powershell
+$source = Join-Path $env:LOCALAPPDATA 'SeisComP-Development-R9'
+$plugin = 'Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\phase8\staging\scmapcut-offline\platforms\qoffscreen.dll'
+$destination = Join-Path $env:LOCALAPPDATA 'SeisComP-R10-Candidate'
+.\New-NativeGuiR10Candidate.ps1 -SourceRoot $source -OffscreenPlugin $plugin -Destination $destination -WhatIf
+```
+
+After operator-approved copy, omit `-WhatIf` and record `R10_MANIFEST_SHA256`. Separately install into a **different** R10 development path using the existing verified installer and the **new** externally approved manifest digest. Do not reuse R9's installer receipt, root, or digest for R10.
+
+**Validation declaration:** source authored and GitHub readback verified; native Windows PowerShell AST, dry run, copy operation and GUI runtime are **NOT_RUN** in this assistant environment. Do not claim R10 is built until the actual operator transcript proves it. Continue development-first GUI integration and defer actual runtime qualification to an approved isolated Windows environment.
