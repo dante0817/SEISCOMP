@@ -143,3 +143,11 @@ $destination = Join-Path $env:LOCALAPPDATA 'SeisComP-R10-Candidate'
 After operator-approved copy, omit `-WhatIf` and record `R10_MANIFEST_SHA256`. Separately install into a **different** R10 development path using the existing verified installer and the **new** externally approved manifest digest. Do not reuse R9's installer receipt, root, or digest for R10.
 
 **Validation declaration:** source authored and GitHub readback verified; native Windows PowerShell AST, dry run, copy operation and GUI runtime are **NOT_RUN** in this assistant environment. Do not claim R10 is built until the actual operator transcript proves it. Continue development-first GUI integration and defer actual runtime qualification to an approved isolated Windows environment.
+
+## 2026-10-30 operator checkpoint — builder source verified; RemoteSigned blocks execution
+
+The operator copied the new R10 builder from a development volume into a local per-user working folder, compared source/destination SHA-256 and obtained `COPY INTEGRITY PASS`. The local script SHA-256 `CECA2806E308673622810FFC400E52B8F2AD24BBC715D3E0F03F23603B3364D8` **matches the exact committed GitHub branch source**, independently computed from the connector-fetched file. Its PowerShell parser inspection returned `SYNTAX PASS`.
+
+The first `-WhatIf` invocation was **blocked before execution** because the local copy is unsigned and the system rejected it under the current script trust settings (`PSSecurityException`, `UnauthorizedAccess`). The earlier effective policy was `RemoteSigned` and a previous downloaded script had `ZoneId=3`; inspect the zone marking on this **specific local builder** rather than presuming it.
+
+Allow `Unblock-File` on the verified local copy **only with organizational approval**; this removes the Internet-origin marker, not enterprise signing requirements. Verify file SHA remains unchanged and run `-WhatIf` first. If a signing/authorization policy still refuses execution, obtain an approved signed build artifact from IT; do not use policy bypass. No R10 package was created; R9 remains unchanged.
