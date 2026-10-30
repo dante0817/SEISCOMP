@@ -169,3 +169,9 @@ Operator downloaded the revised R10 builder to a per-user local development fold
 The source of read denial (file DACL, security software, or another access restriction) has **not** been established; no ACL changes, policy bypass, administrator elevation, or runtime launch was authorized. R10 preview/build remain NOT_RUN, and R9 remains unchanged.
 
 Next bounded **read-only** checks on the exact local V2 path: `Test-Path -PathType Leaf`, `Get-Item`, `icacls`, and guarded `Get-Content -TotalCount 1`. If denied, obtain an approved accessible local copy through the organization's file transfer/source trust process; do not weaken OS or enterprise security controls.
+
+## 2026-10-30 operator checkpoint — V2 read-access follow-up
+
+Following `Get-FileHash` and `Parser.ParseFile` access-denied failures, the operator performed **read-only** inspection of the local V2 builder. The file exists, has length **12259 bytes**, and ordinary `Archive` attributes. `icacls` succeeded and reported inherited read/execute and full-control entries, while guarded `Get-Content -TotalCount 1` returned **FILE READ PASS**.
+
+These observations demonstrate that the file was readable at the latest check; they do **not** establish why the previous reads failed or that hash verification and parser validation have now passed. **Next:** guarded SHA-256 recheck against published `D0E929D2B23447C31D3200BEDE45689F8EE6790E37E169A0BBD6683647EEC709`, PowerShell parser validation, and `-WhatIf` only. Do not alter ACLs or bypass execution policy. R10 build/runtime remain NOT_RUN.
