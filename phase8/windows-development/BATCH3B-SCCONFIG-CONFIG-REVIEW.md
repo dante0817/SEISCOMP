@@ -147,3 +147,20 @@ The official scconfig documentation states that the first-start setup prompt use
 Documented first-start behavior: https://www.seiscomp.de/doc/apps/scconfig.html . Configuration precedence: https://www.seiscomp.de/doc/base/concepts/configuration.html .
 
 **Next native engineering milestone:** locate the authoritative editable C++ scconfig source and inspect the startup-marker/wizard path, original root resolution and Qt plugin startup behavior. Execute GUI in an independently approved isolated Windows environment only; use a disposable native Windows copy with a reviewed configuration. Batch 3B first-run/GUI runtime remains **NOT_RUN**.
+
+## Source discovery - editable native scconfig C++ tree
+
+2026-10-30 operator read-only search identified the original native C++ source files under the **phase8/native-working-copy/src/base/common/apps/tools/scconfig** tree (primary editable development copy). The historically preserved **phase8/source-snapshot/common/apps/tools/scconfig** and **phase8/working-copy/src/base/common/apps/tools/scconfig** are comparators. The `phase8/build/vs2022-*` and historical Phase 7 `build-attempt-*` paths are generated build artifacts, **not editable C++ source**.
+
+SHA-256 identities as reported by the operator:
+
+| File | Native working copy | Snapshot/older working copy |
+|---|---|---|
+| `main.cpp` | `B60C6478E0721CDCA0A6776CC37C29278E6D85BAFC3DF16D4EBE9C87FADCECDD` | Same hash |
+| `CMakeLists.txt` | `B17CDA78A808DF738E6D15AE0656B3D09041FAF26A23417635337077EA918EC9` | `292DB70804A1AA1FF79BC4F35908DFD446B2A767FFE4437900C7CF947F24F57A` |
+
+The native CMake difference is consistent with the archived **P8-WINGUI-04D** scoped correction that excludes local FlowLayout compilation on WIN32 while linking internal `seiscomp_qt`, and preserves the original non-Windows compilation source. Exact historical patch exists at `phase8/patches/P8-WINGUI-04D-scconfig-flowlayout.patch`; do not revert the native CMake version to the older snapshot.
+
+New source tool: `phase8/windows-development/Inspect-ScconfigNativeSource.ps1`, independently pinned SHA-256 **`F1091D9A8D29A865204F8097AF3D24D095A4E4C4233FE373EEBD683F5944A5A5`** (5,106 ASCII bytes). It verifies operator-reported main.cpp/CMake hash baselines and reads only bounded startup/Qt/wizard/configuration references in main.cpp, wizard.cpp, configurator.cpp, gui.h, http.cpp and CMakeLists.txt; does not edit code, build, run binaries or connect externally.
+
+Status: **SOURCE_DISCOVERED / HISTORICAL_CMAKE_CORRECTION_PRESERVED / ORIGINAL_CPP_STARTUP_PATH_NOT_YET_INSPECTED / GUI_RUNTIME_NOT_RUN.** The executable startup logic cannot be inferred from filename hashes alone. After operator executes the source inspection, use actual source lines to determine whether there is a real Windows portability defect before suggesting a patch; preserve the verified R10 installation and produce a new source revision if needed.
