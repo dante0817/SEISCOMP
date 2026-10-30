@@ -78,3 +78,13 @@ If Windows Sandbox is unavailable, use an approved isolated Windows VM with no c
 
 - Microsoft Learn: https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/windows-sandbox-configure-using-wsb-file
 - Microsoft Learn: https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/windows-sandbox-install
+
+## 2026-10-30 operator checkpoint — Windows Sandbox not detected
+
+An unelevated `Get-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM` returned `The requested operation requires elevation`; therefore the Windows optional-feature state remains **UNKNOWN**, not confirmed Disabled.
+
+The operator subsequently checked the expected `WindowsSandbox.exe` path and Start-menu application entries. Both returned no match. This makes a currently usable Sandbox installation **unlikely** but does not definitively establish feature state.
+
+Do not launch the prepared `.wsb` or enable optional Windows features without the applicable workstation authorization. Next read-only action: `Get-Command Get-VM -ErrorAction SilentlyContinue; Get-VM -ErrorAction SilentlyContinue | Select-Object Name,State,Generation` to see whether an isolated Windows test VM already exists. A separately approved elevated feature inspection is the alternative. Preserve the R9 install and the host Ethernet/Tailscale/PostgreSQL processes unchanged.
+
+No GUI launch or isolation verification has occurred. Status remains `R9_PREFLIGHT_PASS / RUNTIME_NOT_RUN`.
