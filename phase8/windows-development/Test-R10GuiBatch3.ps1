@@ -48,10 +48,10 @@ if ([string]$receipt.manifest_sha256 -ine $ExpectedManifestSha256 -or
 
 function Assert-ManifestedFile([string]$Relative) {
     $name = $Relative.Replace('\','/')
-    $matches = @($manifest.PSObject.Properties | Where-Object {
+    $entryMatches = @($manifest.PSObject.Properties | Where-Object {
         $_.Name.Replace('\','/') -ieq $name
     })
-    if ($matches.Count -ne 1) { throw ('Missing/duplicate manifest entry: '+$Relative) }
+    if ($entryMatches.Count -ne 1) { throw ('Missing/duplicate manifest entry: '+$Relative) }
     $file = [IO.Path]::GetFullPath((Join-Path $rootPath $Relative))
     if (-not $file.StartsWith($rootPath+'\', [StringComparison]::OrdinalIgnoreCase)) {
         throw ('Manifest file escapes installation root: '+$Relative)
@@ -62,7 +62,7 @@ function Assert-ManifestedFile([string]$Relative) {
     if (((Get-Item -LiteralPath $file).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
         throw ('R10 payload is a reparse point: '+$Relative)
     }
-    $expected = [string]$matches[0].Value
+    $expected = [string]$entryMatches[0].Value
     if ($expected -notmatch '^[a-fA-F0-9]{64}$') { throw ('Bad digest: '+$Relative) }
     if ((Get-FileHash -LiteralPath $file -Algorithm SHA256 -ErrorAction Stop).Hash -ine $expected) {
         throw ('R10 payload SHA-256 mismatch: '+$Relative)
