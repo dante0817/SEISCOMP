@@ -10,4 +10,8 @@ if ($null -eq $ast -or $parseErrors.Count -gt 0) {
     foreach ($entry in $parseErrors) { Write-Error $entry.Message }
     throw 'GUI launcher PowerShell syntax FAILED'
 }
-Write-Output ('PASS: PowerShell parser accepted '+$ScriptPath+' (no application executed)')
+$source=Get-Content -LiteralPath $ScriptPath -Raw
+if ($source -match '(?i)foreach\s*\(\s*\$home\s+in\b') {
+    throw 'FAIL: launcher uses reserved read-only $HOME as a foreach variable'
+}
+Write-Output ('PASS: PowerShell parser and HOME-variable guard accepted '+$ScriptPath+' (no application executed)')
