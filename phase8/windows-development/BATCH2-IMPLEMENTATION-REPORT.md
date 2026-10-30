@@ -48,3 +48,15 @@ Read-only diagnosis: MachinePolicy and UserPolicy both Undefined; CurrentUser an
 Operator-safe continuation: compare the script SHA-256 with the published original (`CF94FADD595686DB51F218D8E618F156B1938A9C5216DDFD4CE856649D64CBB2`), then use a separate local development-directory copy and `Unblock-File` **only if allowed by organizational policy**, without changing execution policy or administrator rights. Verify the local copy hash before any execution. If permissions still deny execution, seek IT authorization; do not use execution-policy bypass.
 
 R9 installation remains immutable. Static GUI package-audit result is **NOT_RUN** until the operator supplies its actual output.
+
+## Operator result — all 11 GUI hashes PASS; qoffscreen provenance unresolved
+
+The operator executed Batch 2's read-only PowerShell audit on the immutable R9 copy. The approved manifest digest matched `475CF040BAE301822A08A31B32A3D218A75621DAD5EEA314A563221E107DFB57`. **All 11 original GUI EXEs and all manifest-listed Qt provider, image-format and Windows platform plugin files passed.** `qt.conf` relative paths and GUI catalog JSON readability passed. Total 26 audited entries: 25 `PASS`, one `NOT_MANIFESTED` for `bin/qt-plugins/platforms/qoffscreen.dll`. The initial check did **not** report whether this file existed: the manifest test preceded the file-presence check.
+
+**Why this matters:** Historical `phase8/patch-ledger.md` (P8-WINGUI-04C) explicitly says native `scmapcut` uses `Application::Tty` and its staging required matching Qt 5.15.18 `qoffscreen.dll`. `phase8/IMPLEMENTATION_STATUS.md` (P8-WINGUI-02A) documents the offscreen plugin for the Tty `scshowevent`. Therefore do not downgrade this plugin to 'optional' for **all** original GUI/Qt utilities, and do not mark complete package qualification based solely on visible `scconfig`, `scrttv`, or `scolv`.
+
+**Checker revision:** The maintained `Test-NativeGuiPackage.ps1` now explicitly distinguishes `MISSING_AND_UNMANIFESTED` from `PRESENT_BUT_UNMANIFESTED`, and avoids duplicating an already-known unmanifested plugin in the QT_UNLISTED findings. This revision is **SOURCE_UPDATED / WINDOWS_RERUN_NOT_PERFORMED**, so the original operator result remains authoritative until a targeted read-only presence check or rerun.
+
+**Next determination on R9:** inspect `Test-Path` for the exact Qt 5.15.18 `bin/qt-plugins/platforms/qoffscreen.dll`, whether the approved manifest contains it, and whether `share/windows/gui-package.json` lists it. If missing, treat this as a candidate packaging gap for headless Qt utilities and restore only in a new separately verified build candidate from the pinned Qt distribution (not by copying arbitrary installed Qt binaries or editing the R9 approved manifest). If present but unmanifested, treat it as an integrity/provenance defect. Both cases remain `NEEDS_REVIEW` until reconciled.
+
+**Unchanged:** R9 files, network/services, runtime execution and scientific qualification. The static audit confirms 11/11 GUI executable integrity; visible-GUI runtime startup remains NOT_RUN.
