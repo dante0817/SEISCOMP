@@ -50,6 +50,16 @@ directory, not inside the verified R10 installation:
 Use your organization's normal script-trust process and independently
 pinned exact script hashes before executing. Do not bypass policy.
 
+Source SHA-256 of the exact published Batch 3 wrapper:
+    9DC1A4A4F945775C2DC1C5F6175BB0C9D3516F5F2D75619C2836FA18F647744E
+
+Source SHA-256 of the inherited guarded GUI launcher:
+    38DC736FBEDA3800BAA03388CBC9781EFCFE7515810DD2BF3315F525AF91B3FD
+
+The hashes above are distinct from the installed R10 package manifest digest.
+Downloaded files must match these hashes before source review, syntax check
+and preflight. A network download or file-size match alone is not proof.
+
 The user-selected installed R10 path is:
 
     %LOCALAPPDATA%\SeisComP-Development-R10
