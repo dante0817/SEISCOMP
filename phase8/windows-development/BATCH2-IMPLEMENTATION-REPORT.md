@@ -1,6 +1,6 @@
 # Phase 8 — Batch 2 native Qt GUI package audit
 
-**Status:** SOURCE_READY / WINDOWS_TEST_NOT_RUN / GUI_RUNTIME_NOT_RUN. Read-only tooling only; no immutable R9 candidate changed.
+**Status (2026-10-30):** R10_CANDIDATE_CREATED / 856_MANIFEST_ENTRIES_VERIFIED / NEW_MANIFEST_PINNED / R9_UNCHANGED / GUI_RUNTIME_NOT_RUN. The Batch 2 auditor remains read-only; R10 package creation is a separate, operator-approved copy operation.
 
 ## Baseline
 
