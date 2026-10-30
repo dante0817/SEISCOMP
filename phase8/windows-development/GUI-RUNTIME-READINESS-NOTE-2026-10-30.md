@@ -70,3 +70,19 @@ The operator inspected the **verified R9 per-user development installation** wit
 **Next source/read-only checks:** verify the Qt DLL and platform plugin hashes against the approved R9 manifest (if listed), then inspect native imports/dependencies with the available MSVC tooling. Continue source-only remediation until an approved isolated GUI test environment is available.
 
 Do not publish internal hostnames, usernames, private local directories, addresses, or network information in this public repository.
+
+## 2026-10-30 operator verification — Qt binary manifest integrity 7/7 PASS
+
+Operator ran a read-only SHA-256 comparison between seven installed R9 Qt files and their entries in the approved `SHA256SUMS.json` manifest. All seven reported **PASS**:
+
+- `bin/qt5core.dll`
+- `bin/qt5gui.dll`
+- `bin/qt5network.dll`
+- `bin/qt5printsupport.dll`
+- `bin/qt5svg.dll`
+- `bin/qt5widgets.dll`
+- `bin/qt-plugins/platforms/qwindows.dll`
+
+This establishes integrity relative to the recorded R9 package manifest, not external upstream provenance, DLL dependency closure, runtime loading, successful GUI startup, or scientific qualification. The approved manifest digest had previously been verified by the R9 preflight.
+
+**Next read-only task:** inspect imported dependencies for `bin/scconfig.exe` and `bin/qt-plugins/platforms/qwindows.dll` with the existing MSVC `dumpbin /dependents` utility, where available. Do not infer resolution of every imported module from the import listing alone; dynamic and delay-loaded modules may need separate runtime checks in an authorized isolated environment.
