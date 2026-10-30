@@ -60,3 +60,21 @@ Cannot overwrite variable HOME because it is read-only or constant.
 The original source used \`foreach ($home in ...)\`. PowerShell variable names are case-insensitive; assigning to \`$home\` attempts to overwrite the read-only automatic \`$HOME\` variable. The launcher has been corrected to use \`$candidateHome\`, including both usages in the loop body. \`Test-GuiLauncherSyntax.ps1\` now checks for this specific regression in addition to parsing.
 
 **State:** corrected source and regression guard published; local post-fix preflight has not yet been reported. Do not label it \`PREFLIGHT_PASS\` until the operator runs the corrected source. This was a launcher preflight failure, not a SeisComP executable failure.
+
+## 2026-10-30 operator update: corrected R9 scconfig preflight PASS
+
+The operator ran the corrected `Start-DevelopmentGui.ps1` without `-Run`, selecting the R9 development installation and `scconfig`.
+
+```text
+PREFLIGHT_PASS: scconfig
+ApprovedManifestSHA256: 475CF040BAE301822A08A31B32A3D218A75621DAD5EEA314A563221E107DFB57
+XMLDescriptionCount: 131
+UserConfigDirsObserved: 0
+NOT_RUN: omit -Run for inspection only; no SeisComP application or environment script was executed.
+```
+
+The verified preflight checks the manifest identity and recorded digests of the selected GUI executable, environment helper and Qt configuration. It does **not** prove GUI startup, network isolation, scientific correctness or complete DLL availability.
+
+Previous read-only `HOME` variable collision is resolved on this corrected operator copy. The separate syntax helper later had an intermittent access error; its initial lines were subsequently readable with `Get-Content`, and `icacls` showed inherited read permissions. Its own repeat execution/hash verification should not be marked PASS until successfully rerun.
+
+Next: prepare a separately approved isolated GUI runtime profile, inspect effective user and installation configuration, perform an isolated `scconfig` startup, and capture GUI/process evidence.
