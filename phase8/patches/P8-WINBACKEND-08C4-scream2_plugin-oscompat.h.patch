@@ -1,0 +1,12 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/oscompat.h
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/oscompat.h
+@@ -47,6 +47,9 @@
+ #include <endian.h>
+ #elif defined (__sun)
+ #include <sys/int_types.h>
++#elif defined (_WIN32) && defined (_MSC_VER) && _MSC_VER >= 1900
++#include <stdint.h>
++#define strcasecmp _stricmp
+ #elif defined (WIN32)
+ #if 0
+ #include <basetsd.h>

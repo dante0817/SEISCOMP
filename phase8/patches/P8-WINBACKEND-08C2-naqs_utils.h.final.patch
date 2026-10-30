@@ -1,0 +1,70 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/naqsplugin/naqs_utils.h
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/naqsplugin/naqs_utils.h
+@@ -43,6 +43,7 @@
+ /* Definitions ----------------------------------------------------------*/
+ 
+ #include <stdint.h>
++#include "naqs_platform.h"
+ 
+ #define INVALID_INET_ADDRESS  NO_ADDRESS
+ 
+@@ -74,7 +75,9 @@
+ 
+ /* used for return messages */
+ #define SOCKET_OK          0
++#ifndef SOCKET_ERROR
+ #define SOCKET_ERROR      -1
++#endif
+ #define KEY_NOT_FOUND     -1
+ #define NAME_NOT_FOUND    NULL
+ 
+@@ -126,26 +129,32 @@
+   ChannelKey channel[500];
+ } ChannelList;
+ 
+-extern int openSocket(char *hostname, int portNum);
+-extern int s_send(int isock, void* data, int length);
+-extern int s_recv(int isock, void* data, int length);
+-extern int sendHeader(int isock, int type, int length);
+-extern int receiveHeader(int isock, MessageHeader* pmsg);
+-extern int sendConnectMessage(int isock);
+-extern int requestTypeChannel(int isock, int channel, int type);
+-extern int requestSerialChannel(int isock, int channel);
+-extern int requestSohChannel(int isock, int channel);
+-extern int requestDataChannel(int isock, int channel);
+-extern int requestDataChannels(int isock, int keyList[], int found,
++extern naqs_socket_t openSocket(char *hostname, int portNum);
++extern int s_send(naqs_socket_t isock, void* data, int length);
++extern int s_recv(naqs_socket_t isock, void* data, int length);
++extern int sendHeader(naqs_socket_t isock, int type, int length);
++extern int receiveHeader(naqs_socket_t isock, MessageHeader* pmsg);
++extern int sendConnectMessage(naqs_socket_t isock);
++extern int requestTypeChannel(naqs_socket_t isock, int channel, int type);
++extern int requestSerialChannel(naqs_socket_t isock, int channel);
++extern int requestSohChannel(naqs_socket_t isock, int channel);
++extern int requestDataChannel(naqs_socket_t isock, int channel);
++extern int requestDataChannels(naqs_socket_t isock, int keyList[], int found,
+ 			       int samprate, int shortTermComp);
+-extern int requestChannel(int isock, int channel);
+-extern int receiveChannelList(int isock, ChannelList* plist, int length);
++extern int requestChannel(naqs_socket_t isock, int channel);
++extern int receiveChannelList(naqs_socket_t isock, ChannelList* plist, int length);
+ extern int lookupChannelKey(char* name);
+ extern char* lookupChannelName(int key);
+-extern int receiveError(int isock, int length);
+-extern int receiveTermination(int isock, int length);
+-extern int flushBytes(int isock, int length);
++extern int receiveError(naqs_socket_t isock, int length);
++extern int receiveTermination(naqs_socket_t isock, int length);
++extern int flushBytes(naqs_socket_t isock, int length);
+ extern void processData(char* buffer, int length);
+-extern int receiveData(int isock, int length);
++extern int receiveData(naqs_socket_t isock, int length);
+ extern int gen_log(int level, int verb, ... );
+ extern double myntohd(double netdbl);
++
++#ifdef _WIN32
++typedef char naqs_message_header_size[(sizeof(MessageHeader)==12)?1:-1];
++typedef char naqs_data_request_size[(sizeof(DataAddRequest)==20)?1:-1];
++typedef char naqs_add_request_size[(sizeof(AddRequest)==16)?1:-1];
++#endif

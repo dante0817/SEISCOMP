@@ -1,0 +1,9 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/win_plugin/CMakeLists.txt
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/win_plugin/CMakeLists.txt
+@@ -13,5 +13,5 @@
+ INSTALL(FILES ${descs} DESTINATION ${SC3_PACKAGE_APP_DESC_DIR})
+ 
+ IF(WIN32)
+- TARGET_LINK_LIBRARIES(win_plugin slplugin)
++ TARGET_LINK_LIBRARIES(win_plugin slplugin advapi32)
+ ENDIF()

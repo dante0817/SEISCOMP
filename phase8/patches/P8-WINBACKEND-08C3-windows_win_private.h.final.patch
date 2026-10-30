@@ -1,0 +1,81 @@
+--- /dev/null
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/win_plugin/windows_win_private.h
+@@ -0,0 +1,78 @@
++/* Windows transport/console/log ownership for the original WIN-format plugin. */
++#ifndef WINDOWS_WIN_PRIVATE_H
++#define WINDOWS_WIN_PRIVATE_H
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#include <winsock2.h>
++#include <ws2tcpip.h>
++#include <windows.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#ifdef interface
++#undef interface
++#endif
++typedef SOCKET win_socket_t;
++typedef char win_socket_width[(sizeof(win_socket_t)==sizeof(void*))?1:-1];
++typedef char win_ipv4_width[(sizeof(struct in_addr)==4)?1:-1];
++static SOCKET win_owned_socket=INVALID_SOCKET;
++static HANDLE win_event_source;
++static int win_winsock_owned;
++static volatile LONG win_stop_requested,win_reload_requested;
++static BOOL WINAPI win_console_control(DWORD code) {
++  if(code==CTRL_BREAK_EVENT){InterlockedExchange(&win_reload_requested,1);return TRUE;}
++  if(code==CTRL_C_EVENT || code==CTRL_CLOSE_EVENT || code==CTRL_LOGOFF_EVENT || code==CTRL_SHUTDOWN_EVENT){
++    InterlockedExchange(&win_stop_requested,1);return TRUE;
++  }
++  return FALSE;
++}
++static void win_native_cleanup(void) {
++  if(win_owned_socket!=INVALID_SOCKET){closesocket(win_owned_socket);win_owned_socket=INVALID_SOCKET;}
++  if(win_event_source){DeregisterEventSource(win_event_source);win_event_source=NULL;}
++  if(win_winsock_owned){WSACleanup();win_winsock_owned=0;}
++}
++static int win_native_startup(void) {
++  WSADATA data;
++  int error=WSAStartup(MAKEWORD(2,2),&data);
++  if(error){fprintf(stderr,"WSAStartup failed: %d\n",error);return -1;}
++  win_winsock_owned=1;
++  if(data.wVersion!=MAKEWORD(2,2) || atexit(win_native_cleanup)!=0){win_native_cleanup();return -1;}
++  if(!SetConsoleCtrlHandler(win_console_control,TRUE)){
++    fprintf(stderr,"SetConsoleCtrlHandler failed: %lu\n",GetLastError());win_native_cleanup();return -1;
++  }
++  return 0;
++}
++static int win_start_event_log(const char *source) {
++  win_event_source=RegisterEventSourceA(NULL,source);
++  if(!win_event_source){fprintf(stderr,"RegisterEventSource failed: %lu\n",GetLastError());return -1;}
++  return 0;
++}
++static void win_write_event(const char *message) {
++  LPCSTR strings[1];strings[0]=message;
++  if(!ReportEventA(win_event_source,EVENTLOG_INFORMATION_TYPE,0,0,NULL,1,0,strings,NULL))
++    fprintf(stderr,"ReportEvent failed: %lu: %s\n",GetLastError(),message);
++}
++/* Short-option parser, following the existing native utility parser's contract.
++ * C implementation keeps this original source a C translation unit. */
++static char *win_optarg;
++static int win_optind=1,win_option_offset=1;
++static int win_getopt(int argc,char **argv,const char *options) {
++  char *arg;const char *spec;int c;
++  if(win_optind>=argc)return EOF;
++  arg=argv[win_optind];if(arg[0]!='-' || !arg[1])return EOF;
++  if(!strcmp(arg,"--")){++win_optind;return EOF;}
++  c=(unsigned char)arg[win_option_offset++];spec=strchr(options,c);
++  if(!spec){if(!arg[win_option_offset]){++win_optind;win_option_offset=1;}return '?';}
++  if(spec[1]==':'){
++    if(arg[win_option_offset])win_optarg=arg+win_option_offset;
++    else if(win_optind+1<argc)win_optarg=argv[++win_optind];
++    else{++win_optind;win_option_offset=1;return '?';}
++    ++win_optind;win_option_offset=1;
++  }else if(!arg[win_option_offset]){++win_optind;win_option_offset=1;}
++  return c;
++}
++#define getopt win_getopt
++#define optind win_optind
++#define optarg win_optarg
++#endif

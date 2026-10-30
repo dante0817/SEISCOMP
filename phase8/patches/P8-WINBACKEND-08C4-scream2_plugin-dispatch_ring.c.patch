@@ -1,0 +1,73 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/dispatch_ring.c
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/dispatch_ring.c
+@@ -17,9 +17,11 @@
+ #include <string.h>
+ #include <time.h>
+ #include "project.h"
++#ifndef _WIN32
+ #include <sys/socket.h>
+ #include <netdb.h>
+ #include <unistd.h>
++#endif
+ 
+ #define MAXSTREAMS            	500        /* max number of streams accepted from SCREAM */
+ 
+@@ -526,15 +528,20 @@
+         timestruct->tm_sec = sec;
+         timestruct->tm_isdst = 0;
+ 
++#ifdef _WIN32
++        if(!getenv("TZ"))_putenv_s("TZ","UTC");
++        _tzset();
++#else
+         setenv ("TZ", "UTC", 0);
+         tzset ();
++#endif
+         return ( mktime(timestruct));
+ 
+ }
+ 
+ 
+ 
+-static int reqsockid = -1;
++static ring_socket_t reqsockid = RING_INVALID_SOCKET;
+ 
+ uint8_t *request_block_tcp_mode ( uint16_t recnr)
+ {
+@@ -560,28 +567,31 @@
+       uc[2]  = *(up+1);
+ 
+ 
+-      if (reqsockid < 0) {
++      if (reqsockid == RING_INVALID_SOCKET) {
+           printf("open gap retrieval channel\n");
+           reqsockid = socket (PF_INET, SOCK_STREAM, 0);
++#ifdef _WIN32
++          if(reqsockid==INVALID_SOCKET){printf("request socket failed: %d\n",WSAGetLastError());return NULL;}
++#endif
+           remote.sin_port =  htons((uint16_t) config.reqport);         // port for gap retrieval using TCP;
+           remote.sin_family = AF_INET;
+           strcpy ( server, config.server);
+           he = gethostbyname (server);
+           if (!he) fatal2 ("gethostbyname(%s) failed: %m", server);
+           if (he->h_addrtype != AF_INET)
+-              fatal ("gethostbyname returned a non-IP address");
++              fatal(("gethostbyname returned a non-IP address"));
+           memcpy (&remote.sin_addr.s_addr, he->h_addr, he->h_length);
+ 
+           if (connect (reqsockid, (struct sockaddr *) &remote, sizeof (remote))) {
+-              close(reqsockid); reqsockid = -1;
++              ring_close_socket(reqsockid); reqsockid = RING_INVALID_SOCKET;
+               printf("connect failed\n");
+               return NULL;
+           }
+       }
+ 
+-      if (send (reqsockid, &uc[0], 3,  MSG_CONFIRM) != 3) {
++      if (send (reqsockid, (const char *)&uc[0], 3,  RING_SEND_FLAGS) != 3) {
+           printf("Send TCP failed\n");
+-          close(reqsockid); reqsockid = -1;
++          ring_close_socket(reqsockid); reqsockid = RING_INVALID_SOCKET;
+           return NULL;
+       }
+ 

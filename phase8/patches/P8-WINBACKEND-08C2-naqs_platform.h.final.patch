@@ -1,0 +1,28 @@
+--- /dev/null
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/naqsplugin/naqs_platform.h
+@@ -0,0 +1,25 @@
++/* Native transport types only; original NAQS message/data algorithms retained. */
++#ifndef NAQS_PLATFORM_H
++#define NAQS_PLATFORM_H
++#ifdef _WIN32
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#include <winsock2.h>
++#include <ws2tcpip.h>
++#include <windows.h>
++#include <string.h>
++#define strcasecmp _stricmp
++typedef SOCKET naqs_socket_t;
++#define NAQS_INVALID_SOCKET INVALID_SOCKET
++#define naqs_close_socket closesocket
++static void naqs_sleep(unsigned int seconds) { Sleep(seconds * 1000u); }
++typedef char naqs_handle_width[(sizeof(naqs_socket_t)==sizeof(void*))?1:-1];
++#else
++#include <unistd.h>
++typedef int naqs_socket_t;
++#define NAQS_INVALID_SOCKET (-1)
++#define naqs_close_socket close
++#define naqs_sleep sleep
++#endif
++#endif

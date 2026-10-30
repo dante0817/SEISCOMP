@@ -34,12 +34,13 @@ isolation is useful or the agreed boundary cannot otherwise be established.
 ## Current remaining work
 
 Use the canonical backend CSV/JSON for actual counts and exact target blockers.
-SCREAM TCP/UDP is the current bounded implementation batch. Its ring variant,
-Earthworm export, NAQS and WIN transports retain their independent socket/time
-contracts. Reftek needs native library-build integration; Q330 needs native
-thread/process support. Serial/minilogger/echopro need serial-device contracts;
-chain/FIFO need explicit IPC contracts. GDRT's exact Boost.Asio dependency closure
-is not provisioned. MySQL, Hypo71/Fortran and iLoc remain disabled/unqualified.
+The latest bounded implementation batch, 08C5, built the native Earthworm
+export client. Next, continue with passive Earthworm export and the remaining
+independent acquisition targets. Reftek needs native library-build integration;
+Q330 needs native thread/process support. Wave24, serial, minilogger and echopro
+need native serial-device contracts; chain and FIFO need explicit IPC contracts.
+GDRT's exact Boost.Asio dependency closure is not provisioned. MySQL,
+Hypo71/Fortran and iLoc remain disabled or unqualified.
 
 The 08B1 source-only runtime runner has a process-contract conflict: its one-process
 job contains a Python probe whose admission check starts PowerShell. Preserve the

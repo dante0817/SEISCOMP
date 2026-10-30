@@ -1,0 +1,219 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/naqsplugin/naqs_utils.c
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/naqsplugin/naqs_utils.c
+@@ -49,6 +49,7 @@
+ #include <stdlib.h>
+ #include <stdarg.h>
+ #include <errno.h>
++#ifndef _WIN32
+ #include <netdb.h>
+ #include <string.h>
+ #include <unistd.h>
+@@ -59,8 +60,18 @@
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
+ 
++#else
++#include <string.h>
++#include <ctype.h>
++#include <time.h>
++#endif
++
+ #include "naqs_utils.h"
++#ifdef _WIN32
++#include "../../libs/plugin/plugin.h"
++#else
+ #include "plugin.h"
++#endif
+ 
+ /* Swap 8 bytes, stolen from qlib2 */
+ void swab8 (double *in);
+@@ -76,11 +87,11 @@
+   Purpose:   looks up target host, opens a socket and connects
+ 
+  ------------------------------------------------------------------------*/
+-extern int
++extern naqs_socket_t
+ openSocket(char *hostname, int portNum)
+ {
+   static int sleepTime = 1;
+-  int isock = 0;
++  naqs_socket_t isock = 0;
+   struct hostent *hostinfo = NULL;
+   struct sockaddr_in psServAddr;
+   struct in_addr hostaddr;
+@@ -99,7 +110,7 @@
+   while(1)
+   {
+     isock = socket (AF_INET, SOCK_STREAM, 0);
+-    if (isock < 0)
++    if (isock == NAQS_INVALID_SOCKET)
+     {
+       gen_log (1,0, "Can't open stream socket\n");
+       exit(1);
+@@ -121,15 +132,20 @@
+     if (connect(isock, (struct sockaddr *)&psServAddr, sizeof(psServAddr)) >= 0)
+     {
+       sleepTime = 1;
++#ifdef _WIN32
++      gen_log(0,0,"Connection established: socket=%llu,IP=%s,port=%d\n",
++              (unsigned long long)isock,inet_ntoa(hostaddr),portNum);
++#else
+       gen_log(0,0, "Connection established: socket=%i,IP=%s,port=%d\n",
+ 	      isock, inet_ntoa(hostaddr), portNum);
++#endif
+       return isock;
+     }
+     else
+     {
+       gen_log(0,1, "Trying again later...Sleeping\n");
+-      close (isock);
+-      sleep (sleepTime);
++      naqs_close_socket(isock);
++      naqs_sleep(sleepTime);
+       sleepTime *= 2;
+       if (sleepTime > SLEEPMAX)
+         sleepTime = SLEEPMAX;
+@@ -148,7 +164,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-s_send(int isock, void* data, int length)
++s_send(naqs_socket_t isock, void* data, int length)
+ {
+   int sendCount = send(isock, (char*) data, length, 0);
+   
+@@ -169,7 +185,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-s_recv(int isock, void* data, int length)
++s_recv(naqs_socket_t isock, void* data, int length)
+ {
+   int recvCount;
+   recvCount= recv(isock, (char*) data, length, MSG_WAITALL);
+@@ -188,7 +204,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-sendConnectMessage(int isock)
++sendConnectMessage(naqs_socket_t isock)
+ {
+   return sendHeader(isock, CONNECT_MSG, 0);
+ }
+@@ -201,7 +217,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-sendHeader(int isock, int type, int length)
++sendHeader(naqs_socket_t isock, int type, int length)
+ {  
+   MessageHeader msg;
+   msg.signature = htonl(NMX_SIGNATURE);
+@@ -219,7 +235,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-requestTypeChannel(int isock, int channel, int type)
++requestTypeChannel(naqs_socket_t isock, int channel, int type)
+ {
+   AddRequest request;
+ 
+@@ -245,7 +261,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-requestSerialChannel(int isock, int channel)
++requestSerialChannel(naqs_socket_t isock, int channel)
+ {
+   gen_log(0,1, "Requesting serial channel 0x%8.8x\n", channel);
+   return requestTypeChannel(isock, channel, SERIAL_ADD_REQ);
+@@ -259,7 +275,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-requestSohChannel(int isock, int channel)
++requestSohChannel(naqs_socket_t isock, int channel)
+ {
+   gen_log(0,1, "Requesting soh channel 0x%8.8x\n", channel);
+   return requestTypeChannel(isock, channel, SOH_ADD_REQ);
+@@ -273,7 +289,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-requestDataChannel(int isock, int channel)
++requestDataChannel(naqs_socket_t isock, int channel)
+ {
+   DataAddRequest request;
+   int rc = 0;
+@@ -303,7 +319,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-requestDataChannels(int isock, int keyList[], int found,
++requestDataChannels(naqs_socket_t isock, int keyList[], int found,
+ 		    int samprate, int shortTermComp)
+ {
+   int rc = 0;
+@@ -355,7 +371,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-requestChannel(int isock, int channel)
++requestChannel(naqs_socket_t isock, int channel)
+ {
+   int type = dataType(channel);
+   if (type == TIMSER_TYPE)
+@@ -374,7 +390,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-receiveHeader(int isock, MessageHeader* pmsg)
++receiveHeader(naqs_socket_t isock, MessageHeader* pmsg)
+ {
+   int rc;
+   rc = s_recv(isock, pmsg, sizeof(MessageHeader));
+@@ -400,7 +416,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-receiveChannelList(int isock, ChannelList* plist, int length)
++receiveChannelList(naqs_socket_t isock, ChannelList* plist, int length)
+ {
+   int ich = 0;
+   int recvCount = recv(isock, (char*) plist, length, MSG_WAITALL);
+@@ -435,7 +451,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-receiveData(int isock, int length)
++receiveData(naqs_socket_t isock, int length)
+ {
+   int rc = 0;
+ 
+@@ -460,7 +476,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-receiveError(int isock, int length)
++receiveError(naqs_socket_t isock, int length)
+ {
+   int rc = 0;
+   
+@@ -483,7 +499,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-receiveTermination(int isock, int length)
++receiveTermination(naqs_socket_t isock, int length)
+ {
+   int reason = 0;
+   int rc = s_recv(isock, &reason, 4);
+@@ -579,7 +595,7 @@
+ 
+  ------------------------------------------------------------------------*/
+ extern int
+-flushBytes(int isock, int length)
++flushBytes(naqs_socket_t isock, int length)
+ {
+   int rc = 0;
+ 

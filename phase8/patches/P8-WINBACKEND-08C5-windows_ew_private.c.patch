@@ -1,0 +1,128 @@
+--- /dev/null
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/ewexport_plugin/windows_ew_private.c
+@@ -0,0 +1,125 @@
++/* Windows adaptation of network.c, original transport routines by Chad Trabant.
++ * Original framing, trace conversion and waveform processing stay in their sources. */
++#include "windows_ew_private.h"
++#include "network.h"
++#include "util.h"
++#include <process.h>
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include <stdint.h>
++static SRWLOCK event_lock=SRWLOCK_INIT;
++static HANDLE stop_event,cancel_event,receiver;
++static unsigned receiver_id;
++static int winsock_owned;
++static SOCKET owned_socket=INVALID_SOCKET;
++__declspec(thread) static int in_receiver;
++static BOOL WINAPI control(DWORD code){
++ if(code==CTRL_C_EVENT || code==CTRL_BREAK_EVENT || code==CTRL_CLOSE_EVENT || code==CTRL_LOGOFF_EVENT || code==CTRL_SHUTDOWN_EVENT){AcquireSRWLockShared(&event_lock);if(stop_event)SetEvent(stop_event);ReleaseSRWLockShared(&event_lock);return TRUE;}
++ return FALSE;
++}
++int ew_stopping(void){return stop_event && WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0;}
++int ew_cancel_requested(void){return ew_stopping() || (cancel_event && WaitForSingleObject(cancel_event,0)==WAIT_OBJECT_0);}
++void ew_delay(unsigned long useconds){
++ DWORD milliseconds=(DWORD)((useconds+999UL)/1000UL);
++ HANDLE events[2];events[0]=stop_event;events[1]=cancel_event;
++ if(in_receiver)WaitForMultipleObjects(2,events,FALSE,milliseconds);
++ else if(stop_event)WaitForSingleObject(stop_event,milliseconds);
++ else Sleep(milliseconds);
++}
++void ew_close_socket(ew_socket_t socket){if(socket==INVALID_SOCKET)return;if(socket==owned_socket)owned_socket=INVALID_SOCKET;closesocket(socket);}
++int ew_stop_receiver(void){
++ DWORD waited;if(!receiver)return 0;
++ SetEvent(cancel_event);
++ if(GetCurrentThreadId()==receiver_id)return -1;
++ waited=WaitForSingleObject(receiver,3000);
++ if(waited!=WAIT_OBJECT_0){fprintf(stderr,"Receiver failed to stop within 3000 ms; buffer reuse/reconnect refused\n");return -1;}
++ CloseHandle(receiver);receiver=NULL;receiver_id=0;return 0;
++}
++static void cleanup(void){
++ int joined;
++ SetConsoleCtrlHandler(control,FALSE);
++ if(stop_event)SetEvent(stop_event);
++ joined=ew_stop_receiver();
++ if(owned_socket!=INVALID_SOCKET)ew_close_socket(owned_socket);
++ /* On join failure, live worker event handles stay valid until process exit. */
++ if(!joined){AcquireSRWLockExclusive(&event_lock);if(cancel_event){CloseHandle(cancel_event);cancel_event=NULL;}if(stop_event){CloseHandle(stop_event);stop_event=NULL;}ReleaseSRWLockExclusive(&event_lock);}
++ if(winsock_owned){WSACleanup();winsock_owned=0;}
++}
++int ew_startup(void){
++ WSADATA data;int error=WSAStartup(MAKEWORD(2,2),&data);
++ if(error){fprintf(stderr,"WSAStartup failed: %d\n",error);return -1;}
++ winsock_owned=1;stop_event=CreateEventW(NULL,TRUE,FALSE,NULL);cancel_event=CreateEventW(NULL,TRUE,FALSE,NULL);
++ if(data.wVersion!=MAKEWORD(2,2) || !stop_event || !cancel_event){cleanup();return -1;}
++ if(atexit(cleanup)!=0){cleanup();return -1;}
++ if(!SetConsoleCtrlHandler(control,TRUE)){cleanup();return -1;}
++ return 0;
++}
++struct receiver_args{void *(*function)(void*);void *arg;};
++static unsigned __stdcall receiver_entry(void *p){struct receiver_args copy=*(struct receiver_args*)p;free(p);in_receiver=1;copy.function(copy.arg);return 0;}
++int ew_start_receiver(HANDLE *out,void *(*function)(void*),void *arg){
++ struct receiver_args*p;uintptr_t h;
++ if(receiver || !cancel_event)return -1;
++ if(!ResetEvent(cancel_event))return -1;
++ p=(struct receiver_args*)malloc(sizeof(*p));if(!p)return -1;p->function=function;p->arg=arg;
++ h=_beginthreadex(NULL,0,receiver_entry,p,0,&receiver_id);
++ if(!h){free(p);return -1;}
++ receiver=(HANDLE)h;*out=receiver;return 0;
++}
++ew_socket_t my_connect(char *host,char *port){
++ struct addrinfo hints,*result=NULL;SOCKET socket;u_long nonblocking=1;int status,error,on=1;ULONGLONG deadline;
++ memset(&hints,0,sizeof(hints));hints.ai_family=AF_INET;hints.ai_socktype=SOCK_STREAM;
++ if(!host || !*host || !port || !*port || ew_stopping())return INVALID_SOCKET;
++ status=getaddrinfo(host,port,&hints,&result);
++ if(status){gen_log(1,0,"Cannot resolve hostname %s: %d\n",host,status);return INVALID_SOCKET;}
++ socket=WSASocketW(AF_INET,SOCK_STREAM,0,NULL,0,0);
++ if(socket==INVALID_SOCKET){error=WSAGetLastError();freeaddrinfo(result);gen_log(1,0,"socket(): Winsock error %d\n",error);return INVALID_SOCKET;}
++ if(ioctlsocket(socket,FIONBIO,&nonblocking)==SOCKET_ERROR){error=WSAGetLastError();freeaddrinfo(result);closesocket(socket);gen_log(1,0,"ioctlsocket(): Winsock error %d\n",error);return INVALID_SOCKET;}
++ status=connect(socket,result->ai_addr,(int)result->ai_addrlen);error=status==SOCKET_ERROR?WSAGetLastError():0;freeaddrinfo(result);
++ if(status==SOCKET_ERROR && error!=WSAEWOULDBLOCK && error!=WSAEINPROGRESS){gen_log(1,0,"connect(): Winsock error %d\n",error);closesocket(socket);return INVALID_SOCKET;}
++ ew_delay(1000000); /* original one-second proxy/NAT settling delay */
++ deadline=GetTickCount64()+10000;
++ for(;;){
++  fd_set write_set,error_set;struct timeval timeout;int size=sizeof(error);char peek;
++  if(ew_stopping() || GetTickCount64()>=deadline){closesocket(socket);return INVALID_SOCKET;}
++  FD_ZERO(&write_set);FD_ZERO(&error_set);FD_SET(socket,&write_set);FD_SET(socket,&error_set);timeout.tv_sec=0;timeout.tv_usec=100000;
++  status=select(0,NULL,&write_set,&error_set,&timeout);
++  if(status==SOCKET_ERROR){error=WSAGetLastError();gen_log(1,0,"select(): Winsock error %d\n",error);closesocket(socket);return INVALID_SOCKET;}
++  if(!status)continue;
++  if(getsockopt(socket,SOL_SOCKET,SO_ERROR,(char*)&error,&size)==SOCKET_ERROR || error){closesocket(socket);return INVALID_SOCKET;}
++  status=recv(socket,&peek,1,MSG_PEEK);
++  if(status==0 || (status==SOCKET_ERROR && WSAGetLastError()!=WSAEWOULDBLOCK)){closesocket(socket);return INVALID_SOCKET;}
++  if(setsockopt(socket,SOL_SOCKET,SO_KEEPALIVE,(const char*)&on,sizeof(on))==SOCKET_ERROR)gen_log(0,1,"[%s] cannot set SO_KEEPALIVE\n",host);
++  owned_socket=socket;gen_log(0,1,"[%s] network socket opened\n",host);return socket;
++ }
++}
++int my_recv(ew_socket_t socket,char *buf,int buflen,int flags,int timeout_msecs){
++ int bytesread=0,ackcnt=0,ackpoll=5;
++ while(bytesread==0){
++  int error;if(ew_cancel_requested())return -1;
++  bytesread=recv(socket,buf,buflen,flags);
++  if(bytesread==0){gen_log(1,0,"recv(): TCP FIN or EOF received\n");bytesread=-1;}
++  else if(bytesread==SOCKET_ERROR){error=WSAGetLastError();if(error!=WSAEWOULDBLOCK){gen_log(1,0,"recv(): Winsock error %d\n",error);bytesread=-1;}else bytesread=0;}
++  if(bytesread==0){++ackcnt;if(ackpoll*ackcnt>timeout_msecs){gen_log(0,2,"my_recv(): socket recv timeout\n");break;}ew_delay(ackpoll*1000UL);}
++ }
++ return bytesread;
++}
++int my_send(ew_socket_t socket,char *buf,int buflen,int flags,int timeout_msecs){
++ int bytesjustsent=0,bytessent=0,ackcnt=0,ackpoll=5;
++ while(bytessent<buflen){
++  int error;if(ew_cancel_requested())return -1;
++  bytesjustsent=send(socket,buf+bytessent,buflen-bytessent,flags);
++  if(bytesjustsent==SOCKET_ERROR){error=WSAGetLastError();if(error!=WSAEWOULDBLOCK){gen_log(1,0,"send(): Winsock error %d\n",error);bytessent=-1;break;}bytesjustsent=0;}
++  bytessent+=bytesjustsent;
++  if(bytesjustsent==0){++ackcnt;if(ackpoll*ackcnt>timeout_msecs){gen_log(0,2,"my_send(): socket send timeout\n");bytessent=0;break;}ew_delay(ackpoll*1000UL);}
++ }
++ return bytessent;
++}
++
++#include "ewdefs.h"
++#include <stddef.h>
++typedef char ew_trace_header_size[(sizeof(TRACE_HEADER)==64)?1:-1];
++typedef char ew_trace2_header_size[(sizeof(TRACE2_HEADER)==64)?1:-1];
++typedef char ew_trace_starttime_offset[(offsetof(TRACE_HEADER,starttime)==8)?1:-1];
++typedef char ew_trace_sample_rate_offset[(offsetof(TRACE_HEADER,samprate)==24)?1:-1];
++typedef char ew_logo_size[(sizeof(MSG_LOGO)==3)?1:-1];

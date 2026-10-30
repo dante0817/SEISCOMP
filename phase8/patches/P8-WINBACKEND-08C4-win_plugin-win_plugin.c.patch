@@ -1,0 +1,11 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/win_plugin/win_plugin.c
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/win_plugin/win_plugin.c
+@@ -1157,7 +1157,7 @@
+   if(strcmp("-",argv[optind + 1])==0) *chfile[0]=0;
+   else
+     {
+-    if(argv[4+optind][0]=='-')
++    if(argv[optind + 1][0]=='-')
+       {
+       strcpy(chfile[0],argv[optind + 1]+1);
+       negate_channel=1;

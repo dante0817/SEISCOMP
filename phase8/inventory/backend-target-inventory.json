@@ -454,7 +454,7 @@
     "target": "ewexport_plugin",
     "group": "Acquisition / waveforms",
     "kind": "Application",
-    "classification": "Blocked by Windows portability",
+    "classification": "Already built",
     "project": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\src\\base\\seedlink\\plugins\\ewexport_plugin\\ewexport_plugin.vcxproj",
     "cmake": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\native-working-copy\\src\\base\\seedlink\\plugins\\ewexport_plugin\\CMakeLists.txt",
     "sources": [
@@ -469,15 +469,15 @@
       "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\ZERO_CHECK.vcxproj"
     ],
     "artifact_candidates": [],
-    "build_evidence": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend05j\\ewexport_plugin.log",
-    "build_state": "FAIL",
-    "artifact": "",
-    "architecture": "",
-    "sha256": "",
+    "build_evidence": "08C5 compile/link0,PE/native imports,2 receiver ownership generations without sockets; no original acquisition executable run",
+    "build_state": "PASS",
+    "artifact": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\bin\\Release\\ewexport_plugin.exe",
+    "architecture": "AMD64 PE32+",
+    "sha256": "3BCE18051A734E443E0AB502BC6B39E91E97143D3EE9E14D2FA3437383D52120",
     "dll_closure": "",
-    "reason": "MSVC Release build exit 1: ewexport_plugin.c and network.c include unistd.h; swap.c includes netinet/in.h. Native POSIX socket/time API port required.",
-    "build_log": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend05j\\ewexport_plugin.log",
-    "attempt_exit_code": 1
+    "reason": "08C5 original Earthworm export client built with native Winsock and cooperative joined receiver; framing/trace bodies retained; mechanical ownership check passes; actual acquisition NOT_RUN",
+    "build_log": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend08c5\\ewexport.log",
+    "attempt_exit_code": 0
   },
   {
     "target": "fdsnxml",
@@ -1226,7 +1226,7 @@
     "target": "naqs_plugin",
     "group": "Acquisition / waveforms",
     "kind": "Application",
-    "classification": "Blocked by Windows portability",
+    "classification": "Already built",
     "project": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\src\\base\\seedlink\\plugins\\naqsplugin\\naqs_plugin.vcxproj",
     "cmake": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\native-working-copy\\src\\base\\seedlink\\plugins\\naqsplugin\\CMakeLists.txt",
     "sources": [
@@ -1238,15 +1238,15 @@
       "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\ZERO_CHECK.vcxproj"
     ],
     "artifact_candidates": [],
-    "build_evidence": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend05j\\naqs_plugin.log",
-    "build_state": "FAIL",
-    "artifact": "",
-    "architecture": "",
-    "sha256": "",
+    "build_evidence": "08C2 compile/link exit0; actual original main and SeedLink send_raw_depoch path; no target execution",
+    "build_state": "PASS",
+    "artifact": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\bin\\Release\\naqs_plugin.exe",
+    "architecture": "AMD64 PE32+",
+    "sha256": "776B5057E583F2F47B068A05928771ED8D94BB3CEFB73543D07EE4E973DABE4B",
     "dll_closure": "",
-    "reason": "MSVC Release build exit 1: naqs_plugin.c includes unistd.h; naqs_utils.c includes netdb.h. Native socket/process portability work required.",
-    "build_log": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend05j\\naqs_plugin.log",
-    "attempt_exit_code": 1
+    "reason": "08C2 original NAQS native Winsock x64 port built; real fixed-width protocol and waveform processing retained; static DLL closure checked; acquisition runtime NOT_RUN",
+    "build_log": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend08c2\\naqs-retry.log",
+    "attempt_exit_code": 0
   },
   {
     "target": "nuttli",
@@ -2326,7 +2326,7 @@
     "target": "scream_plugin_ring",
     "group": "Acquisition / waveforms",
     "kind": "Application",
-    "classification": "Blocked by Windows portability",
+    "classification": "Already built",
     "project": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\src\\base\\seedlink\\plugins\\scream2_plugin\\scream_plugin_ring.vcxproj",
     "cmake": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\native-working-copy\\src\\base\\seedlink\\plugins\\scream2_plugin\\CMakeLists.txt",
     "sources": [
@@ -2344,11 +2344,14 @@
       "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\ZERO_CHECK.vcxproj"
     ],
     "artifact_candidates": [],
-    "build_evidence": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend07a\\scream_plugin_ring.log",
-    "build_state": "FAIL",
-    "attempt_exit_code": 1,
-    "build_log": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend07h\\scream_plugin_ring.log",
-    "reason": "07H original target exit1: Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\native-working-copy\\src\\base\\seedlink\\plugins\\scream2_plugin\\dispatch_ring.c(20,10): error C1083: Cannot open include file: 'sys/socket.h': No such file or directory Shared header materialization corrected; scanner full-width ID/state/regex/signal integration contract in logs/p8-winbackend07h/scanner-contract.md; no fake POSIX shims or built credit."
+    "build_evidence": "08C4 MSVC native compile/link exit0; static imports/package checks; no original executable run",
+    "build_state": "PASS",
+    "attempt_exit_code": 0,
+    "build_log": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend08c4\\ring-final2.log",
+    "reason": "08C4 original SCREAM ring built using real native threads,locks,Winsock,timers; GCF/ordering retained; runtime NOT_RUN",
+    "artifact": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\bin\\Release\\scream_plugin_ring.exe",
+    "sha256": "0392ECF5B28725F9711D6916CF46D1B3E9DA2CC12C26B320BCCCB43FE51B7BEE",
+    "architecture": "AMD64 PE32+"
   },
   {
     "target": "screloc",
@@ -3204,16 +3207,17 @@
     "artifact_candidates": [
       "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\lib\\Release\\seiscomp_core.dll"
     ],
-    "build_evidence": "P8-WINBACKEND-06C1 focused MSVC Release x64 rebuild exit 0",
+    "build_evidence": "08C1 actual compile and _Link exit0; R1/R2/R5 integrated; native static closure verified; application runtime NOT_RUN",
     "build_state": "PASS",
     "artifact": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\lib\\Release\\seiscomp_core.dll",
     "architecture": "AMD64 PE32+",
-    "sha256": "AFC214B2961963F3EE059A9A61C5CF3E250C3209C8543915A5CA466EDE464AD8",
+    "sha256": "167DE26247A3BB4408E0EE55ED34196C7A43B688664700120CC240A83F4D83F8",
     "dll_closure": "PASS (recursive selected static named/ordinal/delay/forwarder imports; Windows/VC boundary)",
     "attempt_exit_code": 0,
-    "build_log": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend07k\\seiscomp_core.log",
+    "build_log": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend08c1\\core-link.log",
     "reason": "07K necessary original Python SDK dependency;32 existing exports added through Windows declarations only, all11659 prior named exports retained. Actual focused Release build0; runtime NOT_RUN.",
-    "artifact_verification": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend07k\\provider-manifest.json"
+    "artifact_verification": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend07k\\provider-manifest.json",
+    "08C1_previous_sha256": "AFC214B2961963F3EE059A9A61C5CF3E250C3209C8543915A5CA466EDE464AD8"
   },
   {
     "target": "seiscomp_daplugin",
@@ -4049,7 +4053,7 @@
     "target": "win_plugin",
     "group": "Acquisition / waveforms",
     "kind": "Application",
-    "classification": "Blocked by Windows portability",
+    "classification": "Already built",
     "project": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\src\\base\\seedlink\\plugins\\win_plugin\\win_plugin.vcxproj",
     "cmake": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\native-working-copy\\src\\base\\seedlink\\plugins\\win_plugin\\CMakeLists.txt",
     "sources": [
@@ -4060,10 +4064,13 @@
       "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\ZERO_CHECK.vcxproj"
     ],
     "artifact_candidates": [],
-    "build_evidence": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend07a\\win_plugin.log",
-    "build_state": "FAIL",
-    "attempt_exit_code": 1,
-    "build_log": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend07h\\win_plugin.log",
-    "reason": "07H original target exit1: Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\native-working-copy\\src\\base\\seedlink\\plugins\\win_plugin\\win_plugin.c(62,10): error C1083: Cannot open include file: 'sys/time.h': No such file or directory Shared header materialization corrected; scanner full-width ID/state/regex/signal integration contract in logs/p8-winbackend07h/scanner-contract.md; no fake POSIX shims or built credit."
+    "build_evidence": "08C4 MSVC native compile/link exit0; static imports/package checks; no original executable run",
+    "build_state": "PASS",
+    "attempt_exit_code": 0,
+    "build_log": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\logs\\p8-winbackend08c4\\win-fixed.log",
+    "reason": "08C4 WIN argument-index fix and6 focused cases; runtime acquisition NOT_RUN",
+    "artifact": "Y:\\OFFICE\\IPP\\2026\\PROG\\SEISCOMP\\SeisComP_Phase5A_AI_Coder_Pack\\phase8\\build\\vs2022-native-after-sqlite-nohypo71\\bin\\Release\\win_plugin.exe",
+    "sha256": "B11B422F80CF7B705DA68493DC262C8793B78750A0A5D96A0DA060FA132E531D",
+    "architecture": "AMD64 PE32+"
   }
 ]

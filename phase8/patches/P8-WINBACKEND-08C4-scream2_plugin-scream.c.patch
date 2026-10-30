@@ -1,0 +1,154 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/scream.c
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/scream.c
+@@ -40,15 +40,21 @@
+ 
+ 
+ #include "project.h"
++#ifndef _WIN32
+ #include <sys/socket.h>
+ #include <netdb.h>
+ #include <unistd.h>
++#endif
+ 
+ extern char *dumpfile;
+ extern int DEBUG;
++#ifdef _WIN32
++extern volatile LONG dropflag;
++#else
+ extern int dropflag;
+-
+-static int sockfd = -1;
++#endif
++
++static ring_socket_t sockfd = RING_INVALID_SOCKET;
+ static int protocol;
+ 
+ 
+@@ -71,7 +77,13 @@
+           return 1;
+         }
+ 
++#ifdef _WIN32
++        if(sockfd!=INVALID_SOCKET){closesocket(sockfd);sockfd=INVALID_SOCKET;}
++#endif
+         sockfd = socket (PF_INET, SOCK_STREAM, 0);
++#ifdef _WIN32
++        if(sockfd==INVALID_SOCKET)fatal2("socket failed: %d\n",WSAGetLastError());
++#endif
+ 
+         remote.sin_family = AF_INET;
+         remote.sin_port = htons (port);
+@@ -82,11 +94,14 @@
+             fatal2 ("gethostbyname(%s) failed: %m", server);
+ 
+         if (he->h_addrtype != AF_INET)
+-            fatal ("gethostbyname returned a non-IP address");
++            fatal(("gethostbyname returned a non-IP address"));
+ 
+         memcpy (&remote.sin_addr.s_addr, he->h_addr, he->h_length);
+ 
+         if (connect (sockfd, (struct sockaddr *) &remote, sizeof (remote))) {
++#ifdef _WIN32
++            closesocket(sockfd);sockfd=INVALID_SOCKET;
++#endif
+             printf("connect failed\n");
+             return 1;
+         }
+@@ -95,11 +110,11 @@
+           cmd = SCREAM_CMD_START_XMIT;
+           printf("send SCREAM_CMD_START_XMIT\n");
+ 
+-          if (send (sockfd, &cmd, 1,  MSG_CONFIRM) != 1)
++          if (send (sockfd, (const char *)&cmd, 1,  RING_SEND_FLAGS) != 1)
+           {
+              printf("write to socket failed: %m");
+-             close(sockfd);
+-             sockfd = -1;
++             ring_close_socket(sockfd);
++             sockfd = RING_INVALID_SOCKET;
+              return 1;
+           }
+         }
+@@ -109,13 +124,16 @@
+       case SCM_PROTO_UDP:
+ 
+         sockfd = socket (PF_INET, SOCK_DGRAM, 0);
++#ifdef _WIN32
++        if(sockfd==INVALID_SOCKET)fatal2("socket failed: %d\n",WSAGetLastError());
++#endif
+ 
+         /*For the UDP binding we want to be able to rebind to this listening port */
+ 
+         {
+           int on = 1;
+ 
+-          if (setsockopt (sockfd, SOL_SOCKET, SO_REUSEADDR, (void *) &on, sizeof (on)))
++          if (setsockopt (sockfd, SOL_SOCKET, SO_REUSEADDR, (const char *) &on, sizeof (on)))
+ 
+               warning (("Error setting SO_REUSEADDR: %m"));
+         }
+@@ -151,13 +169,21 @@
+ 
+             /* try to get 1077 bytes here */
+ 
++#ifdef _WIN32
++            n = ring_recv(sockfd,(char*)buf,buflen);
++#else
+             n = read ( sockfd, buf, buflen);
++#endif
+             if ( n < 0 )
+                 fatal (("recv failed - no UDP connection ?"));
+ 
+             /*  useful for writing the raw GCF records to file */
+             if ( dumpfile != NULL ) {
++#ifdef _WIN32
++               fd = (FILE *) fopen (dumpfile, "ab");
++#else
+                fd = (FILE *) fopen (dumpfile, "a");
++#endif
+                if ( fd != NULL ) {
+                     fwrite (buf, 1, 1077, fd);
+                     fclose (fd);
+@@ -192,13 +218,13 @@
+         case SCM_PROTO_TCP:
+             if (dropflag) {
+                  printf("read failed, closing connection\n");
+-                 close(sockfd); sockfd = -1;
++                 ring_close_socket(sockfd); sockfd = RING_INVALID_SOCKET;
+                  return 1;
+             }
+ 
+             if (complete_read(sockfd, (char *) buf, SCREAM_INITIAL_LEN) != SCREAM_INITIAL_LEN) {
+                 printf("read failed, closing connection\n");
+-                close(sockfd); sockfd = -1;
++                ring_close_socket(sockfd); sockfd = RING_INVALID_SOCKET;
+                 return 1;
+             }
+ 
+@@ -207,7 +233,7 @@
+                 case 31:
+                     if (complete_read(sockfd, (char *) buf + SCREAM_INITIAL_LEN, SCREAM_V31_SUBSEQUENT) != SCREAM_V31_SUBSEQUENT) {
+                         printf("read failed: %m\n");
+-                        close(sockfd); sockfd = -1;
++                        ring_close_socket(sockfd); sockfd = RING_INVALID_SOCKET;
+                         return 1;
+                     }
+                     blocknr = buf[GCF_BLOCK_LEN+34]*256 + buf[GCF_BLOCK_LEN+35];
+@@ -215,7 +241,7 @@
+                 case 40:
+                     if (complete_read(sockfd, (char *) buf + SCREAM_INITIAL_LEN, SCREAM_V40_SUBSEQUENT) != SCREAM_V40_SUBSEQUENT) {
+                         printf("read failed: %m\n");
+-                        close(sockfd); sockfd = -1;
++                        ring_close_socket(sockfd); sockfd = RING_INVALID_SOCKET;
+                         return 1;
+                     }
+                     blocknr = buf[GCF_BLOCK_LEN+2]*256 + buf[GCF_BLOCK_LEN+3];
+@@ -223,7 +249,7 @@
+                 case 45:
+                     if (complete_read(sockfd, (char *) buf + SCREAM_INITIAL_LEN, SCREAM_V45_SUBSEQUENT) != SCREAM_V45_SUBSEQUENT) {
+                         printf("read failed: %m\n");
+-                        close(sockfd); sockfd = -1;
++                        ring_close_socket(sockfd); sockfd = RING_INVALID_SOCKET;
+                         return 1;
+                     }
+                     blocknr = buf[GCF_BLOCK_LEN+2]*256 + buf[GCF_BLOCK_LEN+3];

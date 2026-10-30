@@ -1,0 +1,206 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/ewexport_plugin/ewexport_plugin.c
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/ewexport_plugin/ewexport_plugin.c
+@@ -34,9 +34,13 @@
+ #include <stdlib.h>
+ #include <stdarg.h>
+ #include <string.h>
++#ifndef _WIN32
+ #include <unistd.h>
++#endif
+ #include <fcntl.h>
++#ifndef _WIN32
+ #include <pthread.h>
++#endif
+ #include <math.h>
+ #include <time.h>
+ #include <errno.h>
+@@ -56,11 +60,13 @@
+ static int     SocketHeartbeat( void );
+ static int     SocketSendAck( char * );
+ static void    import_filter( char *, int);
+-static int     WriteToSocket( int, char *, MSG_LOGO * );
++static int     WriteToSocket( ew_socket_t, char *, MSG_LOGO * );
++#ifndef _WIN32
+ static void    dummy_handler(int sig);
+ static void    term_handler(int sig);
+ static void    ThreadSignalHandler( int sig );
+ static int     ThreadStart( pthread_t *tid, pthread_attr_t *attr, void *func(void *), void *arg );
++#endif
+ static void    config_params( int argcount, char **argvec );
+ static void    usage(void);
+ 
+@@ -88,9 +94,13 @@
+ volatile time_t MyLastInternalBeat;  /* time of last heartbeat into local Earthworm ring */
+ volatile time_t MyLastSocketBeat;    /* time of last heartbeat to server - via socket    */
+ volatile int MessageReceiverStatus =0; /* status of message receiving thread: -1 means bad news */
+-volatile int Sd = 0;            /* Socket descriptor                                */
++volatile ew_socket_t Sd = EW_BAD_SOCKET;            /* Socket descriptor                                */
+ char     *MsgBuf;               /* incoming message buffer; used by receiver thread */
++#ifdef _WIN32
++HANDLE TidMsgRcv = NULL;        /* non-owning receiver handle alias */
++#else
+ pthread_t TidMsgRcv = 0;        /* thread id */
++#endif
+ 
+ unsigned char tracebuf_type;
+ MSG_LOGO      heartlogo;
+@@ -132,6 +142,7 @@
+   int    quit;
+   int    retryCount;           /* to prevent flooding of log messages */
+ 
++#ifndef _WIN32
+   pthread_attr_t heart_attr;
+   pthread_attr_t msgrecv_attr;
+   
+@@ -156,15 +167,20 @@
+   sa.sa_handler = ThreadSignalHandler;
+   sigaction(SIGUSR1, &sa, NULL);
+   
++#endif
+   /* Process command line arguments */
+   config_params(argc, argv);
+   
++#ifdef _WIN32
++  if(ew_startup()!=0)return 1;
++#else
+   /* Initialize thread attributes */
+   pthread_attr_init( &heart_attr );
+   pthread_attr_init( &msgrecv_attr );
+   pthread_attr_setdetachstate( &heart_attr, PTHREAD_CREATE_DETACHED );
+   pthread_attr_setdetachstate( &msgrecv_attr, PTHREAD_CREATE_DETACHED );
+ 
++#endif
+   /* Heartbeat parameters sanity checks */
+   if( 1000 * SenderHeartRate >= SocketTimeoutLength )
+     {
+@@ -189,6 +205,9 @@
+                                        reconnect:
+                                  /********************/
+   retryCount++;
++#ifdef _WIN32
++  if(ew_stopping()){free(MsgBuf);return 0;}
++#endif
+ 
+   /* Try for a network connection - and keep trying forever !! */
+   if (retryCount < 4)
+@@ -197,9 +216,9 @@
+   if (retryCount == 4)
+     gen_log (0,1, "Suppressing repeated connect messages\n");
+ 
+-  if ( (Sd = my_connect (SenderIpAdr, SenderPort)) == 0 )
+-    {
+-      close (Sd);
++  if ( (Sd = my_connect (SenderIpAdr, SenderPort)) == EW_BAD_SOCKET )
++    {
++      ew_close_socket(Sd);
+       
+       if (retryCount < 4)
+ 	gen_log (0,1, "Failed to connect. Waiting\n");
+@@ -221,7 +240,11 @@
+ 
+   /* Start the message receiver thread */
+   MessageReceiverStatus =0; /* set it's status flag to ok */
++#ifdef _WIN32
++  if (ew_start_receiver(&TidMsgRcv,MessageReceiver,NULL)==-1)
++#else
+   if ( ThreadStart( &TidMsgRcv , &msgrecv_attr, MessageReceiver, NULL ) == -1 )
++#endif
+     {
+       gen_log (1,0, "cannot start MessageReceiver thread. Exiting.\n");
+       free(MsgBuf);
+@@ -234,6 +257,12 @@
+   while (1)
+     {
+       safe_usleep (1000000); /* sleep one second. Remember, the receieve thread is awake */
++#ifdef _WIN32
++      if(ew_stopping()){
++        if(ew_stop_receiver()!=0)return 1;
++        TidMsgRcv=NULL;ew_close_socket(Sd);Sd=EW_BAD_SOCKET;free(MsgBuf);return 0;
++      }
++#endif
+       time(&now);
+ 
+       /* How's the server's heart? */ 
+@@ -253,8 +282,13 @@
+       /* restart preparations */
+       if (quit == 1)
+ 	{
++#ifdef _WIN32
++          if(ew_stop_receiver()!=0)return 1;
++          TidMsgRcv=NULL;ew_close_socket(Sd);Sd=EW_BAD_SOCKET;
++#else
+ 	  pthread_kill( TidMsgRcv, SIGUSR1 );
+ 	  close (Sd);
++#endif
+ 	  quit=0;
+ 	  goto reconnect;
+ 	}
+@@ -317,6 +351,9 @@
+ 
+   while(1) /* loop over bytes read from socket */
+     {
++#ifdef _WIN32
++      if(ew_cancel_requested())goto suicide;
++#endif
+       /* Get next char operation */
+       if (++inchar == nr)
+ 	{
+@@ -515,10 +552,14 @@
+  suicide:
+   gen_log (1,0, "cannot read from network. Restarting receive thread\n");
+   MessageReceiverStatus = -1; /* file a complaint to the main thread */
++#ifdef _WIN32
++  return NULL; /* native CRT worker trampoline returns normally */
++#else
+   pthread_exit( (void *)NULL );	  /* the main thread will resurect us */
+   gen_log (1,0, "Fatal system error: Receiver thread could not pthread_exit()\n");
+   exit(-1);
+   
++#endif
+ }  /* end of MessageReceiver thread */
+ 
+ 
+@@ -536,7 +577,7 @@
+    if( MyAliveInt != 0     &&
+        difftime(now,MyLastSocketBeat) > (double)MyAliveInt ) 
+    {
+-      if( WriteToSocket( (int)Sd, MyAliveString, &heartlogo ) != 0 )
++      if( WriteToSocket( (ew_socket_t)Sd, MyAliveString, &heartlogo ) != 0 )
+       {
+          gen_log(1,0, "error sending alive msg to socket\n");
+          return( -1 );
+@@ -561,7 +602,7 @@
+ /* Send an acknowledgment (over the socket) to our server
+  ********************************************************/
+    sprintf( ackstr, "ACK:%s", seq );
+-   if( WriteToSocket( (int)Sd, ackstr, &acklogo ) != 0 )
++   if( WriteToSocket( (ew_socket_t)Sd, ackstr, &acklogo ) != 0 )
+    {
+       gen_log(1,0, "error sending %s to socket\n", ackstr);
+       return( -1 );
+@@ -702,7 +743,7 @@
+  *            -1 if any errors are detected                       *
+  ******************************************************************/
+ static int
+-WriteToSocket( int sock, char *msg, MSG_LOGO *logo )
++WriteToSocket( ew_socket_t sock, char *msg, MSG_LOGO *logo )
+ {
+   char asciilogo[11];       /* ascii version of outgoing logo */
+   char startmsg = STX;      /* flag for beginning of message  */
+@@ -742,6 +783,7 @@
+ } /* End of WriteToSocket() */
+ 
+ 
++#ifndef _WIN32
+ /* Signal handling routines */
+ static void
+ dummy_handler(int sig) { }
+@@ -789,6 +831,8 @@
+   return 0;
+ } /* End of ThreadStart() */
+ 
++
++#endif
+ 
+ /*****************************************************************************
+  *  config_params() processes command line arguments and set defaults        *

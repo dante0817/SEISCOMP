@@ -1,0 +1,28 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/util.c
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/util.c
+@@ -40,18 +40,24 @@
+ /* Mar 2004  - Modified by Reinoud Sleeman           */
+ /*             for the SCREAM plugin in SeedLink     */
+ 
++#ifndef _WIN32
+ #include <unistd.h>
++#endif
+ #include "project.h"
+ 
+ int
+-complete_read (int fd, char *buf, int n)
++complete_read (ring_socket_t fd, char *buf, int n)
+ {
+   int c = 0;
+   int r;
+ 
+   while (n)
+     {
++#ifdef _WIN32
++      r = ring_recv(fd,buf,n);
++#else
+       r = read (fd, buf, n);
++#endif
+ //printf("read:  %d\n", r);
+ //if(r==4) printf("%x  %x  %x  %x\n", *(buf+0), *(buf+1),*(buf+2),*(buf+3));
+       if (r < 0)

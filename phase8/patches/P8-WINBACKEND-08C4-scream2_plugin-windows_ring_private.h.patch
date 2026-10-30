@@ -1,0 +1,32 @@
+--- /dev/null
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/windows_ring_private.h
+@@ -0,0 +1,29 @@
++/* Target-local native Windows primitives; no pthread/POSIX runtime emulation. */
++#ifndef WINDOWS_RING_PRIVATE_H
++#define WINDOWS_RING_PRIVATE_H
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#include <winsock2.h>
++#include <ws2tcpip.h>
++#include <windows.h>
++#include <stdint.h>
++#include <signal.h>
++typedef SOCKET ring_socket_t;
++typedef HANDLE ring_worker_t;
++typedef SRWLOCK ring_lock_t;
++#define RING_LOCK_INITIALIZER SRWLOCK_INIT
++#define RING_INVALID_SOCKET INVALID_SOCKET
++#define RING_SEND_FLAGS 0
++int ring_startup(void);
++int ring_start_worker(ring_worker_t*,void *(*)(void*),void*);
++int ring_lock_try(ring_lock_t*);
++void ring_unlock(ring_lock_t*);
++void ring_sleep_us(unsigned long);
++void ring_sleep_seconds(unsigned int);
++int ring_poll_control(void);
++double ring_wall_time(void);
++int ring_recv(ring_socket_t,char*,int);
++#define ring_close_socket closesocket
++typedef char ring_socket_width[(sizeof(ring_socket_t)==sizeof(void*))?1:-1];
++#endif

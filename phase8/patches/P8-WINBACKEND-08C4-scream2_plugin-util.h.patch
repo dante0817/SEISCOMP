@@ -1,0 +1,29 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/util.h
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/util.h
+@@ -57,9 +57,25 @@
+ extern void doinfo (char *fmt, ...);
+ */
+ 
++#ifdef _WIN32
++#define fatal(a) do { printf a; putchar('\n'); exit(-1); } while(0)
++#else
+ #define fatal(a) do { printf("%s\n", a); exit(-1); } while(0)
++#endif
+ #define fatal2(...) do { printf(__VA_ARGS__); exit(-1); } while(0)
++#ifdef _WIN32
++#define warning(a) do { printf a; putchar('\n'); } while(0)
++#else
+ #define warning(a) do { printf("%s\n", a); } while(0)
+-extern int complete_read (int fd, char *buf, int n);
++#endif
++#ifdef _WIN32
++#include "windows_ring_private.h"
++#else
++typedef int ring_socket_t;
++#define RING_INVALID_SOCKET (-1)
++#define RING_SEND_FLAGS MSG_CONFIRM
++#define ring_close_socket close
++#endif
++extern int complete_read (ring_socket_t fd, char *buf, int n);
+ 
+ #endif /* __UTIL_H__ */

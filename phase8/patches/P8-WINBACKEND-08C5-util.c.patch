@@ -1,0 +1,28 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/ewexport_plugin/util.c
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/ewexport_plugin/util.c
+@@ -12,6 +12,9 @@
+ #include <stdarg.h>
+ #include <string.h>
+ #include <time.h>
++#ifdef _WIN32
++#include "windows_ew_private.h"
++#endif
+ 
+ /***************************************************************************
+  *  A generic logging/printing routine
+@@ -82,11 +85,15 @@
+ extern void
+ safe_usleep (unsigned long int useconds)
+ {
++#ifdef _WIN32
++  ew_delay(useconds);
++#else
+   struct timespec treq, trem;
+   
+   treq.tv_sec = (time_t) (useconds / 1e6);
+   treq.tv_nsec = (long) ((useconds * 1e3) - (treq.tv_sec * 1e9));
+   
+   nanosleep (&treq, &trem);
++#endif
+ } /* End of safe_usleep() */
+ 

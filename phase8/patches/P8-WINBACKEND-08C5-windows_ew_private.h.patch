@@ -1,0 +1,23 @@
+--- /dev/null
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/ewexport_plugin/windows_ew_private.h
+@@ -0,0 +1,20 @@
++/* Native Windows transport and receiver ownership for ewexport_plugin. */
++#ifndef WINDOWS_EW_PRIVATE_H
++#define WINDOWS_EW_PRIVATE_H
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#include <winsock2.h>
++#include <ws2tcpip.h>
++#include <windows.h>
++typedef SOCKET ew_socket_t;
++#define EW_BAD_SOCKET INVALID_SOCKET
++int ew_startup(void);
++int ew_stopping(void);
++int ew_cancel_requested(void);
++void ew_delay(unsigned long);
++int ew_start_receiver(HANDLE*,void *(*)(void*),void*);
++int ew_stop_receiver(void);
++void ew_close_socket(ew_socket_t);
++typedef char ew_socket_width[(sizeof(ew_socket_t)==sizeof(void*))?1:-1];
++#endif

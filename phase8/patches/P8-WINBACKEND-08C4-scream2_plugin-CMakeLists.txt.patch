@@ -1,0 +1,16 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/CMakeLists.txt
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/CMakeLists.txt
+@@ -14,7 +14,12 @@
+ INCLUDE_DIRECTORIES(..)
+ 
+ ADD_EXECUTABLE(scream_plugin_ring ${SCREAM2PLUGIN_SOURCES})
+-TARGET_LINK_LIBRARIES(scream_plugin_ring m pthread)
++IF(WIN32)
++ TARGET_SOURCES(scream_plugin_ring PRIVATE windows_ring_private.c)
++ TARGET_COMPILE_DEFINITIONS(scream_plugin_ring PRIVATE _WIN32_WINNT=0x0602)
++ELSE()
++ TARGET_LINK_LIBRARIES(scream_plugin_ring m pthread)
++ENDIF()
+ 
+ INSTALL(TARGETS scream_plugin_ring RUNTIME DESTINATION ${SEEDLINK_PLUGIN_OUTPUT_DIR})
+ 

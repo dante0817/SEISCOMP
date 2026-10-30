@@ -1,0 +1,21 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/ewexport_plugin/CMakeLists.txt
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/ewexport_plugin/CMakeLists.txt
+@@ -14,8 +14,17 @@
+ 
+ ADD_DEFINITIONS(${OPTIONS})
+ 
++IF(WIN32)
++ LIST(REMOVE_ITEM EWEXPORTPLUGIN_SOURCES network.c ../plugin.c)
++ LIST(APPEND EWEXPORTPLUGIN_SOURCES windows_ew_private.c)
++ENDIF()
+ ADD_EXECUTABLE(ewexport_plugin ${EWEXPORTPLUGIN_SOURCES})
+-TARGET_LINK_LIBRARIES(ewexport_plugin pthread)
++IF(WIN32)
++ TARGET_LINK_LIBRARIES(ewexport_plugin slplugin)
++ TARGET_COMPILE_DEFINITIONS(ewexport_plugin PRIVATE _WIN32_WINNT=0x0602)
++ELSE()
++ TARGET_LINK_LIBRARIES(ewexport_plugin pthread)
++ENDIF()
+ 
+ INSTALL(TARGETS ewexport_plugin RUNTIME DESTINATION ${SEEDLINK_PLUGIN_OUTPUT_DIR})
+ 

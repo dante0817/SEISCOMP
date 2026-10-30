@@ -1,0 +1,145 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/main.c
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/scream2_plugin/main.c
+@@ -40,12 +40,14 @@
+  */
+ 
+ 
++#ifndef _WIN32
+ #include <sys/time.h>
+ #include <signal.h>
+ #include <pthread.h>
+ #include <sys/socket.h>
+ #include <netdb.h>
+ #include <unistd.h>
++#endif
+ 
+ #include "project.h"
+ #include "config.h"
+@@ -54,6 +56,13 @@
+ #include "plugin.h"
+ 
+ 
++#ifdef _WIN32
++#define pthread_mutex_trylock ring_lock_try
++#define pthread_mutex_unlock ring_unlock
++#define sleep ring_sleep_seconds
++#define usleep ring_sleep_us
++#endif
++
+ #define ORBSIZE      2000        // size of the first ringbuffer to store incoming GCF records
+                                  // this size does not affect latency
+ 
+@@ -63,8 +72,13 @@
+ void                 *listen_to_scream (void *in);
+ void                 *distribute_forever (void *in);
+ double               get_dtime (void);
++#ifdef _WIN32
++ring_worker_t        thread_scream;
++ring_worker_t        thread_distribute;
++#else
+ pthread_t            thread_scream;
+ pthread_t            thread_distribute;
++#endif
+ uint8_t              *cbuf[ORBSIZE];
+ char                 *mapfile;
+ Map                  *rootmap;
+@@ -77,11 +91,19 @@
+ int                  RSIZE;
+ 
+ // these variables are used in threads and should not be made static
++#ifdef _WIN32
++ring_lock_t          mutex1 = RING_LOCK_INITIALIZER;
++#else
+ pthread_mutex_t      mutex1 = PTHREAD_MUTEX_INITIALIZER;
++#endif
+ int                  wptr;
+ int                  optrr;
+ int                  wcflag;
++#ifdef _WIN32
++volatile LONG        dropflag = 0;
++#else
+ int                  dropflag = 0;
++#endif
+ 
+ 
+ 
+@@ -106,7 +128,11 @@
+            case SIGTERM:
+                 printf("\nSIGTERM - Termination request made to the program.\n");
+                 break;
++#ifdef _WIN32
++           case SIGBREAK:
++#else
+            case SIGUSR1:
++#endif
+                 printf("\nSIGUSR1 - Toggle packet loss.\n");
+                 dropflag = 1-dropflag;
+                 return;
+@@ -140,7 +166,9 @@
+   (void) signal(SIGINT, my_exit);
+   (void) signal(SIGSEGV, my_exit);
+   (void) signal(SIGTERM, my_exit);
++#ifndef _WIN32
+   (void) signal(SIGUSR1, my_exit);
++#endif
+ 
+   RSIZE = -1;
+ 
+@@ -221,17 +249,32 @@
+ 
+   sprintf ( scream_arg, "%s:%d", config.server, config.port);
+ 
++#ifdef _WIN32
++  if(ring_startup()!=0)return 1;
++  if(ring_start_worker(&thread_scream,listen_to_scream,(void*)scream_arg)!=0)fatal(("Cannot create receive worker"));
++  ring_sleep_seconds(1);
++  if(ring_start_worker(&thread_distribute,distribute_forever,(void*)gcf_arg)!=0)fatal(("Cannot create distribute worker"));
++  ring_sleep_seconds(1);
++#else
+   pthread_create ( &thread_scream, NULL, listen_to_scream, (void *) scream_arg);
+   system ("sleep 1s");
+ 
+   pthread_create ( &thread_distribute, NULL, distribute_forever, (void *) gcf_arg);
+   system ("sleep 1s");
++#endif
+ 
+   //pthread_join( &thread_scream, NULL );
+   //pthread_join( &thread_distribute, NULL );
+ 
+   do {
++#ifdef _WIN32
++    int control=ring_poll_control();
++    if(control&1)my_exit(SIGINT);
++    if(control&2)my_exit(SIGBREAK);
++    ring_sleep_seconds(1);
++#else
+     system ("sleep 1s");
++#endif
+   } while (1);
+ 
+ 
+@@ -258,7 +301,7 @@
+ 
+ 
+      if ( scream_init_socket (config.protocol, config.server, config.port) )
+-         fatal("uncrecoverable error");
++         fatal(("uncrecoverable error"));
+ 
+      gcfbuf = (uint8_t *) malloc ( sizeof(uint8_t) * SCREAM_MAX_LENGTH );
+ 
+@@ -440,11 +483,15 @@
+ 
+ double get_dtime (void)
+ {
++#ifdef _WIN32
++  return ring_wall_time();
++#else
+   struct timeval tp;
+   struct timezone tzp;
+ 
+   gettimeofday (&tp, &tzp);
+   return ((double) tp.tv_sec + ((double) tp.tv_usec / 1000000.0));
++#endif
+ 
+ }
+ 

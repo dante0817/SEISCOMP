@@ -1,5 +1,87 @@
 # Native Windows Port — Implementation Status
 
+## P8-WINBACKEND-08C5 — Earthworm export built; backend106/120
+
+Original ewexport_plugin builds native AMD64 PE32+ with Winsock nonblocking I/O
+and cooperative CRT receiver cancellation/join. Shared-buffer reuse/reconnect is
+refused on3000ms join failure;no forced thread kill. Original message framing,
+acknowledgement/trace conversion/processing preserved. Mechanical receiver helper
+passes two cancel/join/restart generations,guard network entries0;original target
+and real acquisition NOT_RUN. Build23warnings/0errors retained.
+Revision9 adds one executable;154 previous binaries,11GUIs,12Python extensions
+and4Tau resources unchanged. Backend106/120;9Windows-blocked,1dependency blocker,
+4disabled. All317 watched old products,revision8 and9 frozen repositories preserved.
+No dependency/security/service/controller/Phase7/operational change. Report:
+logs/p8-winbackend08c5/REPORT.md. Phase5A PARTIAL;runtime/science/release remain open.
+
+
+## P8-WINBACKEND-08C4 — SCREAM ring built; WIN input fixed; backend105/120
+
+WIN control-file argv index corrected;6 extracted-block cases pass. Original
+scream_plugin_ring now compiles/links with native CRT workers,SRW locks,Winsock,
+waitable timers and process-local clock/TZ adapters. GCF/mapping files,ring stack
+and worker packet/ordering logic retained. Original process-exit lifetime kept;
+workers are not joined and graceful/service shutdown remains unqualified.
+Revision8 adds ring and updates WIN;152 other previous binaries,11GUIs,12Python
+extensions and4Tau resources unchanged. Backend105/120;10Windows-blocked,1dependency
+blocker,4disabled. Initial diagnostic-macro build and failed intermediate compile
+retained;final build0. No original acquisition/network/scientific execution.
+Nine frozen snapshots,revision7 and315 other watched products preserved. No package,
+security,service,controller,Phase7 or operational change. Report:
+logs/p8-winbackend08c4/REPORT.md. Phase5A PARTIAL; integration/runtime remain open.
+
+
+## P8-WINBACKEND-08C3 — original WIN UDP target built; backend104/120
+
+Original win_plugin compiles/links natively with pointer-width Winsock,UDP/multicast,
+owned cleanup,console stop/reload and Windows Event Log output adapters. Original
+decoder/queue/time/sample bodies and packet decode tail retained; only transport
+buffer casts alter resend/request bodies. Revision7 adds one executable; all152
+prior PE binaries,11GUIs,12Python extensions and4Tau resources remain unchanged.
+Backend104/120;11Windows-blocked,1dependency-blocked,4disabled. Build101 warnings
+retained,0errors. Native imports,source preservation and package hashes checked;
+no runtime/test campaign. All315 prior products,revision6 and9 frozen repositories
+preserved. No dependency/security/service/controller/Phase7 or operational change.
+Report: logs/p8-winbackend08c3/REPORT.md. Next: remaining socket acquisition ports,
+then thread/serial/IPC and essential integration. Phase5A PARTIAL.
+
+
+## P8-WINBACKEND-08C2 — original NAQS acquisition target built; backend103/120
+
+Original naqs_plugin now compiles/links as native AMD64 PE32+ with full-width
+Winsock handles,owned startup/cleanup,native signals/sleep and existing Boost POSIX
+regex adapter.24 original protocol/processing/selection function bodies retained.
+Revision6 adds only this executable and package metadata; all151 previous PE files,
+11GUIs,12Python extensions and4Tau files remain unchanged. Backend103/120;12Windows
+portability blockers,1dependency blocker,4disabled. First strcasecmp link failure
+resolved with Windows CRT _stricmp; failure and remaining warnings retained.
+Build/static package checks only; no target/server/network/scientific execution.
+All314 watched old products,revision5 and9 frozen snapshots preserved. No new
+dependency,policy,service,controller,Phase7 or operational change. See
+logs/p8-winbackend08c2/REPORT.md. Next: remaining socket acquisition ports,then
+thread/serial/IPC contracts and essential integration. Phase5A PARTIAL.
+
+## P8-WINBACKEND-08C1 — corrected core integrated into revision 5
+
+The original native core now includes approved WIN-FIX-01 R1/R5 and WIN-FIX-02 R2.
+VS2022 x64 compilation and actual DLL link exit0. All11,691 prior named exports
+and their ordinals remain;389 private dependency relationships resolve statically.
+New unified-08a-r5-native contains151 PE files/847 manifested files. All150 other
+PEs,11 original GUIs,12 Python extensions and4 Tau resources retain revision4 bytes.
+Backend102/120 remains unchanged. The new source-corrected core is now packaged.
+
+Verification was limited to build/link,native PE/dependency compatibility,package
+hashes and required frozen-source preservation. No regression campaign,original
+application launch,service,network,DB or scientific workload ran. First direct Link
+target skipped output;hash comparison caught it and the actual _Link invocation
+produced the new DLL. Both attempts and prebuild core products are retained.
+No new source patch,dependency,execution policy,security or operational change.
+External Python home and historical custody exceptions remain. Old stages and
+sealed evidence remain unchanged. Report: logs/p8-winbackend08c1/REPORT.md.
+Next: finish remaining socket acquisition ports and essential application integration;
+broad review closed. Phase5A PARTIAL; runtime/science/release qualification open.
+
+
 ## P8-WINBACKEND-08B2 — development resumed; backend 102/120
 
 Operator follow-up makes a VM optional for source development, MSVC builds, original

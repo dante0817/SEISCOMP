@@ -819,3 +819,23 @@ Applied patch hashes:
 - `P8-WINBACKEND-08B2-scream-util.h.patch`: `740A826FBECF5BC70E6272CD9C0719E4627DD40683958CD7991DDF61A3CDC95D`.
 
 Packaging-source identities: logs/p8-winbackend08b2/windows-package-sources.json. No scientific implementation changes.
+
+## P8-WINBACKEND-08C1 — approved correctness patches integrated
+
+No additional source correction. Recompiled/relinked original core with WIN-FIX-01 R1/R5 and WIN-FIX-02 R2, then staged revision5. Source hashes: logs/p8-winbackend08c1/before.json. Actual linker: core-link-command.json. Old core and R4 preserved; full application runtime NOT_RUN.
+
+## P8-WINBACKEND-08C2 — native NAQS portability
+
+Five scoped source files (four existing plus private platform header), exact preimages and final patches in logs/p8-winbackend08c2/final-source-patches.json. Existing original waveform/message bodies retained. Actual MSVC build0; native static closure; revision6. First missing strcasecmp linker failure retained. Acquisition/science NOT_RUN.
+
+## P8-WINBACKEND-08C3 — native WIN UDP acquisition
+
+Three scoped files (win_plugin.c,CMakeLists.txt,added windows_win_private.h); exact preimages and final patches in logs/p8-winbackend08c3/final-source-patches.json. Original decoder bodies preserved. MSVC build0/native imports/package revision7; acquisition/science NOT_RUN.
+
+## P8-WINBACKEND-08C4 — WIN argument correction and native SCREAM ring
+
+Exact preimages/10 final source patches in logs/p8-winbackend08c4/source-patches.json. Original algorithm source preservation in source-preservation.json. WIN build0/6 isolated argument cases pass;ring final build0/static native imports. Original acquisition/science NOT_RUN. Process-exit lifetime retained,not joined shutdown. Revision8;old stages preserved.
+
+## P8-WINBACKEND-08C5 — native Earthworm export
+
+Seven scoped files;preimages/final patches in logs/p8-winbackend08c5/source-patches.json. Original framing and trace processing preserved. Native compile/link0;two mechanical receiver ownership generations pass without socket calls. Revision9;actual acquisition/scientific qualification NOT_RUN.

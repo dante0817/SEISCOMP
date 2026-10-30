@@ -1,0 +1,14 @@
+--- a/phase8/native-working-copy/src/base/seedlink/plugins/ewexport_plugin/swap.c
++++ b/phase8/native-working-copy/src/base/seedlink/plugins/ewexport_plugin/swap.c
+@@ -14,7 +14,11 @@
+ 
+ #include <stdio.h>
+ #include <string.h>
++#ifdef _WIN32
++#include <winsock2.h>
++#else
+ #include <netinet/in.h>
++#endif
+ #include "swap.h"
+ 
+ void SwapShort( short *data )
