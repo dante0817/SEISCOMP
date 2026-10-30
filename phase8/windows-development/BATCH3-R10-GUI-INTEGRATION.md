@@ -1,6 +1,6 @@
 # Phase 8 / Batch 3 — Native R10 GUI integration
 
-**Status (2026-10-30): SOURCE_IMPLEMENTED / OPERATOR_R10_INSTALLED / GUI_STARTUP_NOT_RUN.**
+**Status (2026-10-30): BATCH3A_PREFLIGHT_PASS_11_OF_11 / R10_INSTALLED / GUI_RUNTIME_NOT_RUN.**
 
 ## Verified baseline
 
@@ -116,3 +116,21 @@ native Windows without runtime dependencies on WSL or GitHub.
 **Batch 3 status:** source implementation ready, local R10 preflight NOT_RUN,
 all GUI runtime and scientific qualifications pending. This is an engineering
 development milestone, not a software release certificate.
+
+## Operator checkpoint — 2026-10-30 Batch 3A PASS
+
+The operator ran the exact Batch 3A preflight against the separately verified R10 development installation in Windows PowerShell. The actual output recorded externally pinned R10 manifest SHA-256 **83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74**, **856** manifest entries, `InstallReceipt: VERIFIED` and `QtPlatformPluginsAndCatalog: VERIFIED`.
+
+All eleven original GUIs individually reported `ENTRYPOINT_PREFLIGHT_PASS`, including scconfig, scesv, scheli, scmapcut, scmm, scmv, scmvx, scolv, scqcv, scrttv and scshowevent. Final: **GUIEntrypointsPassed: 11/11**, **GUIEntrypointsFailed: 0**, **BATCH3_R10_GUI_PREFLIGHT_PASS**, and **GUI_NOT_RUN; NETWORK_ISOLATION_NOT_PROVEN; SCIENTIFIC_NOT_QUALIFIED**.
+
+**Batch 3A preflight is CLOSED/PASS**. These are entrypoint/static checks only, not a demonstration of actual GUI launch, Qt dynamic plugin behavior or numerical correctness.
+
+## Next: Batch 3B scconfig native runtime integration (no launch yet)
+
+1. Establish independently approved, verified network isolation and a disposable application profile; earlier Hyper-V VM inventory access was denied and an installed Windows Sandbox was not established. Do not assume the connected host is isolated or change its security/virtualization configuration.
+2. Keep R9 and verified R10 unchanged. Test only in an authorized isolated Windows environment with a separate scratch/test configuration, after reviewing effective `etc/global.cfg`, possible user-home overrides, and endpoint behavior.
+3. The included process-local environment helper configures paths but does **not** disable networking. Inspect pinned original scconfig accepted arguments first; do not assume an `--offline` switch or that a default GUI launch is inert.
+4. First independently approved runtime case: launch original scconfig only and record whether the window opens and the expected module descriptions appear; capture Qt platform/plugin errors, stdout/stderr and actual exit without running controller/services.
+5. Diagnose a real failure from captured evidence and implement a focused native Windows source fix in the **editable** C++ source tree; produce a new revision rather than modifying installed R10. Continue scrttv MiniSEED and scolv SCML fixture preparation independently.
+
+The existing Start-DevelopmentGui.ps1 has an explicit -Run gate, but its operator flags **do not enforce isolation** or grant independent authorization. Do not use the connected host to silently bypass the established runtime-test safeguards. Runtime, acquisition and scientific qualification remain NOT_RUN.
