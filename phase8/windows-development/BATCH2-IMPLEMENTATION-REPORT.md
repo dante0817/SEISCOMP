@@ -60,3 +60,21 @@ The operator executed Batch 2's read-only PowerShell audit on the immutable R9 c
 **Next determination on R9:** inspect `Test-Path` for the exact Qt 5.15.18 `bin/qt-plugins/platforms/qoffscreen.dll`, whether the approved manifest contains it, and whether `share/windows/gui-package.json` lists it. If missing, treat this as a candidate packaging gap for headless Qt utilities and restore only in a new separately verified build candidate from the pinned Qt distribution (not by copying arbitrary installed Qt binaries or editing the R9 approved manifest). If present but unmanifested, treat it as an integrity/provenance defect. Both cases remain `NEEDS_REVIEW` until reconciled.
 
 **Unchanged:** R9 files, network/services, runtime execution and scientific qualification. The static audit confirms 11/11 GUI executable integrity; visible-GUI runtime startup remains NOT_RUN.
+
+## 2026-10-30 operator-confirmed R9 packaging defect — qoffscreen omitted
+
+Operator performed a targeted, read-only check against the immutable R9 development copy:
+
+| Check | Result |
+|---|---|
+| `bin/qt-plugins/platforms/qoffscreen.dll` physically present | **False** |
+| Entry exists in approved `SHA256SUMS.json` | **False** |
+| Filename mentioned in `share/windows/gui-package.json` | **False** |
+
+**Diagnosis:** confirmed omitted offscreen Qt platform plugin in the R9 package and package inventories, not a hash mismatch. Earlier staging evidence shows this plugin was needed for the `Application::Tty` utilities `scmapcut` and `scshowevent`. The other 11 GUI executable identities and the tested Windows Qt platform/Qt provider files remain valid. This specific omission does not imply that all visible Qt GUIs fail startup.
+
+**Release engineering correction:** create a **new** isolated candidate, not an in-place R9 modification. Recover the `qoffscreen.dll` matching the previously pinned Qt **5.15.18 x64 Release** provider from verified earlier Phase 8 staging or the approved dependency bundle; record its source, version, architecture and SHA-256; perform direct and recursive native dependency checks; include it under `bin/qt-plugins/platforms/`; update `share/windows/gui-package.json` and the candidate `SHA256SUMS.json` and verify them in a clean copy. Preserve the previous R9 manifest identity. Re-run static package audit against the **new externally approved manifest digest** before a separate isolated runtime qualification.
+
+**Important:** the operator ran the first version of the checker and saw generic `NOT_MANIFESTED`. The revised checker reports `MISSING_AND_UNMANIFESTED`; no additional R9 rerun is needed to prove this already confirmed result. The result `STATIC_GUI_PACKAGE_AUDIT_NEEDS_REVIEW` remains accurate.
+
+**Open dependency:** no trustworthy exact plugin binary or complete installed GUI package catalog contents are available in the connected source-only repo. Do not invent a plugin file/hash, claim packaging repair complete, or patch R9. The next operator data collection is a targeted read-only location/version/hash inspection of candidates in previously approved staging. Until then: `BATCH2_STATIC_11_GUI_PASS_WITH_QOFFSCREEN_OMISSION / GUI_RUNTIME_NOT_RUN`.
