@@ -78,3 +78,14 @@ Operator performed a targeted, read-only check against the immutable R9 developm
 **Important:** the operator ran the first version of the checker and saw generic `NOT_MANIFESTED`. The revised checker reports `MISSING_AND_UNMANIFESTED`; no additional R9 rerun is needed to prove this already confirmed result. The result `STATIC_GUI_PACKAGE_AUDIT_NEEDS_REVIEW` remains accurate.
 
 **Open dependency:** no trustworthy exact plugin binary or complete installed GUI package catalog contents are available in the connected source-only repo. Do not invent a plugin file/hash, claim packaging repair complete, or patch R9. The next operator data collection is a targeted read-only location/version/hash inspection of candidates in previously approved staging. Until then: `BATCH2_STATIC_11_GUI_PASS_WITH_QOFFSCREEN_OMISSION / GUI_RUNTIME_NOT_RUN`.
+
+## 2026-10-30 operator discovery — two staged Qt 5.15.18 offscreen candidates
+
+The operator ran a bounded read-only search for `qoffscreen.dll` in two historical Phase 8 staging roots. Two candidate files were found:
+
+- `phase8/staging/scmapcut-offline/platforms/qoffscreen.dll` — Windows file version **5.15.18.0**.
+- `phase8/staging/scshowevent-offline/platforms/qoffscreen.dll` — Windows file version **5.15.18.0**.
+
+Both are consistent with the pinned Qt provider version, but **the table output truncated file sizes and SHA-256 values**. Their byte identity, staged provenance, AMD64 PE architecture, and cross-dependency compatibility with the approved R9 Qt libraries remain to be independently confirmed. No plugin has been copied, executed, or installed. R9 still lacks the plugin.
+
+**Next bounded checks:** display complete SHA-256 for both candidates without column truncation, establish byte identity, inspect `dumpbin /HEADERS` and `/DEPENDENTS` on the selected candidate and compare against the packaged Qt provider set, verify each against a staged hash receipt if available, and inspect `share/windows/gui-package.json` object shape before implementing manifest and catalog updates in a **new** versioned candidate. Do not edit R9, do not use an arbitrary Qt installation, and do not claim GUI runtime qualification.
