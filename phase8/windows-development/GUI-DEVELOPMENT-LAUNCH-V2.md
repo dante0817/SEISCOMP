@@ -48,3 +48,15 @@ A separately approved test procedure must first specify the exact candidate iden
 ## Verification limitations
 
 A source-only inspection was performed in a non-Windows authoring environment. There is no local PowerShell/Windows runtime available to parse/execute the script or verify a GUI. This update is **SOURCE_READY / RUNTIME_NOT_RUN**, not `BUILD_PASS`, `GUI_PASS` or `SCIENCE_PASS`.
+
+## 2026-10-30 operator feedback: automatic HOME variable conflict (fixed in branch)
+
+Initial syntax parsing passed, but invoking the preflight under Windows PowerShell failed with:
+
+\`\`\`text
+Cannot overwrite variable HOME because it is read-only or constant.
+\`\`\`
+
+The original source used \`foreach ($home in ...)\`. PowerShell variable names are case-insensitive; assigning to \`$home\` attempts to overwrite the read-only automatic \`$HOME\` variable. The launcher has been corrected to use \`$candidateHome\`, including both usages in the loop body. \`Test-GuiLauncherSyntax.ps1\` now checks for this specific regression in addition to parsing.
+
+**State:** corrected source and regression guard published; local post-fix preflight has not yet been reported. Do not label it \`PREFLIGHT_PASS\` until the operator runs the corrected source. This was a launcher preflight failure, not a SeisComP executable failure.
