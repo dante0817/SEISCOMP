@@ -109,3 +109,41 @@ opening with module descriptions, native Qt platform/plugin loading confirmed,
 and bounded evidence of no operational side effects inside approved isolation.
 Only then mark Batch 3B GUI startup PASS. The read-only config inventory is
 an engineering milestone, not the runtime test itself.
+
+## Operator checkpoint: R10 scconfig configuration inventory PASS
+
+2026-10-30 operator output for `Inspect-R10ScconfigConfig.ps1` against installed R10:
+
+```text
+R10Manifest: 83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74
+R10InstallReceipt: VERIFIED
+ScconfigAndQtConf: VERIFIED
+DescriptionXMLCount: 131
+CONFIG_SOURCE: DEFAULT_GLOBAL Present=True Keys=17 EndpointKeyIndicators=5
+CONFIG_SOURCE: DEFAULT_SCCONFIG Present=False Keys=0 EndpointKeyIndicators=0
+CONFIG_SOURCE: SYSTEM_GLOBAL Present=True Keys=1 EndpointKeyIndicators=0
+CONFIG_SOURCE: SYSTEM_SCCONFIG Present=False Keys=0 EndpointKeyIndicators=0
+CONFIG_SOURCE: HELPER_LOCAL_GLOBAL Present=False Keys=0 EndpointKeyIndicators=0
+CONFIG_SOURCE: HELPER_LOCAL_SCCONFIG Present=False Keys=0 EndpointKeyIndicators=0
+UserHomeSeiscompOverrideDirsPresent: 0
+USER_HOME_OVERRIDE_FILE: global.cfg PresentInDirs=0
+USER_HOME_OVERRIDE_FILE: scconfig.cfg PresentInDirs=0
+SESSION_ENV: SEISCOMP_ROOT UNSET
+SESSION_ENV: SEISCOMP_LOCAL_CONFIG UNSET
+SESSION_ENV: QT_PLUGIN_PATH UNSET
+SESSION_ENV: QT_QPA_PLATFORM_PLUGIN_PATH UNSET
+SESSION_ENV: QT_QPA_PLATFORM UNSET
+SCONFIG_CONFIG_INVENTORY_COMPLETE
+VALUES_NOT_DISPLAYED; EFFECTIVE_PRECEDENCE_NOT_PROVEN
+NO_GUI_EXECUTED; NO_NETWORK_ISOLATION_PROVEN; NOT_RUNTIME_QUALIFIED
+```
+
+**Assessment:** static R10 scconfig config source inventory **PASS**, with 131 descriptions and zero observed user-home override directories. The five endpoint-key indicators are *only text key classifications from shipped defaults*, not verified effective values, configured connections or proof of network activity. It is expected that the SeisComP/Qt process-local variables are unset until the reviewed environment helper is activated in a separate execution session. This output does not establish a safe disconnected profile or permit a live GUI launch.
+
+### Important first-run wizard hazard
+
+The official scconfig documentation states that the first-start setup prompt uses the presence of `var/run/seiscomp.init` to decide whether initial setup was completed. The R10 package builder **explicitly excluded** an unmanifested `var/run/seiscomp.init` as installation-local state while assembling the clean distribution. Consequently the new R10 installation is **expected** to lack that marker and scconfig may open an initial setup wizard instead of the normal module window. This is not evidence of a bug. It changes the first supervised GUI test: do **not** complete the wizard, supply production credentials, configure scmaster, connect databases or start modules. If the wizard appears, record it as a valid startup observation and close the application without accepting setup. Do not fabricate `seiscomp.init` or modify the verified R10 installation to suppress the prompt.
+
+Documented first-start behavior: https://www.seiscomp.de/doc/apps/scconfig.html . Configuration precedence: https://www.seiscomp.de/doc/base/concepts/configuration.html .
+
+**Next native engineering milestone:** locate the authoritative editable C++ scconfig source and inspect the startup-marker/wizard path, original root resolution and Qt plugin startup behavior. Execute GUI in an independently approved isolated Windows environment only; use a disposable native Windows copy with a reviewed configuration. Batch 3B first-run/GUI runtime remains **NOT_RUN**.
