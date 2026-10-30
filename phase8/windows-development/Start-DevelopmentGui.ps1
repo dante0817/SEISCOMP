@@ -85,9 +85,9 @@ if ($Application -eq 'scconfig' -and $descriptionCount -eq 0) {
 # Presence of user-level configuration requires deliberate review; these paths
 # are indicators, NOT an exhaustive SeisComP configuration-precedence audit.
 $homeCandidates=@()
-foreach ($home in @($env:USERPROFILE,$env:HOME)) {
-    if (-not [string]::IsNullOrWhiteSpace($home)) {
-        $homeCandidates += (Join-Path $home '.seiscomp')
+foreach ($candidateHome in @($env:USERPROFILE,$env:HOME)) {
+    if (-not [string]::IsNullOrWhiteSpace($candidateHome)) {
+        $homeCandidates += (Join-Path $candidateHome '.seiscomp')
     }
 }
 $userConfigDirs=@($homeCandidates | Select-Object -Unique | Where-Object {
