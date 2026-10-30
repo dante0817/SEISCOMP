@@ -98,3 +98,21 @@ Operator successfully ran `dumpbin /DEPENDENTS` against the R9 `bin/scconfig.exe
 **Interpretation:** both PE import tables were readable. Import names alone do not establish DLL presence, loader search-path resolution, ABI compatibility, transitive/delay-loaded closure, GUI startup or scientific qualification. The import listing does not reveal an inherently incorrect module name. Focus next checks on the exact packaged Boost library, `freetype.dll`, SeisComP core libraries, and VC++ runtime availability; do not treat API-set names as ordinary missing files. Do not infer the build compiler from the version of the external `dumpbin` inspection utility.
 
 **Next:** compare exact filenames/manifest SHA-256 for non-system DLLs. Retain runtime qualification pending an authorized isolated Windows test. No R9 files have been modified.
+
+## 2026-10-30 operator verification — application DLL manifest integrity 5/5 PASS
+
+Operator performed read-only file presence and SHA-256 verification against the approved installed R9 `SHA256SUMS.json` manifest. The following five **non-system DLLs passed**:
+
+- `bin/seiscomp_qt.dll`
+- `bin/seiscomp_core.dll`
+- `bin/seiscomp_config.dll`
+- `bin/boost_program_options-vc145-mt-x64-1_90.dll`
+- `bin/freetype.dll`
+
+The operator also checked VC++ runtime names `MSVCP140.dll`, `VCRUNTIME140.dll`, and `VCRUNTIME140_1.dll`: all **present in System32**, none present in the R9 `bin` folder. This layout can be normal for a host using installed VC++ redistributables; it does **not** prove runtime loader/ABI compatibility or represent a packaging defect by itself.
+
+**Summary of demonstrated checks:** verified R9 package and GUI preflight; 131 module description XML files; Qt package paths; 7/7 Qt DLL/plugin manifest hashes; `dumpbin /DEPENDENTS` for `scconfig.exe` and `qwindows.dll`; 5/5 application-specific DLL hashes; three VC++ runtime files present in System32.
+
+**Not demonstrated:** complete transitive/delay-load resolution, actual `scconfig` Qt startup, GUI functionality, network isolation, or scientific correctness. No unqualified GUI was executed, and the R9 package remains unchanged.
+
+**Next milestone:** avoid repetitive primary-file checks. Proceed with source-level integration work in parallel and arrange one explicitly approved isolated `scconfig` smoke test to gather the first actual window/error evidence. No escalation of local Hyper-V privileges or modification of live services is implied.
