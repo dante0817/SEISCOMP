@@ -1,5 +1,5 @@
 <#
-Phase 8 Batch 3B — scconfig configuration/source-of-settings inventory.
+Phase 8 Batch 3B - scconfig configuration/source-of-settings inventory.
 READ ONLY: does not launch scconfig, seiscomp, Python, services, Qt or network.
 Prints counts and provenance categories, NEVER configuration parameter values,
 credentials or endpoint addresses. This is not an effective-config resolver and
