@@ -45,3 +45,13 @@ If an unsigned script is blocked, do not bypass policy or remove trust markings 
 - Review the read-only inventory output and resolve conflicts, if any, without changing existing production processes.
 - Obtain observed GUI startup using the approved isolated procedure, then proceed to `scrttv` offline MiniSEED and `scolv` SCML event-fixture integration.
 - Continue independent backend port work without blocking on this single runtime gate.
+
+## 2026-10-30 operator runtime-readiness observations
+
+The operator's read-only process query found **no matches** for the 10 checked process names: `scmaster.exe`, `seedlink.exe`, `scconfig.exe`, `scrttv.exe`, `scolv.exe`, `scautopick.exe`, `scautoloc.exe`, `scamp.exe`, `scmag.exe`, and `scevent.exe`. This is a scoped process-name inventory only, not a full system process guarantee.
+
+The selected local listener-port query returned **two entries for TCP port 5432, both attributed to PID 8148**. Multiple entries can correspond to distinct listening addresses or IP families; do not assume two separate servers. The process identity, command line, bind addresses and whether this is an existing PostgreSQL service have **not yet** been established.
+
+The adapter inventory reported `Ethernet`, `Tailscale`, `vEthernet (Default Switch)`, and `vEthernet (WSL (Hyper-V firewall))` as `Up`. This is not an isolation guarantee. Do not stop or modify these connections or PID 8148 as part of GUI smoke testing.
+
+**Next focused, read-only inventory:** `Get-CimInstance Win32_Process -Filter 'ProcessId=8148' | Select-Object Name,ProcessId` and `Get-NetTCPConnection -State Listen -LocalPort 5432 | Select-Object LocalAddress,LocalPort,OwningProcess` (sanitize local addresses before publicly sharing). No SeisComP GUI launch was reported; runtime boundary and explicit application authorization remain pending.
