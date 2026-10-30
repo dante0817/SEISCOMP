@@ -161,3 +161,11 @@ Diagnosis: the approved R9 SHA256SUMS manifest is the authoritative **distributi
 **Source fix in PR #3:** `New-NativeGuiR10Candidate.ps1` permits only the exact `var/run/seiscomp.init` unmanifested file, plus files within `work/config` and `work/temp`; logs each as `EXCLUDED_LOCAL_STATE`. All other unexpected/unmanifested files remain hard failures, all manifest-listed original files still require exact SHA-256, all reparse points remain rejected, and the copy loop still copies only approved manifest-listed files. Switched local NTFS drive inspection from CIM module import to .NET `DriveInfo` to eliminate superfluous alias messages under WhatIf.
 
 Revised source SHA-256 from connector-fetched GitHub bytes: **`D0E929D2B23447C31D3200BEDE45689F8EE6790E37E169A0BBD6683647EEC709`**. Exact GitHub readback was verified. Operator Windows syntax/WhatIf/copy for this **revised** source are still NOT_RUN. Existing R9, recovered plugin and any production service are unchanged.
+
+## 2026-10-30 operator checkpoint — revised builder local read access denied
+
+Operator downloaded the revised R10 builder to a per-user local development folder using `Invoke-WebRequest`, which did not report an error. Subsequent `Get-FileHash` returned **Access denied** for that specific file, and PowerShell's `Parser.ParseFile` reported `FileReadError` / **Access denied**. Consequently, revised-script hash and syntax checks are **NOT_VERIFIED**, not PASS. An unconditional manually entered `Write-Host '...PASS'` printed afterward, but is not evidence of a successful check.
+
+The source of read denial (file DACL, security software, or another access restriction) has **not** been established; no ACL changes, policy bypass, administrator elevation, or runtime launch was authorized. R10 preview/build remain NOT_RUN, and R9 remains unchanged.
+
+Next bounded **read-only** checks on the exact local V2 path: `Test-Path -PathType Leaf`, `Get-Item`, `icacls`, and guarded `Get-Content -TotalCount 1`. If denied, obtain an approved accessible local copy through the organization's file transfer/source trust process; do not weaken OS or enterprise security controls.
