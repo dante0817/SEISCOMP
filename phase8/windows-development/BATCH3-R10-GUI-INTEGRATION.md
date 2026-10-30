@@ -1,6 +1,6 @@
 # Phase 8 / Batch 3 — Native R10 GUI integration
 
-**Status (2026-10-30): BATCH3A_PREFLIGHT_PASS_11_OF_11 / R10_INSTALLED / GUI_RUNTIME_NOT_RUN.**
+**Status (2026-10-30): BATCH3A_PREFLIGHT_PASS_11_OF_11 / BATCH3B_STATIC_CONFIG_INVENTORY_PASS / R10_INSTALLED / GUI_RUNTIME_NOT_RUN.**
 
 ## Verified baseline
 
@@ -144,3 +144,11 @@ The exact authored source was fetched back from GitHub; its standalone ASCII con
 Original SeisComP documentation indicates that scconfig can manage modules, write configurations, import metadata and invoke SeisComP module-control commands; therefore an ordinary GUI launch cannot be treated as guaranteed side-effect-free. Runtime startup is deferred to a separately approved isolated/disposable Windows environment, with fixed application arguments/configuration and explicit evidence. No changes to original C++ sources are claimed before obtaining pinned preimages and observed defects.
 
 Follow-on engineering: inspect the original scconfig config/Qt source in the operator's editable Windows source tree, then remediate demonstrated portability issues in a new revision; continue offline scrttv MiniSEED and scolv SCML work independently.
+
+## Operator Batch 3B static inspection — PASS; GUI startup still NOT_RUN
+
+Operator ran the new R10 scconfig config inventory; verified manifest and install receipt, scconfig and Qt config files, **131 module XML files**, and no observed user-home overrides. The shipped default global config contained **17 assignment keys** and **5 endpoint-related key indicators**; system global contained one key. There are no observed module-specific scconfig or helper-local cfg files. All checked process-local SeisComP/Qt environment variables were unset in this nonlaunching PowerShell session. The inventory reported its completion marker and explicitly retained `EFFECTIVE_PRECEDENCE_NOT_PROVEN` / `NO_GUI_EXECUTED`.
+
+Important new startup finding from original scconfig documentation: `var/run/seiscomp.init` determines whether the first-time setup wizard appears. The clean R10 package intentionally excluded that installation-local file; a new R10 runtime session may show the setup wizard. Do not simulate that sentinel or run the wizard on the connected office workstation. See `BATCH3B-SCCONFIG-CONFIG-REVIEW.md` for the exact outcome and the read-only/isolated startup boundary.
+
+Next: source-side scconfig startup-path review, disposable configuration and independently authorized Windows isolation, then supervised first launch. No new C++ bug is proven or patched; keep original R9 and R10 unchanged.
