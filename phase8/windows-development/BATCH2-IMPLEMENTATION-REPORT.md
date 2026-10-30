@@ -104,3 +104,15 @@ Operator's comparison: `BOTH PLUGINS ARE BYTE-IDENTICAL`.
 **Interpretation:** two historical sources contain exactly matching candidate plugin bytes consistent with Qt 5.15.18. This is sufficient to identify a deterministic candidate for a new separate packaging revision; it does not yet prove x64 PE architecture, import closure, original staging manifest provenance, or runtime compatibility. No file has been moved or installed. R9 remains intact.
 
 **Next static read-only inspections:** `dumpbin /HEADERS` and `/DEPENDENTS` on the identified staged candidate; compare Qt provider module file versions; check historical staging receipts/hashes if present. Prepare a new candidate only after verification, with new `SHA256SUMS.json` and `gui-package.json` entries, preserving externally pinned R9 identity.
+
+## 2026-10-30 operator evidence — x64 import checks confirm offscreen packaging candidate
+
+Static operator inspection of `phase8/staging/scmapcut-offline/platforms/qoffscreen.dll` returned `8664 machine (x64)` using MSVC `dumpbin /HEADERS`. Its `dumpbin /DEPENDENTS` direct imports are:
+
+`freetype.dll`, `Qt5Gui.dll`, `Qt5Core.dll`, `VCRUNTIME140.dll`, `api-ms-win-crt-string-l1-1-0.dll`, `api-ms-win-crt-heap-l1-1-0.dll`, `api-ms-win-crt-runtime-l1-1-0.dll`, `KERNEL32.dll`.
+
+The installed R9 `Qt5Core.dll`, `Qt5Gui.dll`, and `qwindows.dll` all have file version `5.15.18.0`; previously, the Qt DLLs, `freetype.dll`, and Windows VC++ runtime presence had passed their respective checks. The staged `qoffscreen.dll` has file version `5.15.18.0`, size 102912, SHA-256 `111CD9A0E512545DCD7E4BCC130E70ABA4EA1B9A1B1068545F5D1B193B0C04A6`, matching the separate `scshowevent` staged copy.
+
+**Conclusion:** confirmed byte-identified AMD64 Qt 5.15.18 offscreen-plugin candidate with direct import names consistent with the existing R9 package. This is not proof of full recursive import resolution, Qt platform plugin loading, GUI startup, or scientific functionality. No application was executed and R9 remains unchanged.
+
+**Next release-engineering input needed:** inspect the on-disk `share/windows/gui-package.json` structure and the recorded `qwindows.dll` entry so the new versioned candidate can update the catalog accurately rather than guessing its schema. Candidate construction must separately verify the source plugin and all files, produce fresh manifest and external manifest identity, and install into a separate R10 development directory. Do not repoint R9 receipts to the new manifest.
