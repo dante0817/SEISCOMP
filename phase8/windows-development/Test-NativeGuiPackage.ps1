@@ -52,10 +52,15 @@ function Check-Payload([string]$Relative, [string]$Category) {
         throw ('Audited path escapes root: '+$Relative)
     }
     $status = 'PASS'
-    if (-not $index.ContainsKey($key)) {
-        $status = 'NOT_MANIFESTED'
+    $isManifested = $index.ContainsKey($key)
+    $isPresent = Test-Path -LiteralPath $path -PathType Leaf
+    if (-not $isManifested -and -not $isPresent) {
+        $status = 'MISSING_AND_UNMANIFESTED'
     }
-    elseif (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+    elseif (-not $isManifested) {
+        $status = 'PRESENT_BUT_UNMANIFESTED'
+    }
+    elseif (-not $isPresent) {
         $status = 'MISSING'
     }
     elseif (((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
@@ -101,8 +106,9 @@ $pluginsPath = Join-Path $rootPath 'bin\qt-plugins'
 if (Test-Path -LiteralPath $pluginsPath -PathType Container) {
     foreach ($file in @(Get-ChildItem -LiteralPath $pluginsPath -Recurse -File -ErrorAction Stop)) {
         $key = $file.FullName.Substring($rootPath.Length+1).ToLowerInvariant()
-        if (-not $index.ContainsKey($key)) {
-            $results.Add([pscustomobject]@{ Category='QT_UNLISTED'; RelativePath=$key; Status='NOT_MANIFESTED' })
+        if (-not $index.ContainsKey($key) -and
+            -not @($results | Where-Object { $_.RelativePath -ieq $key }).Count) {
+            $results.Add([pscustomobject]@{ Category='QT_UNLISTED'; RelativePath=$key; Status='PRESENT_BUT_UNMANIFESTED' })
         }
     }
 }
