@@ -98,6 +98,9 @@ foreach ($entry in $manifest.PSObject.Properties) {
     $oldIndex.Add($key,$entry.Name)
     [void](Assert-Hash $absolute ([string]$entry.Value))
 }
+# Collect *all* unexpected installed files before blocking. This prevents serial
+# one-file-at-a-time operator rechecks while preserving the fail-closed policy.
+$unexpectedInstalledFiles = [System.Collections.Generic.List[string]]::new()
 foreach ($item in @(Get-ChildItem -LiteralPath $source -Recurse -Force -ErrorAction Stop)) {
     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
         throw ('Source reparse point: '+$item.FullName)
@@ -106,11 +109,12 @@ foreach ($item in @(Get-ChildItem -LiteralPath $source -Recurse -Force -ErrorAct
     $relative=$item.FullName.Substring($source.Length+1).ToLowerInvariant()
     if ($relative -eq $ManifestName.ToLowerInvariant()) { continue }
     if ($oldIndex.ContainsKey($relative)) { continue }
-    # R9 is an *installed* copy, not an untouched staging tree. Only these
-    # known local-state paths are excluded from the new distribution.
-    # They are not copied; every other unmanifested file remains a hard error.
+    # The installed R9 copy may contain generated state absent from its signed
+    # distribution manifest. These exact runtime sentinels and workspace roots
+    # are excluded, NEVER copied, and NEVER added to the R10 manifest.
     $knownLocalState=(
         $relative -eq 'var\run\seiscomp.init' -or
+        $relative -eq 'var\run\seiscomp.pid' -or
         $relative.StartsWith('work\config\', [StringComparison]::OrdinalIgnoreCase) -or
         $relative.StartsWith('work\temp\', [StringComparison]::OrdinalIgnoreCase)
     )
@@ -118,7 +122,14 @@ foreach ($item in @(Get-ChildItem -LiteralPath $source -Recurse -Force -ErrorAct
         Write-Output ('EXCLUDED_LOCAL_STATE: '+$relative)
         continue
     }
-    throw ('Unexpected unmanifested R9 file: '+$relative)
+    [void]$unexpectedInstalledFiles.Add($relative)
+}
+if ($unexpectedInstalledFiles.Count -gt 0) {
+    foreach ($unexpectedFile in @($unexpectedInstalledFiles | Sort-Object)) {
+        Write-Output ('UNEXPECTED_UNMANIFESTED_R9: '+$unexpectedFile)
+    }
+    throw ('R9 has '+$unexpectedInstalledFiles.Count+
+        ' unexpected unmanifested file(s). R10 candidate not created.')
 }
 if ($oldIndex.ContainsKey($PluginRel.ToLowerInvariant())) {
     throw 'Source already manifests qoffscreen; no repair needed'
