@@ -164,3 +164,21 @@ The native CMake difference is consistent with the archived **P8-WINGUI-04D** sc
 New source tool: `phase8/windows-development/Inspect-ScconfigNativeSource.ps1`, independently pinned SHA-256 **`F1091D9A8D29A865204F8097AF3D24D095A4E4C4233FE373EEBD683F5944A5A5`** (5,106 ASCII bytes). It verifies operator-reported main.cpp/CMake hash baselines and reads only bounded startup/Qt/wizard/configuration references in main.cpp, wizard.cpp, configurator.cpp, gui.h, http.cpp and CMakeLists.txt; does not edit code, build, run binaries or connect externally.
 
 Status: **SOURCE_DISCOVERED / HISTORICAL_CMAKE_CORRECTION_PRESERVED / ORIGINAL_CPP_STARTUP_PATH_NOT_YET_INSPECTED / GUI_RUNTIME_NOT_RUN.** The executable startup logic cannot be inferred from filename hashes alone. After operator executes the source inspection, use actual source lines to determine whether there is a real Windows portability defect before suggesting a patch; preserve the verified R10 installation and produce a new source revision if needed.
+
+## Operator result: targeted original C++ source inspection - first pass complete
+
+2026-10-30 read-only PowerShell output confirmed `SOURCE BASELINE VERIFIED` and `NATIVE SOURCE INSPECTION COMPLETED`. These are source inspections only. **No source code was changed, no GUI launched and no build executed.**
+
+| Original source file | Operator-observed evidence | Engineering interpretation |
+|---|---|---|
+| `main.cpp` | `#include <QApplication>` line 34; high DPI Qt attributes lines 282-283; `QApplication app(argc, argv)` line 286 | Native Qt application startup exists; does not prove successful platform plugin loading |
+| `main.cpp` | Existing-instance warning line 292; splash messages near 304, 326 and 342 | Startup/configuration sequence is present; guard and effects need contextual review |
+| `wizard.cpp` | Wizard window title line 115; `_ranSetup = false` line 119; `ranSetup()` lines 211-212; abort warning lines 222-223 | Setup workflow exists; first-run decisions and side effects not established from matches alone |
+| `configurator.cpp` | Mode selector near lines 252-267; `env->appConfigDir()` displayed on 267 | Application configuration directory used in GUI; exact user/root resolution needs inspection |
+| `gui.h` | `Configurator : public QMainWindow` at 232; `wizard()` declared at 307 | Original Qt widget application architecture confirmed |
+| `http.cpp` | `QNetworkAccessManager` signal wiring lines 38-39; `HttpRequest::get` at 59 | Network-capable HTTP client present; its actual invocation and startup network activity are NOT established |
+| `CMakeLists.txt` | `IF(NOT WIN32)` / FlowLayout append lines 103-104; `IF(WIN32)` internal `qt` linkage lines 109-110 | Prior Windows-only FlowLayout ownership fix remains in native editable source |
+
+**Assessment:** the read-only first-pass inspection found a coherent original native Qt startup path and preserved the CMake correction. It did **not** demonstrate a concrete portability defect, runtime DLL failure, unsafe connection, or effective first-run decision. Do not invent a C++ patch or mark GUI runtime PASS.
+
+**Next targeted code-reading step:** inspect actual `main.cpp` block ~270-385 and the call sites of `Configurator::wizard`, `WizardWidget`, `ranSetup`, `seiscomp.init`, `QProcess`, `HttpRequest::get` and `SEISCOMP_ROOT` in the editable tree (with line numbers). Distinguish an explicit user-initiated action from an automatic startup side effect. If a defect is demonstrated, create an isolated source change with exact file preimages. Independently approved offline test isolation is still required for a native GUI launch. Installed R9/R10 are immutable.
