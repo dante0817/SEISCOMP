@@ -69,8 +69,10 @@ $receipt=$destinationRoot+'.r10-build-receipt.json'
 if (Test-Path -LiteralPath $receipt) { throw 'Existing receipt detected' }
 $parent=Split-Path -Parent $destinationRoot
 if (-not (Test-Path -LiteralPath $parent -PathType Container)) { throw 'Destination parent must exist' }
-$disk=Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='"+$destinationRoot.Substring(0,2)+"'") -ErrorAction Stop
-if ($null -eq $disk -or $disk.DriveType -ne 3 -or $disk.FileSystem -ne 'NTFS') {
+# Use .NET for read-only drive inspection; avoid importing CIM aliases under -WhatIf.
+$disk=[IO.DriveInfo]::new($destinationRoot.Substring(0,3))
+if (-not $disk.IsReady -or $disk.DriveType -ne [IO.DriveType]::Fixed -or
+    $disk.DriveFormat -ine 'NTFS') {
     throw 'Destination must be on a fixed local NTFS volume'
 }
 $ancestor=Get-Item -LiteralPath $parent
@@ -103,7 +105,20 @@ foreach ($item in @(Get-ChildItem -LiteralPath $source -Recurse -Force -ErrorAct
     if ($item.PSIsContainer) { continue }
     $relative=$item.FullName.Substring($source.Length+1).ToLowerInvariant()
     if ($relative -eq $ManifestName.ToLowerInvariant()) { continue }
-    if (-not $oldIndex.ContainsKey($relative)) { throw ('Unmanifested R9 file: '+$relative) }
+    if ($oldIndex.ContainsKey($relative)) { continue }
+    # R9 is an *installed* copy, not an untouched staging tree. Only these
+    # known local-state paths are excluded from the new distribution.
+    # They are not copied; every other unmanifested file remains a hard error.
+    $knownLocalState=(
+        $relative -eq 'var\run\seiscomp.init' -or
+        $relative.StartsWith('work\config\', [StringComparison]::OrdinalIgnoreCase) -or
+        $relative.StartsWith('work\temp\', [StringComparison]::OrdinalIgnoreCase)
+    )
+    if ($knownLocalState) {
+        Write-Output ('EXCLUDED_LOCAL_STATE: '+$relative)
+        continue
+    }
+    throw ('Unexpected unmanifested R9 file: '+$relative)
 }
 if ($oldIndex.ContainsKey($PluginRel.ToLowerInvariant())) {
     throw 'Source already manifests qoffscreen; no repair needed'
