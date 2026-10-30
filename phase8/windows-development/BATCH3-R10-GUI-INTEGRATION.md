@@ -134,3 +134,13 @@ All eleven original GUIs individually reported `ENTRYPOINT_PREFLIGHT_PASS`, incl
 5. Diagnose a real failure from captured evidence and implement a focused native Windows source fix in the **editable** C++ source tree; produce a new revision rather than modifying installed R10. Continue scrttv MiniSEED and scolv SCML fixture preparation independently.
 
 The existing Start-DevelopmentGui.ps1 has an explicit -Run gate, but its operator flags **do not enforce isolation** or grant independent authorization. Do not use the connected host to silently bypass the established runtime-test safeguards. Runtime, acquisition and scientific qualification remain NOT_RUN.
+
+## Batch 3B source implementation — R10 scconfig config inventory
+
+Created `Inspect-R10ScconfigConfig.ps1` and `BATCH3B-SCCONFIG-CONFIG-REVIEW.md` to begin scconfig native Windows integration **without** touching the R10 installed package or launching any executable. The new read-only script pins the R10 SHA256SUMS identity, checks its sibling installation receipt, verifies scconfig/Qt launcher resources against manifest values, inventories module XML and expected configuration layers, and counts endpoint-relevant configuration keys **without printing values or credentials**. It also reports potential user-home and session environment overrides for isolation review.
+
+The exact authored source was fetched back from GitHub; its standalone ASCII content SHA-256 is `2C1682C0C4D8078A1645AB0AED5988C37DD2CD2C099551FD453CADF12EF09205`. **Windows PowerShell AST and execution NOT_RUN**. An existing Batch 3A all-GUI preflight PASS (11/11) is preserved; it need not be repeated. This inventory is not an effective-configuration resolver or a network isolation mechanism.
+
+Original SeisComP documentation indicates that scconfig can manage modules, write configurations, import metadata and invoke SeisComP module-control commands; therefore an ordinary GUI launch cannot be treated as guaranteed side-effect-free. Runtime startup is deferred to a separately approved isolated/disposable Windows environment, with fixed application arguments/configuration and explicit evidence. No changes to original C++ sources are claimed before obtaining pinned preimages and observed defects.
+
+Follow-on engineering: inspect the original scconfig config/Qt source in the operator's editable Windows source tree, then remediate demonstrated portability issues in a new revision; continue offline scrttv MiniSEED and scolv SCML work independently.
