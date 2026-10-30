@@ -34,7 +34,7 @@ function Assert-Hash([string]$Path,[string]$Expected) {
 }
 function Assert-Amd64Pe([string]$Path) {
     $stream=[IO.File]::OpenRead($Path)
-    $reader=New-Object IO.BinaryReader($stream)
+    $reader=[IO.BinaryReader]::new($stream)
     try {
         if ($reader.ReadUInt16() -ne 0x5A4D) { throw 'Not an MZ executable' }
         [void]$stream.Seek(0x3c,[IO.SeekOrigin]::Begin)
@@ -135,7 +135,7 @@ $catalog.Qt | Add-Member -MemberType NoteProperty -Name 'qoffscreen.dll' -Value 
     [pscustomobject][ordered]@{path='bin/qt-plugins/platforms/qoffscreen.dll';sha256=$PinnedPlugin}
 )
 $catalogJson=$catalog | ConvertTo-Json -Depth 50
-$utf8=New-Object System.Text.UTF8Encoding($false)
+$utf8=[System.Text.UTF8Encoding]::new($false)
 Write-Output ('SourceManifestSHA256: '+$PinnedR9)
 Write-Output ('OffscreenSHA256: '+$PinnedPlugin)
 Write-Output ('OriginalManifestEntries: '+$oldIndex.Count)
