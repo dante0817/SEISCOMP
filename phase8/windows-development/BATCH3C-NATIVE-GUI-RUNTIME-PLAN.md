@@ -50,4 +50,4 @@ This is proposed **development/test order**, not a claim that later apps are sci
 
 Batch 3C-01: source-only generalized launcher and read-only readiness for `scrttv.exe`. Never run `scrttv` from the connected office host without **new specific runtime authorization** and its own verified egress controls. Do not activate data acquisition, production messaging or SeisComP services just to test the UI. Finish implementation before requesting repeated user reviews, in line with development-first preference.
 
-**Milestone:** `BATCH3B_SCCONFIG_SMOKE_PASS` → `BATCH3C_01_SCR TTV_SOURCE_PREPARATION` (source work only; not yet launched).
+**Milestone:** `BATCH3B_SCCONFIG_SMOKE_PASS` → `BATCH3C_01_SCRTTV_SOURCE_PREPARATION` (source work only; not yet launched).
