@@ -188,3 +188,35 @@ Next: replace just the local launcher after verifying the previously pinned old 
 **Pending for closure of first smoke session:** Operator must avoid `Start`, `Stop`, `Restart`, `Reload`, `Enable`, `Disable`, `Update config`, `Save`, `Reset all`, `Wizard` and other mutation actions. Optional read-only navigation through Modules, Bindings, Inventory, Information and Docs may be visually inspected; then close the GUI using the window X or Quit. Launcher uses Start-Process -Wait: collect `GUI_PROCESS_EXIT`, `STDOUT_EVIDENCE`, `QT_STDERR_EVIDENCE`, and `FIRST_START_MARKER_PRESENT`. Review captured Qt plugin logs without exposing credentials/endpoint secrets, and record the screenshot location separately if supplied. Do not claim `GUI_PROCESS_EXIT: 0` until operator provides it.
 
 **Checkpoint: `BATCH3B_NATIVE_SCCONFIG_GUI_FIRST_WINDOW_PASS / PROCESS_EXIT_PENDING / OTHER_PANELS_UNVERIFIED / SCIENTIFIC_NOT_QUALIFIED`.**
+
+## Batch 3B operator closeout: first scconfig GUI process exited cleanly
+
+2026-11-01: Operator supplied the complete post-close PowerShell console after the previously recorded native `scconfig` GUI screenshot. The authorized single session was terminated by the operator and the launcher reached its post-process evidence stage. Exact new evidence:
+
+```text
+ACTIVE_FIREWALL_POLICY_MATCH: scconfig.exe
+ACTIVE_FIREWALL_POLICY_MATCH: seiscomp.exe
+BATCH3B_ACTIVE_FIREWALL_SCOPE_PASS
+NO_NETWORK_EGRESS_TESTED; HELPERS_NOT_COVERED; NOT_ISOLATED
+NO_GUI_EXECUTED; NO_FIREWALL_CONFIGURATION_CHANGED
+=== BATCH 3B CONNECTED HOST SCCONFIG PREFLIGHT ===
+Manifest: 83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74
+DescriptionXMLCount: 131
+DisposableReceiptAndRuntimeFiles: VERIFIED
+FirewallPolicyScope: ACTIVE_STORE_RULES_MATCH
+NotFullyIsolated: True
+Process-local environment prepared. This is not network isolation or execution authorization.
+GUI_LAUNCH_REQUESTED: scconfig.exe
+If prompted for first start, select No; do not invoke any module/setup action
+GUI_PROCESS_EXIT: 0
+STDOUT_EVIDENCE: Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\phase8\logs\batch3b-scconfig-gui\scconfig-20261031-183832.stdout.txt
+QT_STDERR_EVIDENCE: Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\phase8\logs\batch3b-scconfig-gui\scconfig-20261031-183832.qt-stderr.txt
+FIRST_START_MARKER_PRESENT: True
+GUI_FUNCTIONAL_PASS_NOT_AUTOMATIC; MANUAL_OBSERVATION_REQUIRED
+```
+
+**Result: `BATCH3B_NATIVE_SCCONFIG_FIRST_WINDOW_AND_CLEAN_EXIT_PASS`.** The original Windows `scconfig` Qt main window visibly rendered in the earlier screenshot; the process exited with code 0 and the first-start marker exists only in the disposable test root. This is a **bounded one-application startup-and-exit smoke test**, not a qualification of other panels or the overall SeisComP GUI suite. The first-start modal response was not separately documented; do not infer the operator clicked No from marker presence.
+
+**Outstanding for full Batch 3B evidence closure:** the two actual stdout/Qt stderr log file contents have not been provided/read by the reviewer, so plugin errors, warnings and any unintended child process cannot yet be assessed. The 131 XML files were counted and window opened; no per-module parsing completeness claim. Matching Windows Firewall rules were inspected in ActiveStore but not traffic-effectiveness-tested. The office internet remained connected. This process-level pass does not establish scientific/operational qualification.
+
+**Next development-first milestone:** review bounded summary of Qt stderr/stdout for fatal plugin/loader issues and confirm normal window shutdown; then plan targeted source integration and one-at-a-time smoke tests for remaining ten native GUI entrypoints, within explicit new runtime scope and with connected-host containment restrictions. Preserve R9 and receipt-verified R10; do not reset or erase test evidence.
