@@ -160,3 +160,17 @@ The existing purpose-built launcher was re-reviewed: `-Run` requires the operato
 **Authorized test boundary:** first-run prompt: **No**; do not complete setup wizard, start services, connect production data, change user configuration, or run other programs. Close GUI after recording main window/panels, Qt diagnostics and exit code. The only expected installation-side first-show write is `var/run/seiscomp.init` in the disposable root. Preserve original receipt-verified R10 and R9 untouched. Authorization covers one GUI smoke session, not broader operational qualification.
 
 **Checkpoint: GUI_ONE_SESSION_OPERATOR_AUTHORIZED / GUI_NOT_YET_RUN / EGRESS_NOT_TRAFFIC_PROVEN.**
+
+## Authorized GUI run attempt blocked by PowerShell automatic HOME collision
+
+2026-11-01 operator ran the specifically approved non-elevated `Start-R10ScconfigConnectedHost.ps1 -Run` with logs outside R10. The launcher completed strict preflight again (`BATCH3B_ACTIVE_FIREWALL_SCOPE_PASS`, manifest `83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74`, description count 131, receipt and runtime file hashes verified), then failed **before any GUI launch**:
+
+`Cannot overwrite variable HOME because it is read-only or constant.` (`SessionStateUnauthorizedAccessException / VariableNotWritable`).
+
+Root cause: original launcher uses `foreach ($home in @($env:USERPROFILE,$env:HOME))` (line 98); PowerShell names are case-insensitive and the automatic `$HOME` variable is read-only. This is a launcher script defect, not an observed Qt or scconfig defect. The helper and `Start-Process` launch statements are after the fault and were **NOT executed**. No GUI, controller, service or first-show marker is proven to have run/been created.
+
+Fix committed in `Start-R10ScconfigConnectedHost.ps1`: change only the **three** `$home` references in the user-home configuration inspection to `$userHomeCandidate`. All original admission gates and process-launch code unchanged. New ASCII UTF-8 source SHA-256: **`1DDC1B0E7869B993CE004CC89077E5D8D4881908B20E1F13C04E82DE469F034A`** (old **`5843C9DFBCE96D21D44279757FCE071C03C10739D71925E587508038D5B33511`**). Source read back from GitHub and verified; **Windows runtime with fix NOT_RUN**.
+
+Next: replace just the local launcher after verifying the previously pinned old hash, verify updated hash and PowerShell syntax; preserve current execution policy and trust review. The firewall verifier `Confirm-R10ScconfigFirewallRules.ps1` is unchanged and should retain SHA-256 `96DAF89864C55CE3973FED6B3F4F35F6DD9D7022F5EFCA716041CDC56BF61561`. Since the authorized session never launched the GUI, one supervised startup remains unused; rerun only from the non-elevated session and require current active-rule preflight. Do not bypass any remaining gate or imply network egress protection is scientifically validated.
+
+**Status: AUTHORIZED_GUI_ATTEMPT_BLOCKED_BY_SCRIPT_BUG / THREE-LINE_SOURCE_FIX_COMMITTED / GUI_NOT_RUN.**
