@@ -62,3 +62,9 @@ Never represent firewall containment as active or approve the existing guarded `
 If administrator authorization is unavailable, continue **development-first source and static integration** in `phase8/native-working-copy`/GitHub, including Qt and first-run wizard safety work, without launching uncontained SeisComP on the office-connected network. The user prefers keeping the network active and no Windows Sandbox, and those constraints remain respected.
 
 Status: `OUTBOUND_RULE_CREATE_ACCESS_DENIED / EFFECTIVE_APP_EGRESS_NOT_PROVEN / GUI_RUNTIME_NOT_RUN`.
+
+## Operator follow-up: administrative shell now elevated
+
+2026-10-31 user opened another PowerShell session and explicitly checked the current Windows principal's Administrator role: `PowerShell elevated: True`. This supersedes the previous **shell privilege observation**, but it does not establish that host/organizational policy permits firewall changes, that either active rule exists, or that isolation is effective. Neither firewall-rule creation nor SeisComP execution was shown in the latest output.
+
+Next: run the scoped two-executable outbound rule creation under authorized workstation policy, using the **exact** original user's disposable root rather than an administrator account's possibly different `%LOCALAPPDATA%`. Validate source manifest and executable checksums; fail on pre-existing conflicting rules; verify ActiveStore exact program paths/profiles/direction/action after creation. A persistent rule may fail to merge into ActiveStore under corporate policy. Preserve evidence and do not mark GUI runtime as tested.
