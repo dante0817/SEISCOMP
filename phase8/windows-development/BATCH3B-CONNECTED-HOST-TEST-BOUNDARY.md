@@ -85,3 +85,24 @@ The new launcher allows `-Run` only with a nonempty authorization reference, `-C
 Operator instructions: download and verify both .ps1 source files in the Y: engineering folder; Windows execution policy/trust review must be followed (no global bypass). Before any `-Run`, verify actual creation and *effective* enforcement of firewall rules, approve the limited connected-host test, and check exact user config state. Run preflight without `-Run` first, then use the separately authorized invocation if appropriate. If the rules do not appear in ActiveStore, return to source-only development; do not weaken the launcher.
 
 **Status: CONNECTED_HOST_LAUNCHER_SOURCE_READY / FIREWALL_RULE_CREATION_NOT_REPORTED / APP_EGRESS_EFFECTIVENESS_NOT_VERIFIED / GUI_RUNTIME_NOT_RUN.**
+
+## Operator reports script hashes and two active firewall block rules passing
+
+2026-11-01 operator reported the read-only terminal verification:
+
+```text
+=== SCRIPT VERIFICATION ===
+PASS: Confirm-R10ScconfigFirewallRules.ps1
+PASS: Start-R10ScconfigConnectedHost.ps1
+=== FIREWALL VERIFICATION ===
+PASS: scconfig.exe outbound block rule
+PASS: seiscomp.exe outbound block rule
+READY FOR STRICTER BATCH 3B PREFLIGHT
+NO GUI EXECUTED; NO SETTINGS CHANGED
+```
+
+**Assessment:** user-observed matching ActiveStore executable block rules and two pinned scripts. This is preliminary policy evidence only; no comprehensive protocol/address/profile firewall scope verification or effective egress traffic test has been reported. The source-only tools have not yet been executed by the operator, and no GUI startup has been shown.
+
+**Next action:** `& (Join-Path $folder 'Start-R10ScconfigConnectedHost.ps1') -Root $root` with no `-Run`, from Y: windows-development and disposable C: root, to run strict policy and installed manifest preflight. Keep full output. Do not circumvent execution policy or claim runtime authorization from the operator's initial block-rule confirmation.
+
+**Checkpoint:** PINNED_SCRIPTS_VERIFIED_BY_OPERATOR / APPLICATION_BLOCK_RULES_OBSERVED / STRICT_PREFLIGHT_PENDING / GUI_NOT_RUN.
