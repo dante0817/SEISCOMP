@@ -95,9 +95,9 @@ $principal=[Security.Principal.WindowsPrincipal]::new([Security.Principal.Window
 if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   throw 'Interactive GUI test must run non-elevated'
 }
-foreach ($home in @($env:USERPROFILE,$env:HOME)) {
-  if (-not [string]::IsNullOrWhiteSpace($home) -and
-      (Test-Path -LiteralPath (Join-Path $home '.seiscomp') -PathType Container)) {
+foreach ($userHomeCandidate in @($env:USERPROFILE,$env:HOME)) {
+  if (-not [string]::IsNullOrWhiteSpace($userHomeCandidate) -and
+      (Test-Path -LiteralPath (Join-Path $userHomeCandidate '.seiscomp') -PathType Container)) {
     throw 'Inherited user-home SeisComP profile needs independent review'
   }
 }
