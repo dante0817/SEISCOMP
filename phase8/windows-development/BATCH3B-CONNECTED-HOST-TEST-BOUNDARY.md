@@ -120,3 +120,31 @@ Status: SCRIPT_HASHES_PASS / RULES_OBSERVED / STRICT_LAUNCHER_BLOCKED_BY_SIGNING
 ## 2026-11-01 prelaunch trust inspection
 
 Operator confirmed both Batch 3B scripts remain NotSigned with Zone.Identifier=True. SEISCOMP_ROOT, SEISCOMP_LOCAL_CONFIG, QT_PLUGIN_PATH, QT_QPA_PLATFORM_PLUGIN_PATH and QT_QPA_PLATFORM are unset. User .seiscomp directory absent; disposable R10 var/run/seiscomp.init absent. No GUI execution. Next step is security-policy-approved per-file trust handling after digest/source verification, or approved signing, followed by preflight-only execution. No global policy changes.
+
+## Batch 3B operator checkpoint: guarded script preflight PASS (2026-11-01)
+
+The operator has now run the manifest-pinned guarded PowerShell launcher **without** `-Run`, using the disposable R10 test copy. Actual output:
+
+```text
+ACTIVE_FIREWALL_POLICY_MATCH: scconfig.exe
+ACTIVE_FIREWALL_POLICY_MATCH: seiscomp.exe
+BATCH3B_ACTIVE_FIREWALL_SCOPE_PASS
+NO_NETWORK_EGRESS_TESTED; HELPERS_NOT_COVERED; NOT_ISOLATED
+NO_GUI_EXECUTED; NO_FIREWALL_CONFIGURATION_CHANGED
+=== BATCH 3B CONNECTED HOST SCCONFIG PREFLIGHT ===
+Manifest: 83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74
+DescriptionXMLCount: 131
+DisposableReceiptAndRuntimeFiles: VERIFIED
+FirewallPolicyScope: ACTIVE_STORE_RULES_MATCH
+NotFullyIsolated: True
+BATCH3B_CONNECTED_HOST_PREFLIGHT_PASS
+GUI_NOT_RUN; HELPER_NOT_EXECUTED; FIREWALL_NOT_MODIFIED
+```
+
+Interpretation: **script execution trust/RemoteSigned issue is resolved for preflight**, manifest and receipt are verified, original selected binaries and Qt runtime inputs match, 131 XML descriptions are present (not runtime-parsed), and both named Windows Firewall ActiveStore outbound block-rule scopes match the disposable paths. This does **not** show effective egress containment of actual launched traffic or processes, dynamic Qt loader success, GUI display, setup execution or scientific qualification.
+
+Follow-on development target: first **separately approved** connected-host GUI-only `scconfig.exe` smoke test from the disposable R10 root in a **non-elevated** PowerShell process, with reviewed user configuration, scoped app-block policy, explicit residual-risk acknowledgment for untested egress and helper processes, and evidence directory outside R10. The original verified R10 must remain untouched. `showEvent` writes the first-start state marker before prompt; select **No**, never choose setup or use Ctrl+N. Capture actual GUI/Qt diagnostics and close app; remain explicit that only this bounded test is qualified.
+
+Do not pass the existing `-EgressEffectivenessReviewed` launcher switch as a factual claim until effectiveness has been independently reviewed. **No `-Run` command is issued by this checkpoint**; obtain the required runtime authorization and resolve this admission condition before testing.
+
+**Status: `BATCH3B_CONNECTED_HOST_PREFLIGHT_PASS / GUI_NOT_RUN / EGRESS_EFFECTIVENESS_NOT_PROVEN / SCIENTIFIC_NOT_QUALIFIED`.**
