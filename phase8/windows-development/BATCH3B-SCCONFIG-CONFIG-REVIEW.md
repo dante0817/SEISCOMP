@@ -201,3 +201,21 @@ Observed in operator's Windows PowerShell, against the pinned local `phase8/nati
 **Engineering assessment:** the original source has an explicit native Qt startup and 131 installed XML description files were observed earlier. However no DLL loads, runtime XML parsing, GUI display or isolation have been demonstrated yet. `QProcess` appears in a wizard-finish path but source excerpts do not prove an automatic subprocess launch. No source defect is established and no unreviewed C++ patch should be attempted. R9 and R10 remain immutable.
 
 **Next bounded read-only inspection:** print line-numbered `configurator.cpp` around 1900-1965 and 2125-2185, `wizard.cpp` around 445-502, and `main.cpp` around 385-430 or to EOF. This confirms wizard invocation, sentinel use, subprocess command, and event-loop termination before isolated runtime qualification.
+
+## Operator confirmation: first-run state write and setup child process
+
+2026-10-31 operator read the full relevant native C++ source blocks. **Source control flow is now resolved**; no claim of actual GUI execution.
+
+**`main.cpp:386-425`:** optional `--station`/`--parameter` selections and error dialogs complete; final `return app.exec()` at line 424 runs the Qt event loop. `c.show()` occurred earlier at line 351.
+
+**`configurator.cpp:1916-1953`:** on first `Configurator::showEvent` (`_firstShow`), the program restores UI geometry and calls `Environment::Instance()->installDir()`; computes `<root>/var/run/seiscomp.init`; returns early if the marker exists. If it does not exist, it creates `<root>/var/run` with `QDir::mkpath`, opens/truncates `seiscomp.init` via `QFile::open(QIODevice::WriteOnly|QIODevice::Truncate)` and closes it **BEFORE showing the 'First start' setup question**. The result of mkpath/open is not checked by the shown code. Clicking **No** skips the wizard, **but does not undo the marker creation**. Clicking Yes calls `wizard()`.
+
+**`configurator.cpp:2136-2177`:** `wizard()` builds setup input groups, runs modal `WizardWidget::exec()` if nonempty, and reloads user config after `ranSetup()`.
+
+**`wizard.cpp:455-495`:** `WizardWidget::finish()` changes to output page; unless compile-time `DRY_RUN` is enabled, uses `QProcess::start` with program `QString('%1/bin/seiscomp').arg(env->installDir().c_str())`, arguments `--stdin setup`, and writes serialized setup data to the child process. This child action is associated with finishing the wizard, **not proven automatic on mere GUI startup**. The exact viability of the script/executable path under Windows must be verified independently. The `DRY_RUN` preprocessor symbol is not an established runtime safety mechanism.
+
+**Operational consequence:** R10 is an immutable, receipt-verified development installation. Because the R10 builder intentionally excluded the installation-local `seiscomp.init` marker, the first display of its normal GUI is expected to ATTEMPT A WRITE inside installed R10. Even pressing 'No' at the prompt does not avoid that write; launch must **never** target the verified R10 directory when requiring immutability. Testing requires a disposable guest-local copy with suitable writable `var/run` and separately verified network isolation. Do not create the marker as a fake workaround in the verified installation.
+
+**Remaining controlled sequence:** (1) read-only inspect existence/type/hash of `bin/seiscomp`, `bin/seiscomp.exe`, and init marker in installed R10 without launching any executable; (2) prepare a disposable root and isolated Windows GUI test session under separate approved authorization; (3) record initial window, module definitions, expected first-start prompt, Qt plugin loads and any process/network activity. Do not select Yes, run setup, start/stop services or enter credentials. If no isolated test environment is available, continue other native GUI/backend source implementation rather than running unqualified processes on connected host.
+
+**Checkpoint: BATCH3B_STARTUP_CONTROL_FLOW_REVIEW_PASS / GUI_RUNTIME_NOT_RUN / NETWORK_ISOLATION_NOT_PROVEN / SCIENTIFIC_NOT_QUALIFIED.**
