@@ -266,3 +266,13 @@ Created `Test-R10ScconfigConnectedHost.ps1` in the development branch to inspect
 **Next operator check (read-only):** inspect whether firewall management is policy-controlled and whether application-specific egress blocking can be authorized, without changing any rules yet. If approved and independently verified, perform a strictly bounded GUI-only startup from the disposable test root, choose **No** to setup if first-run prompt appears, avoid all module-management and data actions, and collect only local Qt/GUI/exit evidence. Do not treat the operator's request to keep internet connected as authorization to bypass host security controls. If individual app egress controls cannot be installed or verified, continue native source implementation rather than launching uncontained executables on an office production network.
 
 **Status:** CONNECTED_HOST_WORKFLOW_SELECTED / DISPOSABLE_R10_VERIFIED / APP_EGRESS_CONTROLS_NOT_VERIFIED / GUI_RUNTIME_NOT_RUN / SCIENTIFIC_NOT_QUALIFIED.
+
+## Connected-host Windows Firewall readiness measured (operator)
+
+2026-10-31 user executed the direct read-only readiness check in PowerShell. Disposable test `scconfig.exe=True`, `seiscomp.exe=True`; Windows Firewall Domain, Private and Public `Enabled=True`, `DefaultOutboundAction=Allow`; `PowerShell elevated=False`. No application started and no firewall settings changed.
+
+This means **network access is still permitted by default** and no app-specific outbound block rule has yet been verified; it does not prove any traffic occurred or that the executables are blocked. Creating program-specific firewall rules on this host requires separately approved privileged administration under applicable organizational policy. User explicitly requested to leave internet connected and not use Windows Sandbox.
+
+Prepared `BATCH3B-CONNECTED-HOST-TEST-BOUNDARY.md` as a non-applying, precisely scoped proposal: only the two disposable test executables would be restricted by authorized outbound program block rules, leaving other host applications connected. It documents limits concerning helper processes and mandatory effectiveness checks. No policy change or host-level action was performed and the existing guarded launcher must not be invoked with fictional isolation attestation.
+
+**State: CONNECTED_HOST_READINESS_OBSERVED / R10_TEST_COPY_PASS / APPLICATION_EGRESS_NOT_VERIFIED / GUI_RUNTIME_NOT_RUN.**
