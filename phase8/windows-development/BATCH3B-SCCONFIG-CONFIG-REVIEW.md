@@ -229,3 +229,28 @@ The existing manifest-verified `share/windows/Install-Development.ps1` (source r
 Suggested operator copy target (new only): `%LOCALAPPDATA%/SeisComP-Scconfig-Test-R10`. The actual supervised launch should occur only after moving the verified test payload into an independently approved, disconnected Windows environment and ensuring a guest-local writable installation. Do not assume the existence of a Windows Sandbox, and do not run GUI directly from any read-only host mapping.
 
 Before enabling or finishing first-run setup, inspect `bin/seiscomp` and `bin/seiscomp.exe` entrypoint presence and platform type on the disposable copy, since `wizard.cpp` currently requests the extensionless `<root>/bin/seiscomp` command. An absent/invalid Windows entrypoint would be a concrete integration gap **only after** package/source context is verified; it is not reason to test the wizard on the office host.
+
+## Operator checkpoint: disposable R10 test install PASS and next isolation plan
+
+2026-10-31 Windows PowerShell operator result:
+
+```text
+Verified development copy: C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10
+bin\seiscomp: False
+bin\seiscomp.exe: True
+var\run\seiscomp.init: False
+R10 TEST COPY PREPARED
+NO GUI OR SERVICE EXECUTED
+```
+
+The original verified R10 copy installer reported successful completion, and the operator's subsequent independent script confirmed the destination SHA256SUMS digest and installation receipt (`856` files). **This closes the disposable test copy preparation milestone.** The destination is writable test material; installed R10 remains unchanged. No launch or network isolation was performed.
+
+Original `wizard.cpp:461` uses an absolute Windows-compatible forward-slash path `<root>/bin/seiscomp` without `.exe`; the test install contains only `seiscomp.exe`. The Qt QProcess documentation states `.exe` is usually optional on Windows, with caveats depending on CreateProcess invocation: https://doc.qt.io/qt-6/qprocess.html . The Microsoft CreateProcessW documentation includes path/extension details: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw . This is **not currently a proven defect** in the pinned Qt5.15.18 behavior and must not trigger an unverified C++ patch. Do not run the setup wizard merely to test name resolution.
+
+New source-only tool `New-R10ScconfigSandboxConfig.ps1` generates a `.wsb` with networking/vGPU/clipboard/audio/video/printer disabled, the **disposable R10 test copy only** mapped read-only to `C:\SeisComP-Input`, and no automatic logon command. It verifies the pinned R10 manifest, receipt and selected essential file hashes, rejects a preexisting init marker and existing output, and writes the config into an existing engineering folder (recommended Y: workspace). Tool source SHA-256: **`DC73BF4D76D96E683E6853662A1AF0BCAA7071C4B4865087EDEE66B9B4D65ECE`** (6,051 ASCII bytes), verified by GitHub source readback. **Windows execution NOT_RUN; .wsb NOT_CREATED by developer.**
+
+Windows Sandbox is an optional candidate isolated test platform **only if already available and approved by host policy**; do not alter Windows Optional Features, install a hypervisor, elevate, change firewall or adapters without separate authorization. Microsoft documentation: https://learn.microsoft.com/en-us/windows/security/threat-protection/windows-sandbox/windows-sandbox-configure-using-wsb-file . A prepared file containing `<Networking>Disable</Networking>` is not evidence of an actually isolated running guest.
+
+After independent isolation approval and verification, copy `C:\SeisComP-Input` from read-only guest mapping into a new guest-local writable root; verify package identity again; review guest settings and launch approval before starting `scconfig.exe`. Do not execute GUI from the read-only mapped host folder, because `Configurator::showEvent` creates `var/run/seiscomp.init`. At first-start question choose No; never finish setup. Collect GUI, Qt plugin and process evidence inside the guest only. Work on separate source fixes only for observed bugs.
+
+**Current status: BATCH3B_DISPOSABLE_TEST_COPY_PASS / SANDBOX_CONFIG_TOOL_SOURCE_READY / GUI_RUNTIME_NOT_RUN / NETWORK_ISOLATION_NOT_PROVEN / SCIENTIFIC_NOT_QUALIFIED.**
