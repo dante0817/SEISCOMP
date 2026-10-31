@@ -97,3 +97,15 @@ GUI_NOT_RUN; NO_FIREWALL_CHANGE; NO_NETWORK_PROBE
 **Next minimal work:** read-only SHA-256/size verification of the historical `data/phase5c1/phase5c1a/NC_NGVB_20s.mseed` (4,096 bytes, SHA-256 `995768AC810924BEB6EC4F195A294E966AFD05F2BEEA8428B6688F57586374E6`), without running GUI. Then review the proposed exact application path outbound firewall rule for the disposable `scrttv.exe` and obtain a separate, explicit connected-host `scrttv` runtime authorization before actually creating an operator-controlled firewall rule or invoking `-Run`. Retain no-Sandbox/no-host-disconnection constraints and original R9/R10 immutability.
 
 **Checkpoint: `BATCH3C_01_SCRTTV_ENTRYPOINT_PREFLIGHT_PASS / LOCAL_MINISEED_FIXTURE_NOT_CHECKED / APP_EGRESS_NOT_VERIFIED / GUI_NOT_RUN`.**
+
+## Batch 3C-02 source preparation: scrttv fixture and egress rule inspection
+
+2026-11-01: Added `Inspect-R10ScrttvOfflineBoundary.ps1`, a **read-only source-only** Windows PowerShell inspector. SHA-256 **`1A6CA1F512AE87C9F228FCC9C4B9863C1BA6987882DE40EE80926B0F1DD200DA`**, 6,697 ASCII bytes, GitHub readback verified. Static lexical bracket checks and a scan for process/firewall mutation primitives passed; **Windows PowerShell parser and operator execution have not been performed**.
+
+This inspector checks the receipt-pinned disposable `SeisComP-Scconfig-Test-R10` manifest, current `scrttv.exe`, `bin/qt.conf` and Windows Qt platform plugin hashes. It searches six **known candidate paths only** under the operator-specified `SeisComP_Phase5A_AI_Coder_Pack` workspace for the historical `NC_NGVB_20s.mseed` fixture and validates its actual size (4,096 bytes) and SHA-256 `995768AC810924BEB6EC4F195A294E966AFD05F2BEEA8428B6688F57586374E6`; if absent it reports NOT_VERIFIED rather than substituting arbitrary data.
+
+The inspector reads Windows Firewall `ActiveStore` status and compares a **specifically named** proposed block rule `SeisComP-R10Test-scrttv.exe-OutboundBlock` against the **exact disposable `bin/scrttv.exe`** path, enabled/outbound/block/Any profile/ports/addresses/service. It reports missing/mismatch/match without making any policy changes. A matching rule would still not establish traffic-level egress effectiveness or helper isolation. No code ever calls the scrttv executable.
+
+Separate runtime authorization for scrttv **not obtained**; no firewall changes or new GUI execution requested. Earlier `scconfig` one-session approval covers only scconfig. Developer/QA next action is operator review of this one read-only script and actual Windows output, then any firewall-rule creation plan and explicit new connected-host approval, still using the user's connected-internet/no-Sandbox restriction.
+
+**State: `BATCH3C_02_SOURCE_READY / SCRTTV_FIXTURE_AND_FIREWALL_NOT_YET_INSPECTED_ON_HOST / SCRTTV_RUNTIME_NOT_AUTHORIZED`.**
