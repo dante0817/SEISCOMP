@@ -167,3 +167,13 @@ Operator successfully built and independently ran `Test-SeisComPTransferBundle.p
 - Default privacy/build-output filtering excluded 579 source files; this is a development transfer bundle rather than an exact raw backup of every phase8 file.
 
 **Transfer package status: CREATED_AND_VERIFIED_ON_SOURCE_PC.** The verifier reports `GUI_NOT_RUN; NETWORK_ISOLATION_NOT_PROVEN; SCIENTIFIC_NOT_QUALIFIED`. CPython 3.10, pinned native toolchain/dependencies, the remaining backend modules, and fresh-machine portability/run checks are **not** included or guaranteed. User-sensitive material must be reviewed before external sharing. Transfer to another PC, re-verification and extraction there remain **NOT_RUN**.
+
+## Operator-selected path: proceed without Windows Sandbox (2026-10-31)
+
+Operator elected to proceed without Windows Sandbox. The source-only Windows Sandbox configuration generator remains available but is **not on the selected execution path**. A documented optional non-Sandbox route is now recorded in `BATCH3B-NATIVE-HOST-GUI-PROCEDURE.md`.
+
+**Current verified evidence:** 11/11 GUI preflights PASS, R10 source manifest/receipt verified (856 files), scconfig 131 module XML descriptions, native C++ startup/wizard control flow reviewed, and a separate writable `SeisComP-Scconfig-Test-R10` copy successfully installed. The test copy contains `bin/seiscomp.exe` but not extensionless `bin/seiscomp`; no C++ defect is established from this alone. It has no initial `var/run/seiscomp.init`, and scconfig first display will attempt to create one inside the writable test copy.
+
+**Safety boundary:** no runtime GUI launch on a connected office workstation; separate scoped runtime authorization and accepted disconnected-host network review are required before invoking the existing guarded `Start-DevelopmentGui.ps1 -Run`. Its review switches do not enforce isolation. Do not change host firewall/adapters, machine execution policy, or verified R10. Non-launch preflight may run without network changes. Disconnected-host testing is not equivalent to VM-enforced isolation, and must be separately accepted by organizational policy.
+
+Native GUI startup remains **NOT_RUN** until the operator provides real output. Implementation-first source development can continue without test execution.
