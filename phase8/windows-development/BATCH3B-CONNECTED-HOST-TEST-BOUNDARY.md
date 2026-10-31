@@ -148,3 +148,15 @@ Follow-on development target: first **separately approved** connected-host GUI-o
 Do not pass the existing `-EgressEffectivenessReviewed` launcher switch as a factual claim until effectiveness has been independently reviewed. **No `-Run` command is issued by this checkpoint**; obtain the required runtime authorization and resolve this admission condition before testing.
 
 **Status: `BATCH3B_CONNECTED_HOST_PREFLIGHT_PASS / GUI_NOT_RUN / EGRESS_EFFECTIVENESS_NOT_PROVEN / SCIENTIFIC_NOT_QUALIFIED`.**
+
+## Operator authorization: single connected-host scconfig GUI smoke test
+
+2026-11-01: operator stated **'i authorized it'** in response to explicit request for authorization to conduct **one supervised `scconfig` GUI-only startup on the connected Windows workstation**, using the disposable `SeisComP-Scconfig-Test-R10` installation, normal user privilege, and accepting previously disclosed residual network risks including unproven traffic-level egress and uncovered helper processes. User separately specified **no Sandbox and no host-wide internet disconnection**.
+
+Operator's successful `BATCH3B_CONNECTED_HOST_PREFLIGHT_PASS` preceded authorization, with firewall application rule scopes present for `scconfig.exe` and `seiscomp.exe`, 131 descriptions, no inherited SeisComP/Qt environment variables and no user .seiscomp directory or first-start marker. Signed-file trust was handled via operator-reviewed SHA256 and per-file zone-marker removal under RemoteSigned. **No GUI execution has been reported.**
+
+The existing purpose-built launcher was re-reviewed: `-Run` requires the operator's reference and acknowledgments (`ConnectedHostRiskApproved`, `UserConfigurationReviewed`, `EgressEffectivenessReviewed`), refuses elevated shell, demands an existing evidence directory outside test root, then uses the pinned helper, `Start-Process` on only the disposable `scconfig.exe`, Qt plugin log capture and restores process-local environment. The 'EgressEffectivenessReviewed' label is an assertion of **review**, not proof of packet-level blocking; record this qualification in run evidence. Never state the connected workstation is isolated.
+
+**Authorized test boundary:** first-run prompt: **No**; do not complete setup wizard, start services, connect production data, change user configuration, or run other programs. Close GUI after recording main window/panels, Qt diagnostics and exit code. The only expected installation-side first-show write is `var/run/seiscomp.init` in the disposable root. Preserve original receipt-verified R10 and R9 untouched. Authorization covers one GUI smoke session, not broader operational qualification.
+
+**Checkpoint: GUI_ONE_SESSION_OPERATOR_AUTHORIZED / GUI_NOT_YET_RUN / EGRESS_NOT_TRAFFIC_PROVEN.**
