@@ -1,6 +1,6 @@
 # SeisComP Batch 3B: Connected-host GUI test boundary
 
-**Status: proposed / NOT applied / GUI NOT RUN (2026-10-31).**
+**Current checkpoint (2026-11-01): Batch 3B scconfig GUI first-window and clean-exit smoke PASS; Qt log keyword screening PASS. The earlier dated sections below preserve the chronological preflight history. Network egress and scientific qualification remain outstanding.**
 
 Operator requirement: leave Windows Sandbox unused and the workstation's ordinary internet connection online. R9 and the receipt-verified R10 development installation remain unchanged. Only the disposable `%LOCALAPPDATA%\SeisComP-Scconfig-Test-R10` is eligible for local GUI qualification.
 
@@ -228,3 +228,35 @@ GUI_FUNCTIONAL_PASS_NOT_AUTOMATIC; MANUAL_OBSERVATION_REQUIRED
 Corrected operator instructions use an explicit `FileInfo.Length -eq 0` branch to report `EMPTY LOG - NO MESSAGES` and skip regex only for that file; nonempty file content is read with `[IO.File]::ReadAllText($path)`, preserving the rest of the keyword review. No SeisComP executable, service or firewall action is involved. Qt stderr evidence remains unreviewed until the revised command output is provided.
 
 **Status:** `BATCH3B_NATIVE_SCCONFIG_FIRST_WINDOW_AND_CLEAN_EXIT_PASS / EMPTY_STDOUT_CONFIRMED / QT_STDERR_REVIEW_PENDING`.
+
+## Batch 3B final smoke-test diagnostic summary: PASS
+
+2026-11-01 operator completed the read-only post-session diagnostic check on the two actual evidence files from the single authorized Windows `scconfig` GUI run:
+
+```text
+=== scconfig-20261031-183832.stdout.txt ===
+Size: 0 bytes
+EMPTY LOG - NO MESSAGES
+
+=== scconfig-20261031-183832.qt-stderr.txt ===
+Size: 7293 bytes
+loaded library.*qwindows: 1
+Cannot load library: 0
+failed to load: 0
+error: 0
+warning: 0
+crash: 0
+
+BATCH3B QT LOG REVIEW COMPLETE
+NO APPLICATION EXECUTED OR FILES MODIFIED
+```
+
+**Qualified result:** `BATCH3B_NATIVE_SCCONFIG_GUI_SMOKE_PASS`. The original SeisComP 8.0.0 native Windows `scconfig` visibly rendered its main Qt window and System panel from the disposable R10 root, then exited cleanly (`GUI_PROCESS_EXIT: 0`); the first-start marker was created in the **disposable** root as expected. Qt stderr contains a match for loading the Windows platform library and **no matches** for the listed failure/warning/error/crash patterns. Empty stdout is not a failure. The log file contents were screened by the operator and only summary counts were provided, so this does **not** establish absence of other warnings, missing modules or faults unrelated to those patterns.
+
+Prior preflight evidence remains: manifest SHA-256 `83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74`, receipt and selected runtime file hashes match, 131 description XML files found (not comprehensively parsed), scoped ActiveStore outbound deny rules matched `scconfig.exe` and `seiscomp.exe`. **Traffic-level egress blocking was not tested, no helper-process containment established, and the host was not offline**. No source application defect was proven by this session.
+
+**Scope boundary:** only the first-window / clean-exit behavior of **1 of 11** original GUI binaries has real runtime smoke evidence. Earlier **11 of 11 entrypoint packaging/preflights** are separate static verification, not runtime pass. Optional sidebar navigation for the other `scconfig` panels was not independently reported. Setup/controller actions, all remaining 10 original GUI application runtimes, backend full coverage, scientific correctness, production/network qualification remain outside this PASS.
+
+**Recommended next batch (3C), development first:** reuse existing R10 package checks; prioritize GUI runtime enablement by scientific/operational importance (e.g. `scrttv`, `scmv`, `scolv`, then other 7 entrypoints) with **separate app-specific egress and child-process review and per-session approval** before any connected-host execution. Avoid repeating the 11/11 packaging checks or re-running this accepted `scconfig` startup without a new need. Continue native source integration while runtime authority for each subsequent GUI remains separate.
+
+**Final status: `BATCH3B_NATIVE_SCCONFIG_GUI_SMOKE_PASS / QT_DIAGNOSTIC_KEYWORD_SCREEN_PASS / REMAINING_GUI_RUNTIME_10_UNTESTED / NETWORK_AND_SCIENTIFIC_NOT_QUALIFIED`.**
