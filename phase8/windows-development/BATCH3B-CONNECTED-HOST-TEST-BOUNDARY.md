@@ -106,3 +106,13 @@ NO GUI EXECUTED; NO SETTINGS CHANGED
 **Next action:** `& (Join-Path $folder 'Start-R10ScconfigConnectedHost.ps1') -Root $root` with no `-Run`, from Y: windows-development and disposable C: root, to run strict policy and installed manifest preflight. Keep full output. Do not circumvent execution policy or claim runtime authorization from the operator's initial block-rule confirmation.
 
 **Checkpoint:** PINNED_SCRIPTS_VERIFIED_BY_OPERATOR / APPLICATION_BLOCK_RULES_OBSERVED / STRICT_PREFLIGHT_PENDING / GUI_NOT_RUN.
+
+## Operator report: strict preflight script rejected by signing policy
+
+2026-11-01 operator attempted to invoke `Start-R10ScconfigConnectedHost.ps1 -Root <disposable R10>` from the Y: `phase8/windows-development` folder without `-Run`. PowerShell rejected the invocation **before executing any script statements**: `SecurityError: file is not digitally signed; cannot run this script on the current system`, `FullyQualifiedErrorId: UnauthorizedAccess`. Exact effective execution policy and file zone not yet inspected. This is an execution-policy/signature boundary, **not an R10 or firewall failure**.
+
+Do not use `-ExecutionPolicy Bypass`, lower machine/user policy, unblock downloaded files without security approval, or invoke the guarded launcher via a different unsanctioned interpreter. Keep signed artifact/organizational policy review separate.
+
+A legitimate read-only alternative is to paste equivalent PowerShell inspection **commands directly into the interactive terminal**, without dot-sourcing or invoking any `.ps1`: `Get-ExecutionPolicy -List`, manifest and receipt digest checks, exact executable and Qt file SHA-256 checks against the manifest, XML count, `Get-NetFirewallProfile -PolicyStore ActiveStore` and strict `Get-NetFirewallRule` plus application/port/address/service filter checks. Such an inline inspection must not create rules, start SeisComP, or claim real traffic containment. A formally signed, reviewed launcher is required if organizational policy prohibits unsigned script execution; runtime `-Run` remains pending separate authorizations.
+
+Status: SCRIPT_HASHES_PASS / RULES_OBSERVED / STRICT_LAUNCHER_BLOCKED_BY_SIGNING_POLICY / GUI_NOT_RUN.
