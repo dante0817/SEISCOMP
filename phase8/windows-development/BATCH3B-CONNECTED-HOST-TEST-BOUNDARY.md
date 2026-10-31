@@ -116,3 +116,7 @@ Do not use `-ExecutionPolicy Bypass`, lower machine/user policy, unblock downloa
 A legitimate read-only alternative is to paste equivalent PowerShell inspection **commands directly into the interactive terminal**, without dot-sourcing or invoking any `.ps1`: `Get-ExecutionPolicy -List`, manifest and receipt digest checks, exact executable and Qt file SHA-256 checks against the manifest, XML count, `Get-NetFirewallProfile -PolicyStore ActiveStore` and strict `Get-NetFirewallRule` plus application/port/address/service filter checks. Such an inline inspection must not create rules, start SeisComP, or claim real traffic containment. A formally signed, reviewed launcher is required if organizational policy prohibits unsigned script execution; runtime `-Run` remains pending separate authorizations.
 
 Status: SCRIPT_HASHES_PASS / RULES_OBSERVED / STRICT_LAUNCHER_BLOCKED_BY_SIGNING_POLICY / GUI_NOT_RUN.
+
+## 2026-11-01 prelaunch trust inspection
+
+Operator confirmed both Batch 3B scripts remain NotSigned with Zone.Identifier=True. SEISCOMP_ROOT, SEISCOMP_LOCAL_CONFIG, QT_PLUGIN_PATH, QT_QPA_PLATFORM_PLUGIN_PATH and QT_QPA_PLATFORM are unset. User .seiscomp directory absent; disposable R10 var/run/seiscomp.init absent. No GUI execution. Next step is security-policy-approved per-file trust handling after digest/source verification, or approved signing, followed by preflight-only execution. No global policy changes.
