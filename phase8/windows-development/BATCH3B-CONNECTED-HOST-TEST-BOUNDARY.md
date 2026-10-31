@@ -52,3 +52,13 @@ References:
 Combined with earlier `DefaultOutboundAction=Allow` for all active profiles, **the disposable test executables are NOT known to be egress-blocked**. Do not interpret this as safe to run the GUI on the connected workstation, and do not use the original isolated-launch attestation falsely.
 
 Next authorized action: host owner/IT review and approval for narrowly scoped outbound rules on only the disposable test binaries, with verification that local firewall rules are merged into policy (a domain-managed host may ignore local rules). Application-only block rules cannot guarantee containment of unknown child executables. If approval or effective enforcement cannot be established, continue source-level implementation and defer runtime GUI launch. Normal workstation internet remains on throughout.
+
+## Operator result: firewall creation denied
+
+2026-10-31: After reading zero matching active outbound block rules, operator attempted the **proposed** two test-executable firewall rules. The first `New-NetFirewallRule` call returned `Access is denied` / Windows System Error 5. The script was configured with `$ErrorActionPreference = 'Stop'` and terminated before its `RULE CREATED` message. Earlier elevated status was `False`. **This attempt did not establish the required rules**; permissions are the leading explanation, but managed policy restrictions cannot be excluded.
+
+Never represent firewall containment as active or approve the existing guarded `Start-DevelopmentGui.ps1 -Run` mode by falsely setting its isolation flags. Do not retry with firewall disabled, an altered global policy, UAC bypass or host-wide internet disconnection. Independently verify whether any partial test rule exists read-only, and ask an authorized host IT/admin operator for path-exact two-program outbound blocking if connected-host runtime is approved.
+
+If administrator authorization is unavailable, continue **development-first source and static integration** in `phase8/native-working-copy`/GitHub, including Qt and first-run wizard safety work, without launching uncontained SeisComP on the office-connected network. The user prefers keeping the network active and no Windows Sandbox, and those constraints remain respected.
+
+Status: `OUTBOUND_RULE_CREATE_ACCESS_DENIED / EFFECTIVE_APP_EGRESS_NOT_PROVEN / GUI_RUNTIME_NOT_RUN`.
