@@ -44,3 +44,11 @@ References:
 
 - Microsoft: https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure
 - New-NetFirewallRule: https://learn.microsoft.com/en-us/powershell/module/netsecurity/new-netfirewallrule
+
+## Operator firewall rule inspection result
+
+2026-10-31: Operator queried ActiveStore outbound, enabled, Block firewall application filters. Results: `scconfig.exe: 0 matching outbound block rule(s)`; `seiscomp.exe: 0 matching outbound block rule(s)`. Read-only firewall inspection completed; no change made.
+
+Combined with earlier `DefaultOutboundAction=Allow` for all active profiles, **the disposable test executables are NOT known to be egress-blocked**. Do not interpret this as safe to run the GUI on the connected workstation, and do not use the original isolated-launch attestation falsely.
+
+Next authorized action: host owner/IT review and approval for narrowly scoped outbound rules on only the disposable test binaries, with verification that local firewall rules are merged into policy (a domain-managed host may ignore local rules). Application-only block rules cannot guarantee containment of unknown child executables. If approval or effective enforcement cannot be established, continue source-level implementation and defer runtime GUI launch. Normal workstation internet remains on throughout.
