@@ -220,3 +220,11 @@ GUI_FUNCTIONAL_PASS_NOT_AUTOMATIC; MANUAL_OBSERVATION_REQUIRED
 **Outstanding for full Batch 3B evidence closure:** the two actual stdout/Qt stderr log file contents have not been provided/read by the reviewer, so plugin errors, warnings and any unintended child process cannot yet be assessed. The 131 XML files were counted and window opened; no per-module parsing completeness claim. Matching Windows Firewall rules were inspected in ActiveStore but not traffic-effectiveness-tested. The office internet remained connected. This process-level pass does not establish scientific/operational qualification.
 
 **Next development-first milestone:** review bounded summary of Qt stderr/stdout for fatal plugin/loader issues and confirm normal window shutdown; then plan targeted source integration and one-at-a-time smoke tests for remaining ten native GUI entrypoints, within explicit new runtime scope and with connected-host containment restrictions. Preserve R9 and receipt-verified R10; do not reset or erase test evidence.
+
+## Batch 3B log-review helper: empty stdout null-input correction
+
+2026-11-01 operator attempted the read-only two-file Qt/stdout keyword review for the clean-exit `scconfig` session. The stdout file `scconfig-20261031-183832.stdout.txt` exists but its size is **0 bytes**. The inline reviewer used `Get-Content -Raw` followed by `[regex]::Matches(...)`; Windows PowerShell returned `$null` for the empty content and `[regex]::Matches` raised `ArgumentNullException: Value cannot be null; input`. The script aborted before processing the Qt stderr file. This is a **diagnostic review-script bug**, not a SeisComP GUI crash. Previous real GUI clean exit (`GUI_PROCESS_EXIT: 0`) remains valid.
+
+Corrected operator instructions use an explicit `FileInfo.Length -eq 0` branch to report `EMPTY LOG - NO MESSAGES` and skip regex only for that file; nonempty file content is read with `[IO.File]::ReadAllText($path)`, preserving the rest of the keyword review. No SeisComP executable, service or firewall action is involved. Qt stderr evidence remains unreviewed until the revised command output is provided.
+
+**Status:** `BATCH3B_NATIVE_SCCONFIG_FIRST_WINDOW_AND_CLEAN_EXIT_PASS / EMPTY_STDOUT_CONFIRMED / QT_STDERR_REVIEW_PENDING`.
