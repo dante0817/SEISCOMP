@@ -152,3 +152,18 @@ Operator ran the new R10 scconfig config inventory; verified manifest and instal
 Important new startup finding from original scconfig documentation: `var/run/seiscomp.init` determines whether the first-time setup wizard appears. The clean R10 package intentionally excluded that installation-local file; a new R10 runtime session may show the setup wizard. Do not simulate that sentinel or run the wizard on the connected office workstation. See `BATCH3B-SCCONFIG-CONFIG-REVIEW.md` for the exact outcome and the read-only/isolated startup boundary.
 
 Next: source-side scconfig startup-path review, disposable configuration and independently authorized Windows isolation, then supervised first launch. No new C++ bug is proven or patched; keep original R9 and R10 unchanged.
+
+## Operator verified R10 runtime/source transfer ZIP - 2026-10-31
+
+Operator successfully built and independently ran `Test-SeisComPTransferBundle.ps1` on Windows, preserving the immutable installed R10 package and local editable Phase 8 C++ source. The zip is on the original office workstation, **not attached to this repository**:
+
+`Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Transfer\SeisComP-R10-Windows-Runtime-and-Source-20261031.zip`
+
+- ZIP SHA-256: `69A4A75EAB89C6109E9FEFEF1AFFD9108DE25A38D630590C640960D3F3D92C5C`
+- ZIP size: 260,762,455 bytes.
+- Transfer verifier result: `TRANSFER_ZIP_VERIFIED`, `VERIFIED_FILE_ENTRIES: 15131`.
+- R10 payload manifest SHA-256: `83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74` (856 payload files plus manifest).
+- Original uncompressed file data: 569,829,773 bytes.
+- Default privacy/build-output filtering excluded 579 source files; this is a development transfer bundle rather than an exact raw backup of every phase8 file.
+
+**Transfer package status: CREATED_AND_VERIFIED_ON_SOURCE_PC.** The verifier reports `GUI_NOT_RUN; NETWORK_ISOLATION_NOT_PROVEN; SCIENTIFIC_NOT_QUALIFIED`. CPython 3.10, pinned native toolchain/dependencies, the remaining backend modules, and fresh-machine portability/run checks are **not** included or guaranteed. User-sensitive material must be reviewed before external sharing. Transfer to another PC, re-verification and extraction there remain **NOT_RUN**.
