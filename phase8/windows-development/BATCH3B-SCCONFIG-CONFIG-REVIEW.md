@@ -182,3 +182,22 @@ Status: **SOURCE_DISCOVERED / HISTORICAL_CMAKE_CORRECTION_PRESERVED / ORIGINAL_C
 **Assessment:** the read-only first-pass inspection found a coherent original native Qt startup path and preserved the CMake correction. It did **not** demonstrate a concrete portability defect, runtime DLL failure, unsafe connection, or effective first-run decision. Do not invent a C++ patch or mark GUI runtime PASS.
 
 **Next targeted code-reading step:** inspect actual `main.cpp` block ~270-385 and the call sites of `Configurator::wizard`, `WizardWidget`, `ranSetup`, `seiscomp.init`, `QProcess`, `HttpRequest::get` and `SEISCOMP_ROOT` in the editable tree (with line numbers). Distinguish an explicit user-initiated action from an automatic startup side effect. If a defect is demonstrated, create an isolated source change with exact file preimages. Independently approved offline test isolation is still required for a native GUI launch. Installed R9/R10 are immutable.
+
+## Operator result: contextual native scconfig startup lines (Batch 3B)
+
+Observed in operator's Windows PowerShell, against the pinned local `phase8/native-working-copy/src/base/common/apps/tools/scconfig`:
+
+- `main.cpp:277-286`: Qt5 high-DPI attributes followed by `QApplication app(argc, argv)`.
+- `main.cpp:288-300`: `Environment::Instance()->installDir()` informs `RunGuard`; duplicate instance prompts before proceeding.
+- `main.cpp:302-306`: splash opens and `Configurator c(Seiscomp::Environment::CS_CONFIG_APP)` is constructed.
+- `main.cpp:326-345`: `System::SchemaDefinitions::load(filebase + module_desc)` returns errors 1/2 on unreadable or empty definitions; a `System::Model` is created and `c.setModel(&model)` must return true.
+- `main.cpp:347-351`: splash closes, app processes events, `c.resize(800,600)` and `c.show()` display the main Qt window.
+- `configurator.cpp:1587`: existing action triggers `Configurator::wizard()`; sentinel reference appears around 1932, but controlling branch has not been shown.
+- `configurator.cpp:2136-2168`: wizard entrypoint, Widget and `ranSetup()` usage found; context not yet examined.
+- `wizard.cpp:455-494`: `WizardWidget::finish()` creates a `QProcess`, sets channels and finished signal; exact command and invocation conditions must be read before allowing wizard actions.
+- `http.cpp:59`: HTTP helper has `get()` implementation, but *no automatic startup call* has been proven.
+- `main.cpp:353-385`: optional `--panel`, `--module` and `--station` selection paths; not equivalent to an offline switch.
+
+**Engineering assessment:** the original source has an explicit native Qt startup and 131 installed XML description files were observed earlier. However no DLL loads, runtime XML parsing, GUI display or isolation have been demonstrated yet. `QProcess` appears in a wizard-finish path but source excerpts do not prove an automatic subprocess launch. No source defect is established and no unreviewed C++ patch should be attempted. R9 and R10 remain immutable.
+
+**Next bounded read-only inspection:** print line-numbered `configurator.cpp` around 1900-1965 and 2125-2185, `wizard.cpp` around 445-502, and `main.cpp` around 385-430 or to EOF. This confirms wizard invocation, sentinel use, subprocess command, and event-loop termination before isolated runtime qualification.
