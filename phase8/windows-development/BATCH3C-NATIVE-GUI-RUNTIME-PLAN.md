@@ -67,3 +67,33 @@ Historical baseline reconciled from `phase8/IMPLEMENTATION_STATUS.md` and `phase
 Next operator action **when convenient**: put both reviewed scripts beside the existing Batch 3B scripts in the Y: `windows-development` tools folder, verify hashes and PowerShell parser syntax under normal policy; perform `Inspect-R10RemainingGuiReadiness.ps1 -Root <disposable R10>` or the default `Start-R10RemainingGuiConnectedHost.ps1 -Root <disposable R10> -Application scrttv` **without `-Run`**. These are read-only and require no new runtime authorization. Prepare the exact scrttv firewall rules and bounded runtime approval separately **only after** the source checks pass. Do not copy scripts inside verified R10, and do not launch scrttv with the scconfig-only authorization.
 
 **Current state:** `BATCH3C_01_SOURCE_READY / 10_GUI_RUNTIME_SMOKES_NOT_RUN / SCRTTV_EGRESS_RULE_UNVERIFIED / SCRTTV_RUNTIME_NOT_AUTHORIZED`.
+
+## Operator result: Batch 3C-01 scrttv guarded preflight PASS (2026-11-01)
+
+Operator saved both new Batch 3C scripts under the Y: `phase8/windows-development` tool directory, and ran a PowerShell SHA-256 and syntax parse check, reporting:
+
+```text
+HASH AND SYNTAX PASS: Start-R10RemainingGuiConnectedHost.ps1
+HASH AND SYNTAX PASS: Inspect-R10RemainingGuiReadiness.ps1
+BATCH3C_SCRIPT_VERIFICATION_PASS
+NO FILES CHANGED OR GUI EXECUTED
+```
+
+The initial execution-policy rejection was resolved using reviewed per-file `Unblock-File` on these two scripts, without changing PowerShell execution policy. The operator subsequently ran `Start-R10RemainingGuiConnectedHost.ps1 -Root <disposable R10> -Application scrttv` **without `-Run`**, resulting in:
+
+```text
+=== BATCH3C NATIVE GUI PREFLIGHT ===
+Application: scrttv
+Manifest: 83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74
+DisposableReceiptAndQtRuntimeHashes: VERIFIED
+DescriptionXMLCount: 131
+ScrttvLocalMiniSEEDFixture: NOT_CHECKED
+BATCH3C_GUI_ENTRYPOINT_PREFLIGHT_PASS
+GUI_NOT_RUN; NO_FIREWALL_CHANGE; NO_NETWORK_PROBE
+```
+
+**Interpretation:** First source-to-operator checkout of the new guarded Batch 3C launcher and selected `scrttv` executable identity/Qt package checks **PASS**. There was no `scrttv` execution, data acquisition or service launch. Fixture hash **not checked**; no application-specific outbound deny rule was validated in preflight-only mode. Do **not** treat the observed scconfig/seiscomp rules as scrttv containment; no traffic-level proof, helper-process containment, functional waveform rendering or scientific qualification has been established.
+
+**Next minimal work:** read-only SHA-256/size verification of the historical `data/phase5c1/phase5c1a/NC_NGVB_20s.mseed` (4,096 bytes, SHA-256 `995768AC810924BEB6EC4F195A294E966AFD05F2BEEA8428B6688F57586374E6`), without running GUI. Then review the proposed exact application path outbound firewall rule for the disposable `scrttv.exe` and obtain a separate, explicit connected-host `scrttv` runtime authorization before actually creating an operator-controlled firewall rule or invoking `-Run`. Retain no-Sandbox/no-host-disconnection constraints and original R9/R10 immutability.
+
+**Checkpoint: `BATCH3C_01_SCRTTV_ENTRYPOINT_PREFLIGHT_PASS / LOCAL_MINISEED_FIXTURE_NOT_CHECKED / APP_EGRESS_NOT_VERIFIED / GUI_NOT_RUN`.**
