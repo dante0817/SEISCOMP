@@ -379,3 +379,11 @@ Same mapped workspace previously had intermittent Get-FileHash access denial eve
 The script was overwritten with the new version after a prior per-file Unblock-File on the superseded version. A newly applied Zone.Identifier or another policy restriction is possible, but not proven. Next operator action: read-only `Get-ExecutionPolicy -List`, `Get-ExecutionPolicy`, and `Get-Item -Stream Zone.Identifier` inspection. Only if effective policy is `RemoteSigned`, a Zone.Identifier exists and office rules allow it, use **per-file** `Unblock-File -LiteralPath` on the **SHA-verified** updated script, then run default read-only preflight. If policy is AllSigned, Restricted, enforced via MachinePolicy/UserPolicy, or the file remains blocked without a Mark of the Web, stop and obtain an authorized signed build or IT review; do not use process-wide Bypass, copy/rename-to-evade, or relax policies. No scolv GUI rerun authorization.
 
 **Checkpoint:** `BATCH3D_09_UPDATED_CONVERTER_SHA_AND_PARSER_PASS / WINDOWS_UNSIGNED_SCRIPT_POLICY_BLOCK / CONVERSION_NOT_RUN / SCOLV_GUI_NOT_RUN`.
+
+## Batch 3D-09 execution policy checked: prior tag test had array semantics bug
+
+2026-11-02 operator read out `EffectivePolicy: RemoteSigned`, then attempted the prior per-file `Zone.Identifier` guard. It threw `Unexpected or missing security tag` **before** `Unblock-File`, preflight or conversion. The earlier script was logically incorrect: `$tag = Get-Content ...` returns an array containing `[ZoneTransfer]`, `ZoneId=3`, and `HostUrl=https://github.com/`; applying `-notmatch '^ZoneId=3$'` to an array returns nonmatching elements, which evaluate as true in `if`, even when the required line is present. This is a guard-code logic defect, not proof of missing security tag.
+
+Fix proposed to operator: verify `@(Get-Content -LiteralPath $file -Stream Zone.Identifier | ForEach-Object { $_.Trim() }) -contains 'ZoneId=3'`, then, only if existing office policy permits per-file trust after previously verified new script hash, run `Unblock-File` on that exact file and default **read-only** preflight. No `-Convert` or GUI launch at this checkpoint.
+
+**Checkpoint:** `BATCH3D_09_REMOTE_SIGNED_CONFIRMED / SECURITY_TAG_ARRAY_TEST_BUG_IDENTIFIED / PRE-FLIGHT_NOT_RUN / CONVERSION_NOT_RUN`.
