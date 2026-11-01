@@ -307,3 +307,26 @@ Default mode verifies original QuakeML size/hash and its event/origin/pick/magni
 **Next safe operator step:** Save the new script from GitHub and run Windows `Get-FileHash` + `Parser.ParseFile` + its **no-switch default read-only** source/XSLT inspection. Do not use `-Convert` until source style review and explicit acknowledgment of one new disposable derived-file creation. Any subsequent modification to the guarded `scolv` launcher must pin the derived output hash and requires another separately authorized GUI session. Original one-session `scolv` event-import failure screenshot remains the last operational result; GUI exit/Qt logs are still not supplied.
 
 **Checkpoint:** `BATCH3D_08_PICK_ONLY_SCML_CONFIRMED / QUAKEML_TO_SCML_SOURCE_READY / CONVERSION_NOT_RUN / SCOLV_RETRY_NOT_AUTHORIZED`.
+
+## Batch 3D-08 operator confirms XSLT document() guard in preflight
+
+On 2026-11-02 operator verified new `Prepare-R10ScolvScmlEvent.ps1` via read-only byte-stream SHA-256 and PowerShell parser: `STANDARD_FILE_READ_PASS`, `CONVERTER_SHA256_PASS`, `CONVERTER_SYNTAX_PASS`. Earlier Y: `Get-FileHash` Access Denied cleared via a standard file stream; no ACL or global policy changes. Operator per-file unblocked the SHA-256-verified script, then ran **default preflight only**.
+
+```text
+=== BATCH3D SCOLV QUAKE-TO-SCML PREPARATION ===
+VerifiedQuakeML: Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\data\real-events\gfz2010avtm\event.xml
+QuakeMLSHA256: B81D460B33A6E8A6422742CC7465A2EF85694893F08B3405FF31A74BA32B4EB2
+OriginalObjects: events=1 origins=1 picks=292 magnitudes=6 preferredOrigins=1/1
+InstalledStylesheet: C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\share\xml\0.14\quakeml_1.2__scml_0.14.xsl
+InstalledStylesheetSHA256: 48D7A0CD04AD2E716D94EF3180D0E60DDEDC5375BD0A16460E08436AD843BCD0
+StylesheetInspection: imports=0 scripts=0 documentCalls=1
+ProposedOutput: C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\work\offline-gui-scolv\converted\gfz2010avtm-event-scml014.xml
+BATCH3D_QML_TO_SCML_PREFLIGHT_PASS
+PREFLIGHT_ONLY; NO_CONVERSION; NO_FILES_MODIFIED; NO_GUI_OR_NETWORK_EXECUTION
+```
+
+**Interpretation:** The single XSLT `document()` reference is **not yet characterized**. It could be `document('')` style-local lookup or refer to an external resource. The source converter's fail-closed `-Convert` path checks `DocumentCalls -ne 0` and must remain blocked until the source-specific reference and XSLT 1.0 processor behavior are audited; do not enable document() or supply a network-capable resolver. The path and XSLT hash are observed on host but input scientific equivalence and conversion outputs remain unverified.
+
+**Next read-only task:** inspect the verified stylesheet with an `XmlReader` configured to prohibit DTD and null resolver; capture the element name, XSLT attribute and a bounded attribute value containing `document(`. Check whether the occurrence is actually executable XPath and whether the call can reference any external file/URL. Also determine whether stylesheet SHA-256 matches installed manifest if an entry exists. No conversion or GUI rerun in this step.
+
+**Checkpoint:** `BATCH3D_08_CONVERTER_HOST_PREFLIGHT_PASS / XSLT_DOCUMENT_REFERENCE_REVIEW_REQUIRED / CONVERSION_NOT_RUN / SCOLV_GUI_RETRY_NOT_AUTHORIZED`.
