@@ -206,3 +206,15 @@ No distinct operator acceptance of residual connected-host `scrttv` runtime risk
 Last confirmed operator guard evidence: `BATCH3C_GUI_ENTRYPOINT_PREFLIGHT_PASS`; 4,096-byte miniSEED size and pinned SHA-256 PASS; current exact-path `scrttv.exe` ActiveStore outbound block rule reported `SCRTTV_ACTIVE_BLOCK_RULE_SCOPE_MATCH`, `RULE_ALREADY_PRESENT`, `NO_FIREWALL_CHANGE`, `EGRESS_EFFECTIVENESS_NOT_TESTED; HELPERS_NOT_COVERED`. Do not infer traffic containment. The source launcher is previously verified and preflight-ran; its actual `-Run` branch is NOT_YET_RUN.
 
 **Checkpoint:** `BATCH3C_04_ONE_SCRTTV_OFFLINE_GUI_SESSION_OPERATOR_AUTHORIZED / EXECUTION_NOT_YET_REPORTED / CONNECTED_HOST_RESIDUAL_RISK_ACKNOWLEDGED`.
+
+## Batch 3C-04: first observed original native scrttv waveform window
+
+2026-11-01 operator provided a **screenshot** after the separately authorized single-session connected-host offline `scrttv` launch. This is direct visual Windows GUI runtime evidence, not a packaging/preflight claim.
+
+**Observed screenshot:** normal `scrttv` native Windows title bar and menu (`File`, `Edit`, `Mode`, `View`, `Window`, `Settings`, `Help`); visible continuous waveform trace with station/network/channel labels **`NGVB` / `NC` / `EHZ`**, timeline labels around **10:21:45–10:22:00** with date **`2014-08-24`**, a pronounced high-amplitude portion around 10:21:50, and lower UI indicators **`No filter`** and **`Standard mode`**. The window is not blank, and trace/time display rendered. This is consistent with the previously SHA-256-verified `NC_NGVB_20s.mseed` fixture and launcher offline-file mode, but screenshot alone does not independently establish the exact input-file bytes or scientific fidelity.
+
+**Qualified runtime milestone:** `BATCH3C_SCRTTV_NATIVE_GUI_FIRST_WINDOW_WAVEFORM_DISPLAY_PASS`. The previous `scconfig` first-window/exit smoke was PASS. Thus **2 of 11 original GUI entrypoints** have directly observed native Windows first-window evidence; only `scconfig` has confirmed process exit 0. For `scrttv`, post-close `SCRTTV_PROCESS_EXIT`, stdout and Qt stderr log paths/results, any dialog or unexpected network/child process behavior, and explicit clean shutdown **have not yet been reported**. No claim of full offline network containment, station acquisition, correctness of amplitudes or earthquake analysis.
+
+**Safe session closeout:** Do not enable acquisition/connect live data, start SeedLink/controller/services or change production configuration. Close `scrttv` normally with the window X. The guarded `Start-R10RemainingGuiConnectedHost.ps1` waits for closure then emits `SCRTTV_PROCESS_EXIT`, `STDOUT_EVIDENCE` and `QT_STDERR_EVIDENCE`; operator should provide full output and optionally keyword screen of the stderr log. Only after exit/diagnostics review may first-window-and-clean-exit smoke be marked complete. If output is not returned or error appears, record as pending rather than PASS.
+
+**Checkpoint:** `SCRTTV_FIRST_WINDOW_WAVEFORM_RENDER_PASS / SCRTTV_PROCESS_EXIT_PENDING / CONNECTED_EGRESS_AND_SCIENTIFIC_NOT_QUALIFIED`.
