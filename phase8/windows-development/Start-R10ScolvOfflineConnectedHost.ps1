@@ -189,7 +189,8 @@ if (-not $PSCmdlet.ShouldProcess($exe,'Run separately authorized offline local-X
   return
 }
 function Ensure-TestDirectory([string]$path) {
-  if (-not $path.StartsWith($installRoot+'\work\', [StringComparison]::OrdinalIgnoreCase)) {
+  if ($path -ine (Join-Path $installRoot 'work') -and
+      -not $path.StartsWith($installRoot+'\work\', [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Test staging directory outside disposable R10 work'
   }
   $parts=@()
