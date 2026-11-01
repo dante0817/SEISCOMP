@@ -109,3 +109,29 @@ The inspector reads Windows Firewall `ActiveStore` status and compares a **speci
 Separate runtime authorization for scrttv **not obtained**; no firewall changes or new GUI execution requested. Earlier `scconfig` one-session approval covers only scconfig. Developer/QA next action is operator review of this one read-only script and actual Windows output, then any firewall-rule creation plan and explicit new connected-host approval, still using the user's connected-internet/no-Sandbox restriction.
 
 **State: `BATCH3C_02_SOURCE_READY / SCRTTV_FIXTURE_AND_FIREWALL_NOT_YET_INSPECTED_ON_HOST / SCRTTV_RUNTIME_NOT_AUTHORIZED`.**
+
+## Batch 3C-02 host inspection: miniSEED PASS, scrttv block rule MISSING (2026-11-01)
+
+Operator executed the read-only `Inspect-R10ScrttvOfflineBoundary.ps1` script on the connected Windows host and reported:
+
+```text
+=== BATCH3C SCRTTV OFFLINE BOUNDARY INSPECTION ===
+CurrentScrttvExe: C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\bin\scrttv.exe
+R10ManifestSHA256: 83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74
+DisposableReceiptAndSelectedQtHashes: VERIFIED
+FixtureCandidatesFound: 1
+SCRTTV_MINISEED_FIXTURE_SHA256_PASS
+VerifiedFixturePath: Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\data\phase5c1\phase5c1a\NC_NGVB_20s.mseed
+ACTIVE_FIREWALL_PROFILES_ENABLED
+SCRTTV_EXACT_PATH_OUTBOUND_BLOCK_RULE_MISSING
+READ_ONLY_INSPECTION_COMPLETE; GUI_NOT_RUN; FIREWALL_NOT_CHANGED
+ACTIVE_RULE_SCOPE_DOES_NOT_PROVE_TRAFFIC_EGRESS_BLOCKING_OR_HELPER_ISOLATION
+```
+
+**Accepted:** the 4,096-byte fixture SHA-256 `995768AC810924BEB6EC4F195A294E966AFD05F2BEEA8428B6688F57586374E6` matches; no need to repeat fixture discovery. The disposable R10 receipt, manifest, scrttv binary and selected Qt hashes passed. All firewall profiles are enabled.
+
+**Remaining admission blocker:** no `ActiveStore` matching rule named `SeisComP-R10Test-scrttv.exe-OutboundBlock` for exactly `C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\bin\scrttv.exe`. This test was strictly read-only; it did not create a firewall rule or start SeisComP. Existing rules for `scconfig.exe` and `seiscomp.exe` do not cover `scrttv.exe`.
+
+**Proposed next user-controlled action (only if organizational firewall policy permits):** elevated PowerShell, idempotently check for existing same-name rule; reject an existing incompatible rule; create one `Enabled=True`, `Direction=Outbound`, `Action=Block`, `Profile=Any`, `Protocol=Any`, `LocalAddress=Any`, `RemoteAddress=Any` rule scoped to exactly the disposable `scrttv.exe` executable. Do not change default host outbound policy or disconnect the internet. Then re-run the existing read-only inspector to verify strict scope. A correctly configured firewall rule does not prove traffic-level blocking, loopback containment, child process isolation, or scientific safety. Treat this as a *preparation* action, not automatic runtime approval. A new explicit `scrttv`-specific single-session connected-host authorization and reviewed helper/egress risks are still required before `-Run`.
+
+**Checkpoint: `BATCH3C_02_SCRTTV_FIXTURE_PASS / R10_PACKAGE_PASS / OUTBOUND_DENY_RULE_MISSING / SCRTTV_GUI_NOT_RUN`.**
