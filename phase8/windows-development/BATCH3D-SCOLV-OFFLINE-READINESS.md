@@ -330,3 +330,24 @@ PREFLIGHT_ONLY; NO_CONVERSION; NO_FILES_MODIFIED; NO_GUI_OR_NETWORK_EXECUTION
 **Next read-only task:** inspect the verified stylesheet with an `XmlReader` configured to prohibit DTD and null resolver; capture the element name, XSLT attribute and a bounded attribute value containing `document(`. Check whether the occurrence is actually executable XPath and whether the call can reference any external file/URL. Also determine whether stylesheet SHA-256 matches installed manifest if an entry exists. No conversion or GUI rerun in this step.
 
 **Checkpoint:** `BATCH3D_08_CONVERTER_HOST_PREFLIGHT_PASS / XSLT_DOCUMENT_REFERENCE_REVIEW_REQUIRED / CONVERSION_NOT_RUN / SCOLV_GUI_RETRY_NOT_AUTHORIZED`.
+
+## Batch 3D-09 exact XSLT document() reference localized
+
+2026-11-02 operator read-only inspection of manifest-pinned installed XSLT `share/xml/0.14/quakeml_1.2__scml_0.14.xsl`, SHA256 `48D7A0CD04AD2E716D94EF3180D0E60DDEDC5375BD0A16460E08436AD843BCD0`, independently confirmed `XSLT_SHA256_PASS` and `XSLT_MANIFEST_HASH_PASS`. Exactly one XPath-bearing stylesheet attribute was found:
+
+```text
+REFERENCE 1
+Element: variable
+Attribute: select
+Line: 261
+Expression: document('scml_0.14.xsd')
+Document-bearing attributes: 1
+BATCH3D_XSLT_DOCUMENT_REFERENCE_INSPECTION_COMPLETE
+NO CONVERSION; NO FILES MODIFIED; NO GUI EXECUTED
+```
+
+**Assessment:** this is a **relative file reference** to a named SCML schema, likely in the same `share/xml/0.14` directory as the stylesheet. It is **not an explicit remote URI**, but this by itself does not establish whether the reference resolves locally, whether the schema exists and is manifest-pinned, whether the XSD contains additional external includes/imports, or how the stylesheet uses the returned nodes. A separate read-only XSD inspection is required before updating conversion code. Do not simply enable `document()` with unrestricted `XmlUrlResolver`: .NET `XslCompiledTransform` by default disables `document()`; if enabled it uses the transform-time `XmlResolver` to resolve external resources and unscoped default overloads can admit unwanted file/network references (Microsoft XSLT security docs). The eventual solution should restrict resolver access to one manifest-verified local SCML XSD with DTD/external resolution disabled, or avoid document() entirely with an equivalent audited isolated mapping. Existing fail-closed `-Convert` guard remains in effect.
+
+**Read-only next check:** verify `share/xml/0.14/scml_0.14.xsd` exists as a regular file, get size/hash and compare to R10 manifest, parse XSD with DTD and external entities prohibited, inspect schema includes/imports/redefines and root namespace, and display bounded local stylesheet context around line 261 (no transform or edit). Review before implementing an exact allowlist resolver.
+
+**Checkpoint:** `BATCH3D_09_XSLT_RELATIVE_SCHEMA_DOCUMENT_REFERENCE_IDENTIFIED / LOCAL_XSD_IDENTITY_PENDING / CONVERSION_NOT_RUN / SCOLV_RETRY_NOT_AUTHORIZED`.
