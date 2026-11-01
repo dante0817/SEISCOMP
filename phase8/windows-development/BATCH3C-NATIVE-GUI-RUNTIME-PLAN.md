@@ -196,3 +196,13 @@ Correct program binary remains the manifest-verified disposable path `C:\Users\d
 No distinct operator acceptance of residual connected-host `scrttv` runtime risks was recorded before this attempt; previous `scconfig` permission covers only scconfig. Maintain `SCRTTV_NOT_RUN`; obtain new explicit consent for one supervised offline local-waveform smoke before issuing a launch command. No firewall changes or package mutations follow from CommandNotFound.
 
 **Status: `BATCH3C_03_PREPARATION_PASS / DIRECT_COMMAND_NOT_FOUND / SCRTTV_GUI_NOT_RUN / AUTHORIZATION_PENDING`.**
+
+## Batch 3C-04 operator authorization: one supervised offline scrttv session
+
+2026-11-01 operator responded **`i authorize`** to the explicit request to approve **one supervised native Windows `scrttv` GUI-only startup using the verified local miniSEED**, while host internet stays connected, acknowledging the exact-app firewall rule is policy-scope verified but actual egress blocking and helper-process isolation are unproven. This is a distinct permission from the previously approved `scconfig` session.
+
+**Authorized bounded test:** only `Start-R10RemainingGuiConnectedHost.ps1 -Root C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10 -Application scrttv -ScrttvFixturePath Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\data\phase5c1\phase5c1a\NC_NGVB_20s.mseed -Run` with new authorization reference and the script's explicit connected-host, user configuration, egress-limitation and child-process risk acknowledgments; normal non-elevated PowerShell, evidence directory outside test root, `--offline --no-inventory` exclusively. No app/service acquisition, live SeedLink, controller/setup, production messaging or settings changes. Qt stdout/stderr and exit status must be captured; report visually observed waveform (or failure) and close normally.
+
+Last confirmed operator guard evidence: `BATCH3C_GUI_ENTRYPOINT_PREFLIGHT_PASS`; 4,096-byte miniSEED size and pinned SHA-256 PASS; current exact-path `scrttv.exe` ActiveStore outbound block rule reported `SCRTTV_ACTIVE_BLOCK_RULE_SCOPE_MATCH`, `RULE_ALREADY_PRESENT`, `NO_FIREWALL_CHANGE`, `EGRESS_EFFECTIVENESS_NOT_TESTED; HELPERS_NOT_COVERED`. Do not infer traffic containment. The source launcher is previously verified and preflight-ran; its actual `-Run` branch is NOT_YET_RUN.
+
+**Checkpoint:** `BATCH3C_04_ONE_SCRTTV_OFFLINE_GUI_SESSION_OPERATOR_AUTHORIZED / EXECUTION_NOT_YET_REPORTED / CONNECTED_HOST_RESIDUAL_RISK_ACKNOWLEDGED`.
