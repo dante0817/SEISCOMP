@@ -39,3 +39,34 @@ Added read-only `Inspect-R10ScolvOfflineReadiness.ps1` to `phase8/windows-develo
 4. Only a later, **new explicit `scolv`-specific authorization** may enable a non-elevated, one-session native Windows GUI test from the disposable R10 copy. The original `scconfig` and `scrttv` permissions do not extend to `scolv`.
 
 **Current status: `BATCH3D_01_SCOLV_READINESS_SOURCE_READY / HOST_INPUT_CHECK_PENDING / SCOLV_GUI_NOT_RUN / NETWORK_AND_SCIENCE_NOT_QUALIFIED`.**
+
+## Operator Windows readiness result: partial XML and package passes
+
+2026-11-01 operator confirmed initial read denial on the new read-only inspector was transient: subsequent exact SHA-256 verification and Windows PowerShell parser check **PASS**. The operator performed policy-approved per-file `Unblock-File` and invoked `Inspect-R10ScolvOfflineReadiness.ps1` without launching a GUI.
+
+Observed output as provided (the transcript is **partial** and ends at config file size):
+
+```text
+=== HASH VERIFICATION ===
+SCOLV SCRIPT SHA256 PASS
+=== SYNTAX VERIFICATION ===
+SCOLV SCRIPT SYNTAX PASS
+BATCH3D_SCRIPT_VERIFICATION_PASS
+NO FILES CHANGED; NO GUI EXECUTED
+=== BATCH3D SCOLV OFFLINE INPUT READINESS ===
+VerifiedExecutable: C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\bin\scolv.exe
+Manifest: 83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74
+DisposableReceiptAndQtRuntimeFiles: VERIFIED
+DescriptionXMLCount: 131
+inventory-expanded.xml: XML_WELL_FORMED
+inventory-expanded.xml Path: Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\data\phase5b6\gfz2010avtm\inputs\inventory-expanded.xml
+inventory-expanded.xml SizeBytes: 196426
+inventory-expanded.xml SHA256: FE208FA1BD82F8FC87B6461453139FB21985DD1A20E9CCE3F12D162E5A4D0010
+config-expanded.xml: XML_WELL_FORMED
+config-expanded.xml Path: Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\data\phase5b6\gfz2010avtm\inputs\config-expanded.xml
+config-expanded.xml SizeBytes: 13309
+```
+
+The output shared so far does **not** contain config file SHA-256, ActiveStore firewall profile/rule observations, final completion marker, or PowerShell return prompt. Treat this as **partial successful inspection**, not complete inspection, and do not invent a missing firewall result. No scolv runtime authorization has been requested or granted. The `XML_WELL_FORMED` result means only syntactic well-formedness, not valid SCML structure, time epochs, response/metadata quality or functional database isolation.
+
+**Status: `BATCH3D_01_PARTIAL_PACKAGE_AND_XML_PARSE_PASS / FIREWALL_RESULT_PENDING / FINAL_INSPECTION_MARKER_PENDING / SCOLV_GUI_NOT_RUN`.**
