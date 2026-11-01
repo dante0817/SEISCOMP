@@ -163,3 +163,26 @@ The operator reported matching file owner `AzureAD\dantesoneja`, 4 access rules,
 **No observed firewall change, scrttv execution, or network effect** in this read-only inspection. Next: run a fail-closed parse check followed by default no-Apply preflight of the verified guarded firewall script. Only if Windows PowerShell syntax and read-only preflight pass, and organizational policy permits, may the operator run the separately confirmed elevated `-Apply` mode. Independently verify resulting ActiveStore rule afterward; application rule scope remains insufficient as packet-level egress or helper process proof.
 
 **Checkpoint: `BATCH3C_03_SCRIPT_READABLE_SHA256_PASS / PARSER_RECHECK_PENDING / RULE_APPLICATION_NOT_CONFIRMED / SCRTTV_GUI_NOT_RUN`.**
+
+## Batch 3C-03 operator verified scrttv firewall rule scope (2026-11-01)
+
+Operator completed file trust and tested the default **non-mutating** `Ensure-R10ScrttvOutboundBlock.ps1 -Root <disposable test R10>` path, with output:
+
+```text
+BATCH3C SCRIPT TRUST REVIEW COMPLETED
+SCRIPT HASH STILL MATCHES
+NO FIREWALL RULE CREATED OR GUI EXECUTED
+=== BATCH3C SCRTTV OUTBOUND FIREWALL PREPARATION ===
+VerifiedScrttvExecutable: C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\bin\scrttv.exe
+PinnedManifestSHA256: 83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74
+DISPOSABLE_R10_IDENTITY_PASS; ACTIVE_FIREWALL_PROFILES_ENABLED
+SCRTTV_ACTIVE_BLOCK_RULE_SCOPE_MATCH
+RULE_ALREADY_PRESENT; NO_FIREWALL_CHANGE
+NO_GUI_EXECUTED; EGRESS_EFFECTIVENESS_NOT_TESTED; HELPERS_NOT_COVERED
+```
+
+Interpretation: a unique rule with expected name/exact executable path and ActiveStore filters was verified by the guarded script, but that script **did not create it** in this invocation. An earlier read-only inspection found the named rule missing; its intervening creation mechanism/time is **not observed** here and should not be invented. Current state accepts **ActiveStore policy SCOPE PASS**, not network traffic effectiveness or child-process containment. The original 4,096-byte miniSEED fixture has already passed SHA-256/size verification; avoid re-verifying it unnecessarily.
+
+**Next gate:** obtain a new explicit, specific authorization for **one supervised connected-host offline `scrttv.exe` GUI-only / pinned local miniSEED session**, using `--offline --no-inventory`, only from disposable R10 in normal/non-elevated PowerShell. Clarify accepted residual risk: host online, exact-rule scope verified but packet-level egress and child processes not contained; no live streams, SeedLink messaging, setup, services, or production operations. Existing `Start-R10RemainingGuiConnectedHost.ps1` retains fail-closed runtime switches requiring scrttv authorization reference and acknowledgments. Preserve external stdout/Qt stderr evidence and clean exit; no actual `scrttv` runtime test has yet occurred.
+
+**Checkpoint:** `BATCH3C_03_SCRTTV_FIREWALL_POLICY_SCOPE_PASS / FIXTURE_PASS / GUI_RUNTIME_AUTHORIZATION_PENDING / SCRTTV_NOT_RUN`.
