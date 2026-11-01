@@ -101,3 +101,19 @@ ACTIVE_RULE_MATCH_WOULD_NOT_PROVE_TRAFFIC_EGRESS_OR_HELPER_CONTAINMENT
 **Assessment:** `BATCH3D_01_SCOLV_PACKAGE_AND_XML_WELLFORMED_PASS`; inventory/config XML are parseable but have not passed SCML schema/content/epoch checks. An actual local event SCML input remains unidentified, and the exact-path named `scolv` outbound block is missing. No executable, firewall or network operations occurred. Do not launch `scolv` with only `--offline`, as prior source review warns it does not unconditionally eliminate database access. The earlier `scrttv` Qt log contents also remain outstanding; its GUI and clean-exit smoke milestone remains PASS.
 
 Next source-first step: bounded search/selection of local offline event SCML inputs, plus application-specific containment preparation; a distinct one-session `scolv` authorization is required before any runtime start.
+
+## Batch 3D-02 event XML filename discovery — operator result
+
+2026-11-01: Operator ran a **read-only recursive filename discovery** in the Y: project `data` tree and `phase8/staging/scolv-offline` subtree, obtaining **85 XML files**, **11 event/origin/pick/catalog/location-name candidates**, and no application execution or file modifications. The terminal display truncated several long paths; do not infer file contents from truncated filenames.
+
+Three explicit stable candidates were visible under project `data/real-events/`:
+
+- `data/real-events/gfz2010avtm/event.xml`
+- `data/real-events/gfz2010eaoy/event.xml`
+- `data/real-events/gfz2010llha/event.xml`
+
+Other candidate paths were found under `data/phase5b9/gfz2010avtm/{inputs,raw}/` and `data/phase5c1/phase5c3/evaluation/ncedc_c3e/`, but filenames in transcript were truncated. A filename search is **discovery only**: no XML element shape, EventParameters, event/origin/pick references, hash/size or suitability as `scolv --input-file` established yet.
+
+**Next bounded source-first step:** Read-only inspection of exactly these three `event.xml` files: absolute path, size, SHA-256, DTD-disabled streaming XML parse, document root, EventParameters count, event/origin/pick/magnitude counts, unique `publicID` presence, optional `preferredOriginID`, without copying complete event XML to chat. Select one only after inspecting actual content and the known `scolv --offline --inventory-db --config-db --input-file` source-option behavior. The existing inventory/config XML is well-formed; `scolv` specific program block remains missing and no runtime approval is held.
+
+**Checkpoint:** `SCOLV_EVENT_XML_CANDIDATES_3_IDENTIFIED_BY_FILENAME / XML_EVENT_SEMANTICS_UNVERIFIED / GUI_NOT_RUN`.
