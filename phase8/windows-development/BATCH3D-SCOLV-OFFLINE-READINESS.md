@@ -387,3 +387,25 @@ The script was overwritten with the new version after a prior per-file Unblock-F
 Fix proposed to operator: verify `@(Get-Content -LiteralPath $file -Stream Zone.Identifier | ForEach-Object { $_.Trim() }) -contains 'ZoneId=3'`, then, only if existing office policy permits per-file trust after previously verified new script hash, run `Unblock-File` on that exact file and default **read-only** preflight. No `-Convert` or GUI launch at this checkpoint.
 
 **Checkpoint:** `BATCH3D_09_REMOTE_SIGNED_CONFIRMED / SECURITY_TAG_ARRAY_TEST_BUG_IDENTIFIED / PRE-FLIGHT_NOT_RUN / CONVERSION_NOT_RUN`.
+
+## Batch 3D-09 updated Windows converter default preflight PASS
+
+On 2026-11-02 operator confirmed `RemoteSigned` policy, verified the new file's `Zone.Identifier` via corrected array membership check (`ZoneId=3`), completed the authorized per-file `Unblock-File`, and ran **default no-`-Convert` read-only preflight** on updated `Prepare-R10ScolvScmlEvent.ps1`. The preceding operator byte-stream verification also established script SHA256 and PowerShell syntax PASS. Captured host markers:
+
+```text
+ZONE_IDENTIFIER_3_CONFIRMED
+PER_FILE_UNBLOCK_COMPLETED
+VerifiedQuakeML: Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\data\real-events\gfz2010avtm\event.xml
+QuakeMLSHA256: B81D460B33A6E8A6422742CC7465A2EF85694893F08B3405FF31A74BA32B4EB2
+OriginalObjects: events=1 origins=1 picks=292 magnitudes=6 preferredOrigins=1/1
+InstalledStylesheetSHA256: 48D7A0CD04AD2E716D94EF3180D0E60DDEDC5375BD0A16460E08436AD843BCD0
+StylesheetInspection: imports=0 scripts=0 documentCalls=1 allowlistedSchemaDocumentCalls=1
+VerifiedLocalSchemaSHA256: 5E5E77BB60BD9B24AB140EB716027E8D6F041BC3A9EB3BF9B9DCCE13EBDCC0E8
+SchemaInspection: dependencies=0 targetNamespace=http://geofon.gfz.de/ns/seiscomp-schema/0.14
+ExternalDocumentPolicy: only manifest-pinned scml_0.14.xsd, memory backed; no network
+ProposedOutput: C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\work\offline-gui-scolv\converted\gfz2010avtm-event-scml014.xml
+BATCH3D_QML_TO_SCML_PREFLIGHT_PASS
+PREFLIGHT_ONLY; NO_CONVERSION; NO_FILES_MODIFIED; NO_GUI_OR_NETWORK_EXECUTION
+```
+
+**Checkpoint:** `BATCH3D_09_UPDATED_CONVERTER_HOST_PREFLIGHT_PASS / XSLT_ONE_FILE_MEMORY_RESOLVER_SOURCE_PRESENT / CONVERSION_NOT_RUN / SCOLV_GUI_RETRY_NOT_AUTHORIZED`. Next operator action, only if opting in: guarded `-Convert` with pinned stylesheet SHA-256, interactive `-Confirm` and strict output event/origin/pick/magnitude/preferred-origin reference validation; stop on compiler/XSLT/structure error, never relax checks or assume scientific equivalence. The first scolv runtime session's GUI error, exit and Qt logs are still not fully reported; a separate authorization is required before a GUI retry.
