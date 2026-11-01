@@ -409,3 +409,19 @@ PREFLIGHT_ONLY; NO_CONVERSION; NO_FILES_MODIFIED; NO_GUI_OR_NETWORK_EXECUTION
 ```
 
 **Checkpoint:** `BATCH3D_09_UPDATED_CONVERTER_HOST_PREFLIGHT_PASS / XSLT_ONE_FILE_MEMORY_RESOLVER_SOURCE_PRESENT / CONVERSION_NOT_RUN / SCOLV_GUI_RETRY_NOT_AUTHORIZED`. Next operator action, only if opting in: guarded `-Convert` with pinned stylesheet SHA-256, interactive `-Confirm` and strict output event/origin/pick/magnitude/preferred-origin reference validation; stop on compiler/XSLT/structure error, never relax checks or assume scientific equivalence. The first scolv runtime session's GUI error, exit and Qt logs are still not fully reported; a separate authorization is required before a GUI retry.
+
+## Batch 3D-10 first conversion blocked at C# Add-Type System.Xml reference
+
+2026-11-02 operator invoked explicitly approved converter `-Convert` and answered two ShouldProcess prompts approving one disposable output path `C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\work\offline-gui-scolv\converted\gfz2010avtm-event-scml014.xml` and its parent `converted` directory. The script proceeded to compile the memory-only resolver C# type but **failed** at the embedded `Add-Type` call with `SOURCE_CODE_ERROR`, `CS0234: The type or namespace name 'Xml' does not exist in the namespace 'System' (are you missing an assembly reference?)` at `using System.Xml;` line 4, script line 348. **No successful transformation**, `ConvertedSCMLSize`, `ConvertedSCMLSHA256` or structural PASS was reported. The derived destination directory may have been created; runtime memory/C# temporary compiler files may exist. Original QuakeML, XSLT and XSD should remain untouched by this failure; no scolv GUI launched.
+
+Confirmed Microsoft Windows PowerShell 5.1 Add-Type docs support specifying .NET references through `-ReferencedAssemblies`, while default refs contain System.dll and System.Management.Automation.dll but not System.Xml.dll. Applied focused one-line patch to `phase8/windows-development/Prepare-R10ScolvScmlEvent.ps1`:
+
+```powershell
+Add-Type -TypeDefinition $resolverSource -Language CSharp -ReferencedAssemblies @('System.dll','System.Xml.dll') -ErrorAction Stop
+```
+
+Committed fixed source on feature branch; new **18,675 ASCII bytes**, **SHA-256 `ED644C19D11775F89C648E0FAE2EDFB538EC0E2D128C8934D92AD84727D1E0F9`**. GitHub full read-back equals submitted source, static targeted guard markers/ShouldProcess order PASS. **No Windows PowerShell parser or Add-Type compile performed for patched version yet** (the defect fix is expected but not confirmed). The previous `BDA211...` hash belongs to the failed version.
+
+**Next operator step:** Replace the single Y: development script from committed GitHub version; verify 18,675-byte length + new SHA-256 via standard read-only file stream (Y: Get-FileHash sometimes fails), PowerShell Parser.ParseInput or ParseFile, and only if office trust policy allows per-file Zone.Identifier handling, execute the default read-only preflight. Check if output already exists and refuse overwrite. On preflight PASS and under previously requested one derived-file creation, rerun `-Convert` with pinned XSLT SHA-256 `48D7A0CD04AD2E716D94EF3180D0E60DDEDC5375BD0A16460E08436AD843BCD0` and interactive `-Confirm`. Do not ignore future Add-Type/XSLT/object/reference failures. No new GUI session authorized.
+
+**Checkpoint:** `BATCH3D_10_RESOLVER_COMPILE_REFERENCE_DEFECT_FIXED_IN_GITHUB_SOURCE_ONLY / HOST_RETRY_PENDING / NO_CONVERTED_SCML_EVIDENCE / GUI_NOT_RUN`.
