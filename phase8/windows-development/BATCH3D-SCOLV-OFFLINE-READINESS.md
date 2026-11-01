@@ -270,3 +270,26 @@ No authorization for live SeedLink/acquisition, external messaging/database, pro
 **Source-first recovery:** (1) read-only scan workspace for native SCML `<seiscomp>` document containing direct `EventParameters` and evaluate hashes, schema/version and references; (2) identify packaged or source-tree QuakeML-to-SCML XSLT converters appropriate for the pinned R10 schema; (3) if no already-native SCML is available, design bounded offline QuakeML-to-SCML transformation to a new disposable test fixture, preserving original QuakeML, validate Event/Origin/Pick/Magnitude object hierarchy and reference mapping, pin output SHA-256; (4) update guarded launcher to select only vetted native SCML input, separate change review and new operator session authorization before any retry.
 
 **Checkpoint:** `BATCH3D_06_SCOLV_XML_EVENT_IMPORT_FAILED / FORMAT_MISMATCH_SUSPECTED / GUI_SMOKE_NOT_PASS / EXIT_AND_QT_LOGS_PENDING`.
+
+## Batch 3D-07 native SCML source discovery: 18 schema-0.14 candidates and bundled XSLT
+
+2026-11-02 operator completed a bounded **read-only** search over project `data` XML/SCML sources. 105 files inspected, **18** had a root-local-name `seiscomp` with at least one immediate `EventParameters` child, all reported namespace `http://geofon.gfz.de/ns/seiscomp-schema/0.14`. Search verifies XML structure/namespace and SHA-256, but **does not** count or confirm full Event or Origin objects. Most 18 filenames contain `picks`, so they may represent picks-only EventParameters; do not claim full event import eligibility.
+
+Promising GFZ2010AVTM candidates:
+
+| Path relative to project | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `data/phase5b2/gfz2010avtm/picks.scml` | 43809 | `602F5D6657BF612518C5EB1D46E0947550BBBDC30157B7A1E1BE5C0C7832FA1D` |
+| `data/phase5b3/gfz2010avtm/picks.scml` | 43809 | `602F5D6657BF612518C5EB1D46E0947550BBBDC30157B7A1E1BE5C0C7832FA1D` |
+| `data/phase5b6/gfz2010avtm/output/picks-batch1.scml` | 12998 | `719CB6AED8A1B8518407B86EFC609884D8066B63D6B942709181E41D240FFF3D` |
+| `data/phase5b6/gfz2010avtm/output/picks-expanded.scml` | 68687 | `36B64FBA52EDE10D6143C7CD080692CA97C1E3160108AAADCF63B40F7EB747F6` |
+
+Other picks-only-named SCML candidates are within `data/phase5b9/gfz2010avtm/output/`, `data/phase5c1/phase5c2{b,c}/output/` and later phase5c* inputs/output including negative-control samples. Identical SHA-256 `DB2E6D20244CD3D61D9E97868B511936088E465A9405C014DFC3C328120A43AA` recurs for **147-byte** files—likely minimal skeletons, not useful full event inputs. This is inferred from size/name, not content-confirmed.
+
+Two file reads failed during the scan, including `config-with-IU-bindings-loc00.invalid-original.xml` and a sealed evaluation XML; no execution or changes, no conclusion about SeisComP runtime.
+
+**Bundled local converter found** under verified disposable R10 test root: `share/xml/0.14/quakeml_1.2__scml_0.14.xsl`. Other versions are available too. Official SeisComP `sccnv` documentation confirms matched-version XSLT can map QuakeML 1.2 into SCML and warns conversion depends on source fidelity/ID references; no conversion has been attempted yet. Exact installed XSLT bytes and current XSLT dependency/document() behavior have not been reviewed; do not directly execute unreviewed transformations or imply scientific fidelity.
+
+**Next:** Read-only inspect 18 source SCML files for Event/Origin/Pick/Magnitude object counts, reference matches and namespace, prioritize existing complete 0.14 `EventParameters` before QuakeML-to-SCML transformation. If only picks-only files, prepare a disposable, bounded XSLT conversion of originally pinned 185,646-byte GFZ2010AVTM QuakeML using the installed 0.14 stylesheet with DTD/external resources disabled. Validate transformed event/origin/pick references and archive source/output hashes before any repeated `scolv` GUI run. Original one-session `scolv` test already reached an input-import error; its exit code/stdout/Qt stderr still not reported, and **new session authorization required**.
+
+**Checkpoint:** `BATCH3D_07_NATIVE_SCML_CANDIDATES_18_FOUND / COMPLETE_EVENT_SEMANTICS_NOT_VERIFIED / MATCHED_0_14_XSLT_DISCOVERED / SCOLV_IMPORT_RECOVERY_SOURCE_ONLY`.
