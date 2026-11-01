@@ -345,7 +345,7 @@ public sealed class P8SeisCompOnlyXsd014ResolverV1 : XmlResolver
     }
 }
 '@
-    Add-Type -TypeDefinition $resolverSource -Language CSharp -ErrorAction Stop
+    Add-Type -TypeDefinition $resolverSource -Language CSharp -ReferencedAssemblies @('System.dll','System.Xml.dll') -ErrorAction Stop
   }
   $verifiedSchemaBytes=[IO.File]::ReadAllBytes($schema.FullName)
   $schemaDigest=[System.Security.Cryptography.SHA256]::Create()
