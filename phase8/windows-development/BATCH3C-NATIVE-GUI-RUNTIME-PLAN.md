@@ -218,3 +218,34 @@ Last confirmed operator guard evidence: `BATCH3C_GUI_ENTRYPOINT_PREFLIGHT_PASS`;
 **Safe session closeout:** Do not enable acquisition/connect live data, start SeedLink/controller/services or change production configuration. Close `scrttv` normally with the window X. The guarded `Start-R10RemainingGuiConnectedHost.ps1` waits for closure then emits `SCRTTV_PROCESS_EXIT`, `STDOUT_EVIDENCE` and `QT_STDERR_EVIDENCE`; operator should provide full output and optionally keyword screen of the stderr log. Only after exit/diagnostics review may first-window-and-clean-exit smoke be marked complete. If output is not returned or error appears, record as pending rather than PASS.
 
 **Checkpoint:** `SCRTTV_FIRST_WINDOW_WAVEFORM_RENDER_PASS / SCRTTV_PROCESS_EXIT_PENDING / CONNECTED_EGRESS_AND_SCIENTIFIC_NOT_QUALIFIED`.
+
+## Batch 3C-04 operator confirmed scrttv clean exit code 0
+
+2026-11-01 operator provided the final stdout-console record after closing the original native Windows `scrttv` window. The prior screenshot showed the NC / NGVB / EHZ waveform in the `scrttv` Qt viewer, with visible amplitude trace and 2014-08-24 timeline. Terminal post-close evidence:
+
+```text
+STARTING AUTHORIZED OFFLINE SCRTTV GUI TEST
+=== BATCH3C NATIVE GUI PREFLIGHT ===
+Application: scrttv
+Manifest: 83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74
+DisposableReceiptAndQtRuntimeHashes: VERIFIED
+DescriptionXMLCount: 131
+ScrttvLocalMiniSEEDFixture: SHA256_AND_SIZE_PASS
+SCRTTV_ACTIVE_BLOCK_RULE_SCOPE_PASS
+REAL_NETWORK_EGRESS_NOT_TESTED; HELPER_PROCESSES_NOT_CONTAINED; NOT_ISOLATED
+Process-local environment prepared. This is not network isolation or execution authorization.
+GUI_LAUNCH_REQUESTED: scrttv.exe --offline --no-inventory <pinned miniSEED>
+DO_NOT_ENABLE_ACQUISITION_OR_START_SERVICES
+SCRTTV_PROCESS_EXIT: 0
+STDOUT_EVIDENCE: Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\phase8\logs\batch3c-scrttv-gui\scrttv-20261101-092220.stdout.txt
+QT_STDERR_EVIDENCE: Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\phase8\logs\batch3c-scrttv-gui\scrttv-20261101-092220.qt-stderr.txt
+GUI_FUNCTIONAL_AND_SCIENTIFIC_PASS_NOT_AUTOMATIC
+```
+
+**Qualified result:** `BATCH3C_SCRTTV_NATIVE_FIRST_WINDOW_WAVEFORM_AND_CLEAN_EXIT_PASS` for one supervised offline local miniSEED viewer session on a connected Windows host. The original viewer displayed an apparently populated waveform window and terminated with process exit 0. Previous `scconfig` had a separate first-window/exit-code-0 PASS. Native first-window-and-clean-exit runtime evidence therefore now covers **2/11 original GUIs**; the remaining 9 entrypoints are preflight/packaging-only.
+
+**Important limits:** Operator provided paths to the stdout and Qt-stderr evidence files, **not their contents**. Qt plugin/loader diagnostic analysis remains pending, and actual network traffic blocking, helper containment, production operations and waveform scientific fidelity are **not** qualified. Historical fixture hash and tested command establish intended offline local-file mode, not independently monitored absence of network connections. Do not re-run scrttv simply to repeat an accepted smoke. Read-only log review is the only near-term closure item.
+
+**Next:** read-only inspection of the exact two log files with empty-file handling and bounded keyword counts, plus a small selection of actionable error context if found. Then proceed source-first toward next GUI (`scolv`) with separate runtime authorization and application-specific egress review.
+
+**Checkpoint:** `BATCH3C_SCRTTV_GUI_FIRST_WINDOW_CLEAN_EXIT_PASS / QT_LOG_REVIEW_PENDING / NATIVE_WINDOWS_GUI_SMOKES_2_OF_11 / SCIENTIFIC_NOT_QUALIFIED`.
