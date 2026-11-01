@@ -248,3 +248,13 @@ Prior operator command output separately confirmed the new launcher's SHA-256 `7
 **Qualified milestone:** `BATCH3D_05_SCOLV_GUARDED_LAUNCHER_HOST_PREFLIGHT_PASS`. The `-Run` branch remains **NOT RUN**: no local fixture staging, no runtime environment preparation, no GUI startup, no stdout/Qt stderr or process exit. GUI testing requires a distinct, specific operator authorization for **one supervised offline GFZ2010AVTM `scolv` GUI session on a connected host** with acknowledged limitations: active rule scope is not packet-level proof; helper processes not contained; database/messaging disablement based on historical source review and unproven at runtime; local event's science not yet validated. Do not imply prior firewall creation authorization extends to GUI launch.
 
 **Current GUI count:** 2/11 first-window/exit-code-0 evidence (`scconfig`, `scrttv`), 9 not yet runtime tested; `scolv` is next once separately authorized.
+
+## Batch 3D-06 operator authorizes one supervised scolv GUI session
+
+2026-11-01 operator explicitly replied **`pls proceed, i authorize`** to the specific proposed one-session native Windows `scolv` offline GUI smoke on the **connected host**, accepting unproven packet-level outbound isolation, helper-process containment, runtime database/messaging behavior, and scientific event-location fidelity.
+
+This authorization is **separate from** the previously completed Administrator firewall-rule change. Scope: exactly one interactive, non-elevated supervised `scolv.exe` GUI session via the approved hash-verified `phase8/windows-development/Start-R10ScolvOfflineConnectedHost.ps1`, using current manifest-pinned original `bin/scolv.exe` in `C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10` and three hash-pinned GFZ2010AVTM local inventory/config/event XML inputs. The launcher must stage copies under the disposable local NTFS test root, pass explicit `--offline --inventory-db --config-db --input-file` local arguments, verify the named ActiveStore outbound program rule, capture stdout/stderr/exit, and restore session-scoped variables.
+
+No authorization for live SeedLink/acquisition, external messaging/database, process/service startup, production configuration changes, further GUIs or repeat sessions. The host has no verified network isolation; program-specific rule scope is a safeguard, **not** a packet-level proof. Operators must cancel unexpected connection/setup prompts and close the GUI normally. Do not claim GUI launch or functional/clean-exit PASS until operator provides screenshot and launcher log.
+
+**Checkpoint:** `BATCH3D_06_SCOLV_SINGLE_CONNECTED_HOST_OFFLINE_GUI_SESSION_OPERATOR_AUTHORIZED / RUN_NOT_YET_REPORTED / SCIENCE_UNQUALIFIED`.
