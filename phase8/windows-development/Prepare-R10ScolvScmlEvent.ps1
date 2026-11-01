@@ -290,20 +290,20 @@ $createdTmp=$false
 try {
   # Instantiate an exact-file, memory-backed resolver. Do not use
   # XmlUrlResolver, XmlSecureResolver, file directory grants or network APIs.
-  $resolverTypeName='P8SeisCompOnlyXsd014ResolverV2'
+  $resolverTypeName='P8SeisCompOnlyXsd014ResolverV3'
   if ($null -eq ($resolverTypeName -as [type])) {
     $resolverSource=@'
 using System;
 using System.IO;
 using System.Net;
 using System.Xml;
-public sealed class P8SeisCompOnlyXsd014ResolverV2 : XmlResolver
+public sealed class P8SeisCompOnlyXsd014ResolverV3 : XmlResolver
 {
     private readonly Uri stylesheetUri;
     private readonly Uri schemaUri;
     private readonly byte[] schemaBytes;
 
-    public P8SeisCompOnlyXsd014ResolverV2(string stylesheetPath,
+    public P8SeisCompOnlyXsd014ResolverV3(string stylesheetPath,
                                           string schemaPath,
                                           byte[] verifiedSchemaBytes)
     {
@@ -318,11 +318,10 @@ public sealed class P8SeisCompOnlyXsd014ResolverV2 : XmlResolver
 
     public override Uri ResolveUri(Uri baseUri, string relativeUri)
     {
-        if (baseUri == null ||
-            !baseUri.IsAbsoluteUri ||
-            Uri.Compare(baseUri, stylesheetUri, UriComponents.AbsoluteUri,
-                        UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) != 0 ||
-            !String.Equals(relativeUri, "scml_0.14.xsd", StringComparison.Ordinal))
+        // .NET XSLT controls the supplied base URI. Resolve only the exact
+        // pinned literal resource; the caller's base URI grants no access.
+        // GetEntity separately rejects every other URI and never reads disk.
+        if (!String.Equals(relativeUri, "scml_0.14.xsd", StringComparison.Ordinal))
             throw new XmlException("XSLT rejected resource: relative="+(relativeUri ?? "<null>")+"; base="+(baseUri == null ? "<null>" : baseUri.ToString()));
         return schemaUri;
     }
