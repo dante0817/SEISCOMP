@@ -258,3 +258,15 @@ This authorization is **separate from** the previously completed Administrator f
 No authorization for live SeedLink/acquisition, external messaging/database, process/service startup, production configuration changes, further GUIs or repeat sessions. The host has no verified network isolation; program-specific rule scope is a safeguard, **not** a packet-level proof. Operators must cancel unexpected connection/setup prompts and close the GUI normally. Do not claim GUI launch or functional/clean-exit PASS until operator provides screenshot and launcher log.
 
 **Checkpoint:** `BATCH3D_06_SCOLV_SINGLE_CONNECTED_HOST_OFFLINE_GUI_SESSION_OPERATOR_AUTHORIZED / RUN_NOT_YET_REPORTED / SCIENCE_UNQUALIFIED`.
+
+## Batch 3D-06: first scolv offline input-file import failure
+
+2026-11-01 operator supplied screenshot from the first separately authorized supervised native `scolv` test: GUI error dialog stated exactly `Unable to find EventParameters structures in C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\work\offline-gui-scolv\inputs\gfz2010avtm\event.xml.`
+
+**Important:** The prior original event source passed SHA-256 and **XML well-formedness** checks but had `quakeml` as document root and one nested `EventParameters` by local name. Well-formed QuakeML does not imply the SCML structure the scolv `--input-file` reader expects. Official SeisComP scolv docs specify offline event XML in SCML; official sccnv docs state QuakeML **input** conversion is not directly supported by sccnv and may require matching-version XSLT, with potential data-mapping limitations. The format/serialization mismatch is therefore a **likely** cause, not a confirmed source-code or Qt defect. Do **not** simply rename XML roots or destroy original data.
+
+**Runtime result remains partial/failed**: screenshot proves scolv reached the offline event-file import error dialog (a Qt-visible application prompt), but does not yet establish complete main window rendering, event import, clean process exit, Qt logs, scientific accuracy, or absence of live network activity. No new session is authorized; the one-session consent has been used. Ask operator to dismiss dialog/close normally and send `SCOLV_PROCESS_EXIT`, stdout and stderr evidence. No relaunch of unchanged failing fixture.
+
+**Source-first recovery:** (1) read-only scan workspace for native SCML `<seiscomp>` document containing direct `EventParameters` and evaluate hashes, schema/version and references; (2) identify packaged or source-tree QuakeML-to-SCML XSLT converters appropriate for the pinned R10 schema; (3) if no already-native SCML is available, design bounded offline QuakeML-to-SCML transformation to a new disposable test fixture, preserving original QuakeML, validate Event/Origin/Pick/Magnitude object hierarchy and reference mapping, pin output SHA-256; (4) update guarded launcher to select only vetted native SCML input, separate change review and new operator session authorization before any retry.
+
+**Checkpoint:** `BATCH3D_06_SCOLV_XML_EVENT_IMPORT_FAILED / FORMAT_MISMATCH_SUSPECTED / GUI_SMOKE_NOT_PASS / EXIT_AND_QT_LOGS_PENDING`.
