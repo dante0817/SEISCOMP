@@ -218,3 +218,11 @@ Proposed separately authorized `-Run` path additionally requires a scolv-specifi
 **Next gate**: compare one read-only standard file-read/hash of the blocked script against a known-good same-directory script and inspect the normal Get-Content result; preserve ACLs, files, share settings and organizational security policies. Treat repeat failures as an operator/IT file-access issue, not a build or syntax failure. Do not unblock or execute a file whose content hash has not passed. Prior GitHub ASCII source static verification and hash `7C88244EA5F86050C7201C33E5CA994B17406C481443A73081069AFB40CBD449` are source-side evidence **not host verification**.
 
 **Checkpoint**: `BATCH3D_05_LAUNCHER_SOURCE_READY / HOST_FILE_ACCESS_DENIED / SHA256_AND_PS_PARSE_NOT_VERIFIED / SCOLV_GUI_NOT_RUN`.
+
+## Batch 3D-05 Y drive diagnostic: launcher access recovered
+
+Operator subsequently ran a read-only Windows file-access diagnostic on the Y: workspace and reported `Y:` Win32_LogicalDisk `DriveType=3`, `FileSystem=NTFS`. Both the previously verified `Ensure-R10ScolvOutboundBlock.ps1` and the new `Start-R10ScolvOfflineConnectedHost.ps1` passed `Get-Content -TotalCount 1` and `[IO.File]::Open` read-only handle checks. Explicit terminal markers: `GET_CONTENT_READ: PASS`, `STANDARD_FILE_READ: PASS` for each and `BATCH3D_FILE_ACCESS_DIAGNOSTICS_COMPLETE; NO FILES CHANGED; NO GUI EXECUTED`.
+
+**Interpretation:** The earlier 3-attempt access-denied state was not reproduced in this test. Current readability is PASS but **not a SHA-256/content integrity or Windows syntax PASS**; no preflight/run has yet been performed, and underlying transient denial cause remains unknown. Do not change ACLs, default execution policy or endpoint-security controls. The next bounded step is a single new `Get-FileHash` comparison against `7C88244EA5F86050C7201C33E5CA994B17406C481443A73081069AFB40CBD449`, Windows `Parser.ParseFile` and default `-Root ... -WorkspaceRoot ...` preflight only. If the signed-script restriction reappears, after hash verification handle per-file Unblock-File only where office policy permits.
+
+**Checkpoint:** `SCOLV_NEW_LAUNCHER_READ_ACCESS_PASS / SHA256_PS_PARSE_AND_PREFLIGHT_PENDING / SCOLV_GUI_NOT_RUN`.
