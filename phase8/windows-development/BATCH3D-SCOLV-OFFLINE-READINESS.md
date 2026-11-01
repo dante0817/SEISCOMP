@@ -169,3 +169,30 @@ Operator instructions issued: open an elevated Windows PowerShell session, reval
 **Current evidence:** Script hash and Windows parser PASS and preflight showed `SCOLV_EXACT_PATH_OUTBOUND_BLOCK_RULE_MISSING`. **No administrator `-Apply` output has yet been provided. Do not claim the rule was created.** The permitted rule would cover only its executable path; network egress effectiveness and subprocess containment remain untested. Any future `scolv` GUI session requires **new, separate operator authorization** and source-verified offline/database behavior.
 
 **Checkpoint:** `BATCH3D_04_FIREWALL_RULE_APPLY_AUTHORIZED_CONDITIONAL_ON_OFFICE_POLICY / HOST_APPLY_AND_ACTIVE_SCOPE_VERIFICATION_PENDING / SCOLV_NOT_RUN`.
+
+## Batch 3D-04 operator confirmed scolv exact outbound block creation and independent verification
+
+2026-11-01 operator provided two chronological host records after explicit authorization conditional on local office policy. First, elevated Windows PowerShell verified script SHA-256 `FB2E930019C1FE304A355E5EAB928F380D9AE5001D5DDBECD7412A9370B5A44E`, invoked `Ensure-R10ScolvOutboundBlock.ps1 -Root <disposable R10> -Apply -Confirm`, reached the exact program-path ShouldProcess confirmation, and reported:
+
+```text
+VerifiedScolvExecutable: C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\bin\scolv.exe
+PinnedManifestSHA256: 83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74
+DISPOSABLE_R10_IDENTITY_PASS; ACTIVE_FIREWALL_PROFILES_ENABLED
+SCOLV_OUTBOUND_BLOCK_RULE_CREATED_AND_ACTIVE_SCOPE_MATCH
+NO_GUI_EXECUTED; DEFAULT_FIREWALL_POLICY_UNCHANGED
+RULE_SCOPE_IS_NOT_EGRESS_EFFECTIVENESS_PROOF_OR_HELPER_CONTAINMENT
+```
+
+PowerShell's extra prompts to set CIM aliases were seen during command/module loading with `-Confirm` and do not themselves represent any authorized expansion of the firewall change. Next, the operator pasted an earlier read-only pre-creation `SCOLV_EXACT_PATH_OUTBOUND_BLOCK_RULE_MISSING` result, **then a newer independent normal-user preflight** showing:
+
+```text
+SCOLV_ACTIVE_BLOCK_RULE_SCOPE_MATCH
+RULE_ALREADY_PRESENT; NO_FIREWALL_CHANGE
+NO_GUI_EXECUTED; EGRESS_EFFECTIVENESS_NOT_TESTED; HELPERS_NOT_COVERED
+```
+
+**Qualified result:** `BATCH3D_04_SCOLV_EXACT_APP_OUTBOUND_RULE_CREATED_AND_ACTIVE_SCOPE_VERIFIED`; current state is matching rule PRESENT. No package/source changes or `scolv` launch. Still no independent packet-level outbound egress measurements, child-process confinement, or scientific/DB isolation. Prior `scconfig` and `scrttv` first-window / clean-exit 2-of-11 remains unchanged.
+
+**Next source-first gate:** review actual `scolv --offline` option precedence and external DB/messaging paths; preserve tested and pinned inventory/config XML and `data/real-events/gfz2010avtm/event.xml`. Build a new `scolv`-specific fail-closed launcher with verified path hashes/real event input and no unwanted database access, plus separate operator authorization for exactly one connected-host offline GUI session before any launch. The existing `Start-R10RemainingGuiConnectedHost.ps1` intentionally disables non-scrttv `-Run`.
+
+**Checkpoint:** `SCOLV_FIREWALL_POLICY_SCOPE_PASS / EVENT_INPUT_STRUCTURAL_PASS / SCOLV_GUI_NOT_RUN / NEW_RUNTIME_AUTHORIZATION_PENDING`.
