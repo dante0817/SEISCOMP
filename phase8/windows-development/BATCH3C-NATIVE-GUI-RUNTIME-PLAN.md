@@ -186,3 +186,13 @@ Interpretation: a unique rule with expected name/exact executable path and Activ
 **Next gate:** obtain a new explicit, specific authorization for **one supervised connected-host offline `scrttv.exe` GUI-only / pinned local miniSEED session**, using `--offline --no-inventory`, only from disposable R10 in normal/non-elevated PowerShell. Clarify accepted residual risk: host online, exact-rule scope verified but packet-level egress and child processes not contained; no live streams, SeedLink messaging, setup, services, or production operations. Existing `Start-R10RemainingGuiConnectedHost.ps1` retains fail-closed runtime switches requiring scrttv authorization reference and acknowledgments. Preserve external stdout/Qt stderr evidence and clean exit; no actual `scrttv` runtime test has yet occurred.
 
 **Checkpoint:** `BATCH3C_03_SCRTTV_FIREWALL_POLICY_SCOPE_PASS / FIXTURE_PASS / GUI_RUNTIME_AUTHORIZATION_PENDING / SCRTTV_NOT_RUN`.
+
+## Operator attempted illustrative scrttv command; executable not started
+
+Operator entered `scrttv.exe --offline --no-inventory "<verified miniSEED file>"` while the shell was in the Y: `phase8/windows-development` directory. PowerShell returned `CommandNotFoundException` (`scrttv.exe` is not recognized). No SeisComP executable was found or launched; the placeholder waveform path was illustrative, not a valid test file. This is a command presentation/operator-location issue, **not a verified scrttv application failure**.
+
+Correct program binary remains the manifest-verified disposable path `C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\bin\scrttv.exe`, and the already-verified fixture is `Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\data\phase5c1\phase5c1a\NC_NGVB_20s.mseed`. Actual execution must use the guarded `Start-R10RemainingGuiConnectedHost.ps1` with proper `-Root`, `-Application scrttv`, `-ScrttvFixturePath` and separately authorized `-Run` conditions, not the sample program command.
+
+No distinct operator acceptance of residual connected-host `scrttv` runtime risks was recorded before this attempt; previous `scconfig` permission covers only scconfig. Maintain `SCRTTV_NOT_RUN`; obtain new explicit consent for one supervised offline local-waveform smoke before issuing a launch command. No firewall changes or package mutations follow from CommandNotFound.
+
+**Status: `BATCH3C_03_PREPARATION_PASS / DIRECT_COMMAND_NOT_FOUND / SCRTTV_GUI_NOT_RUN / AUTHORIZATION_PENDING`.**
