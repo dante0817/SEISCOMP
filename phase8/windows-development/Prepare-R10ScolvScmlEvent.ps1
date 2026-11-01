@@ -1,9 +1,10 @@
 <#
-Batch 3D-09: prepare a derived SCML 0.14 local event fixture from pinned GFZ QuakeML.
+Batch 3D-12: prepare a derived SCML 0.14 local event fixture from pinned GFZ QuakeML.
 DEFAULT READ ONLY: source, manifest-verified stylesheet/XSD and XML structure inspection.
 -Convert opts into one new disposable-R10-work file; never runs a GUI or network tool.
-Only document('scml_0.14.xsd') from the pinned stylesheet is permitted by a
-one-file memory-backed XmlResolver. XSLT script, DTD and network are prohibited.
+Only the exact pinned stylesheet URI and its document('scml_0.14.xsd')
+dependency are served by a two-file memory-backed XmlResolver. XSLT script,
+DTD and all network or directory resource access are prohibited.
 An incompatible or lossy transformation fails closed and is never used for GUI.
 #>
 [CmdletBinding(SupportsShouldProcess=$true,ConfirmImpact='High')]
@@ -290,52 +291,80 @@ $createdTmp=$false
 try {
   # Instantiate an exact-file, memory-backed resolver. Do not use
   # XmlUrlResolver, XmlSecureResolver, file directory grants or network APIs.
-  $resolverTypeName='P8SeisCompOnlyXsd014ResolverV3'
+  $resolverTypeName='P8SeisCompTwoFileMemoryResolverV4'
   if ($null -eq ($resolverTypeName -as [type])) {
     $resolverSource=@'
 using System;
 using System.IO;
 using System.Net;
 using System.Xml;
-public sealed class P8SeisCompOnlyXsd014ResolverV3 : XmlResolver
+public sealed class P8SeisCompTwoFileMemoryResolverV4 : XmlResolver
 {
     private readonly Uri stylesheetUri;
     private readonly Uri schemaUri;
+    private readonly byte[] stylesheetBytes;
     private readonly byte[] schemaBytes;
 
-    public P8SeisCompOnlyXsd014ResolverV3(string stylesheetPath,
-                                          string schemaPath,
-                                          byte[] verifiedSchemaBytes)
+    public P8SeisCompTwoFileMemoryResolverV4(string stylesheetPath,
+                                             string schemaPath,
+                                             byte[] verifiedStylesheetBytes,
+                                             byte[] verifiedSchemaBytes)
     {
-        if (verifiedSchemaBytes == null || verifiedSchemaBytes.Length != 77453)
-            throw new InvalidOperationException("Unexpected schema byte count");
+        if (verifiedStylesheetBytes == null ||
+            verifiedStylesheetBytes.Length == 0 ||
+            verifiedStylesheetBytes.Length > 2097152 ||
+            verifiedSchemaBytes == null || verifiedSchemaBytes.Length != 77453)
+            throw new InvalidOperationException("Unexpected verified resource byte counts");
         stylesheetUri = new Uri(Path.GetFullPath(stylesheetPath));
         schemaUri = new Uri(Path.GetFullPath(schemaPath));
-        if (!stylesheetUri.IsFile || !schemaUri.IsFile)
-            throw new InvalidOperationException("Only local filesystem URIs permitted");
+        if (!stylesheetUri.IsFile || !schemaUri.IsFile ||
+            Uri.Compare(stylesheetUri, schemaUri, UriComponents.AbsoluteUri,
+                        UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) == 0)
+            throw new InvalidOperationException("Two distinct local resource identities required");
+        stylesheetBytes = (byte[])verifiedStylesheetBytes.Clone();
         schemaBytes = (byte[])verifiedSchemaBytes.Clone();
     }
 
     public override Uri ResolveUri(Uri baseUri, string relativeUri)
     {
-        // .NET XSLT controls the supplied base URI. Resolve only the exact
-        // pinned literal resource; the caller's base URI grants no access.
-        // GetEntity separately rejects every other URI and never reads disk.
-        if (!String.Equals(relativeUri, "scml_0.14.xsd", StringComparison.Ordinal))
-            throw new XmlException("XSLT rejected resource: relative="+(relativeUri ?? "<null>")+"; base="+(baseUri == null ? "<null>" : baseUri.ToString()));
-        return schemaUri;
+        // The .NET XSLT processor first supplies the stylesheet's exact
+        // absolute file URI with null base, then resolves document('...').
+        // Both identities are pinned; base never grants directory access.
+        if (String.Equals(relativeUri, "scml_0.14.xsd", StringComparison.Ordinal))
+            return schemaUri;
+
+        Uri candidate;
+        if (relativeUri != null &&
+            Uri.TryCreate(relativeUri, UriKind.Absolute, out candidate) &&
+            candidate.IsFile)
+        {
+            if (Uri.Compare(candidate, stylesheetUri, UriComponents.AbsoluteUri,
+                            UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) == 0)
+                return stylesheetUri;
+            if (Uri.Compare(candidate, schemaUri, UriComponents.AbsoluteUri,
+                            UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) == 0)
+                return schemaUri;
+        }
+
+        throw new XmlException("XSLT rejected resource: relative="+
+            (relativeUri ?? "<null>")+"; base="+
+            (baseUri == null ? "<null>" : baseUri.ToString()));
     }
 
     public override object GetEntity(Uri absoluteUri, string role, Type ofObjectToReturn)
     {
         if (absoluteUri == null ||
-            Uri.Compare(absoluteUri, schemaUri, UriComponents.AbsoluteUri,
-                        UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) != 0 ||
             (ofObjectToReturn != null &&
              ofObjectToReturn != typeof(Stream) &&
              ofObjectToReturn != typeof(object)))
-            throw new XmlException("XSLT attempted an unapproved resource read");
-        return new MemoryStream(schemaBytes, false);
+            throw new XmlException("XSLT rejected a resource read/return type");
+        if (Uri.Compare(absoluteUri, schemaUri, UriComponents.AbsoluteUri,
+                        UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) == 0)
+            return new MemoryStream(schemaBytes, false);
+        if (Uri.Compare(absoluteUri, stylesheetUri, UriComponents.AbsoluteUri,
+                        UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) == 0)
+            return new MemoryStream(stylesheetBytes, false);
+        throw new XmlException("XSLT rejected resource read URI="+absoluteUri.ToString());
     }
 
     public override ICredentials Credentials
@@ -356,8 +385,21 @@ public sealed class P8SeisCompOnlyXsd014ResolverV3 : XmlResolver
       $readSchemaSha -ine $expectedSchemaSha) {
     throw 'Schema bytes changed between preflight and conversion'
   }
+  $verifiedStylesheetBytes=[IO.File]::ReadAllBytes($style.FullName)
+  $stylesheetDigest=[System.Security.Cryptography.SHA256]::Create()
+  try {
+    $readStylesheetSha=([BitConverter]::ToString(
+      $stylesheetDigest.ComputeHash($verifiedStylesheetBytes))).Replace('-','')
+  }
+  finally {$stylesheetDigest.Dispose()}
+  if ($verifiedStylesheetBytes.Length -le 0 -or
+      $verifiedStylesheetBytes.Length -gt 2097152 -or
+      $readStylesheetSha -ine $ExpectedStylesheetSha256) {
+    throw 'Stylesheet bytes changed between preflight and conversion'
+  }
   $resolver=New-Object $resolverTypeName -ArgumentList @(
-    $style.FullName, $schema.FullName, $verifiedSchemaBytes
+    $style.FullName, $schema.FullName,
+    $verifiedStylesheetBytes, $verifiedSchemaBytes
   )
   $processor=[System.Xml.Xsl.XslCompiledTransform]::new()
   $styleReader=[System.Xml.XmlReader]::Create($style.FullName,(New-XmlReaderSettings))
