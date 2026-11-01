@@ -280,7 +280,7 @@ foreach ($dir in @($work,$sub,$targetDir)) {
       throw ('Invalid derived-fixture directory: '+$dir)
     }
   }
-  else {$null=New-Item -ItemType Directory -Path $dir -ErrorAction Stop}
+  else {$null=New-Item -ItemType Directory -Path $dir -ErrorAction Stop -Confirm:$false}
 }
 $tmp=$out+'.tmp'
 $inputReader=$null
@@ -411,6 +411,6 @@ finally {
   if ($null -ne $inputReader) {$inputReader.Dispose()}
   if ($null -ne $styleReader) {$styleReader.Dispose()}
   if ($createdTmp -and (Test-Path -LiteralPath $tmp)) {
-    Remove-Item -LiteralPath $tmp -Force -ErrorAction Stop
+    Remove-Item -LiteralPath $tmp -Force -ErrorAction Stop -Confirm:$false
   }
 }
