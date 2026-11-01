@@ -457,3 +457,26 @@ Latest GitHub source `phase8/windows-development/Prepare-R10ScolvScmlEvent.ps1`:
 **Next operator action:** In the same failed PowerShell session inspect the newest matching `XslTransformException` in `$Error`, enumerate `Exception.InnerException` to deepest level with types and messages, and only inspect existence/byte length of `...\converted\gfz2010avtm-event-scml014.xml` and its `.tmp` without writing. Do not re-run conversion, change XSLT/XSD, disable resolver restrictions, or run scolv until the nested cause is established.
 
 **Checkpoint:** `BATCH3D_11_V3_XSLT_DOCUMENT_LOAD_FAILURE_REPRODUCED / NESTED_CAUSE_PENDING / DERIVED_XML_PASS_NOT_OBSERVED / GUI_NOT_RUN`.
+
+## Batch 3D-12 exact stylesheet absolute URI rejected; two-resource memory resolver prepared
+
+2026-11-02 operator read-only nested exception from prior V3 converter attempt:
+```text
+EXCEPTION LEVEL 0: System.Management.Automation.MethodInvocationException
+EXCEPTION LEVEL 1: System.Xml.Xsl.XslTransformException: An error occurred while loading document 'scml_0.14.xsd'.
+EXCEPTION LEVEL 2: System.Xml.XmlException: XSLT rejected resource: relative=file:///C:/Users/dantesoneja/AppData/Local/SeisComP-Scconfig-Test-R10/share/xml/0.14/quakeml_1.2__scml_0.14.xsl; base=<null>
+FILE_NOT_PRESENT: .../converted/gfz2010avtm-event-scml014.xml
+FILE_NOT_PRESENT: .../converted/gfz2010avtm-event-scml014.xml.tmp
+BATCH3D_11_EXCEPTION_DIAGNOSTIC_COMPLETE
+NO CONVERSION; NO FILES MODIFIED; NO GUI EXECUTED
+```
+
+**Root cause:** .NET's Transform document resolver calls `ResolveUri(null, <absolute installed stylesheet file URI>)` before evaluating the relative schema. V3 denied the stylesheet URI because it only recognized the literal XSD filename. The source stylesheet path is inside the known disposable R10 root, SHA256 `48D7A0CD04AD2E716D94EF3180D0E60DDEDC5375BD0A16460E08436AD843BCD0`; the SCML 0.14 XSD SHA256 `5E5E77BB60BD9B24AB140EB716027E8D6F041BC3A9EB3BF9B9DCCE13EBDCC0E8`. Both were independently verified earlier against original installation manifest/inputs; no scientific data conversion yet.
+
+**Source change applied:** `phase8/windows-development/Prepare-R10ScolvScmlEvent.ps1` now defines `P8SeisCompTwoFileMemoryResolverV4`. It recognizes exactly (1) the pinned installed stylesheet file URI and (2) the literal relative `scml_0.14.xsd` or exact XSD file URI; it returns resources only from in-memory byte arrays of those two specific files, rehashed directly from bytes immediately before conversion. `GetEntity` refuses every other URI/return type; no disk reads, directory resolver, networking, credentials, general-purpose XmlUrlResolver, XSLT script, DTD or other stylesheet document() references are granted. URI base does not grant access. Existing confirmation/output-no-overwrite and strict derived event/origin/picks/magnitudes/reference checks remain; no GUI retry authorized.
+
+**New committed source:** 20,908 ASCII bytes, SHA256 **`DE1722072D4A278E887EF89056E9F34A8DBA06426D3890F232332E4DFBD0BD40`**. GitHub source read-back byte-equality PASS; portable SHA implementation verified with SHA256(`abc`) reference test vector, named static safety/order markers PASS. **Windows PowerShell parser, C# Add-Type compilation, XSLT transformation and SCML structural validity not yet run for V4.**
+
+**Next:** operator replaces only the Y: development script, verifies 20,908-byte size/new SHA256 through standard file-stream (intermittent Get-FileHash access denial on Y:), checks Windows parser and per-file RemoteSigned trust if necessary, runs default read-only preflight, then one consent-gated `-Convert` attempt only to local disposable work. If converter fails again, inspect nested exception; do not widen resource set. No further scolv GUI tests without separately obtaining one-session approval.
+
+**Checkpoint:** `BATCH3D_12_XSLT_STYLESHEET_URI_ROOT_CAUSE / V4_TWO_RESOURCE_MEMORY_ONLY_FIX_SOURCE_READY / HOST_CONVERSION_UNTESTED / GUI_NOT_RUN`.
