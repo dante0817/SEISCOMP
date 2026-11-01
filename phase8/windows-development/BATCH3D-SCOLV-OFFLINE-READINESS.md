@@ -117,3 +117,25 @@ Other candidate paths were found under `data/phase5b9/gfz2010avtm/{inputs,raw}/`
 **Next bounded source-first step:** Read-only inspection of exactly these three `event.xml` files: absolute path, size, SHA-256, DTD-disabled streaming XML parse, document root, EventParameters count, event/origin/pick/magnitude counts, unique `publicID` presence, optional `preferredOriginID`, without copying complete event XML to chat. Select one only after inspecting actual content and the known `scolv --offline --inventory-db --config-db --input-file` source-option behavior. The existing inventory/config XML is well-formed; `scolv` specific program block remains missing and no runtime approval is held.
 
 **Checkpoint:** `SCOLV_EVENT_XML_CANDIDATES_3_IDENTIFIED_BY_FILENAME / XML_EVENT_SEMANTICS_UNVERIFIED / GUI_NOT_RUN`.
+
+## Batch 3D-02: three event XML files structurally verified — primary selected
+
+2026-11-01 operator completed read-only bounded XML inspection of the three candidate local `data/real-events/` files, using a DTD-prohibited XML reader and SHA-256. All are well formed with root `quakeml`, one `EventParameters`, one event, one origin, six magnitude elements and a preferred-origin ID resolving to the present origin (**1/1 matched**). Distinct pick counts and integrity pins:
+
+| Candidate | Bytes | SHA-256 | Picks | Primary? |
+| --- | ---: | --- | ---: | --- |
+| `data/real-events/gfz2010avtm/event.xml` | 185646 | `B81D460B33A6E8A6422742CC7465A2EF85694893F08B3405FF31A74BA32B4EB2` | 292 | **YES — first candidate** |
+| `data/real-events/gfz2010eaoy/event.xml` | 109143 | `F076D33D1B16A10372F4621D0AE3E71E2CD68B8F0350A6A6DB697F902CDE17EB` | 143 | fallback |
+| `data/real-events/gfz2010llha/event.xml` | 346807 | `AB57CA6C65EA97C1AC8187BBBA0E83A4966894772A5566AEDC29E43620E1A33F` | 472 | fallback |
+
+**Primary choice rationale:** `gfz2010avtm` matches the previously verified local `data/phase5b6/gfz2010avtm/inputs/inventory-expanded.xml` and `config-expanded.xml` by dataset identifier. It provides one event, a resolvable preferred origin and 292 picks, a reasonable first-viewer structural fixture. This dataset-name match does not establish cross-document station/epoch/response consistency, schema-specific correctness, import compatibility or scientific calibration. The six magnitudes were counted but not numerically validated. No event or configuration files were altered.
+
+## Batch 3D-03: scoped `scolv` firewall preparation source added
+
+Created `phase8/windows-development/Ensure-R10ScolvOutboundBlock.ps1` as a narrowly rewritten counterpart of the already used guarded scrttv exact-program rule script, **not** a global firewall policy change. Source read back byte-for-byte from GitHub, 6,941 ASCII bytes, SHA-256 **`FB2E930019C1FE304A355E5EAB928F380D9AE5001D5DDBECD7412A9370B5A44E`**. Delimiter lexical scan PASS; **actual Windows PowerShell parser and execution NOT RUN**.
+
+The script allows only the verified disposable native Windows R10 `bin/scolv.exe`, exact manifest SHA-256, 856-entry receipt and local NTFS install root, a named exact-path program outbound block rule `SeisComP-R10Test-scolv.exe-OutboundBlock`, and no GUI or network probe. Its **default mode is read-only**, reports missing/mismatched/ActiveStore rule status. Its mutating `-Apply` path is gated by elevation, `SupportsShouldProcess`/ConfirmImpact High, and re-verifies exact ActiveStore scope. It does NOT set default firewall policy, network configuration, packet-level egress proof or helper/process containment. On the last operator inspection, the named rule was missing.
+
+**Do not run `-Apply` without local/office firewall-change permission.** Do not launch `scolv` using the earlier scrttv runtime launcher: that launcher correctly rejects all non-scrttv `-Run` targets. A source-reviewed bounded `scolv` launcher with explicit offline XML arguments, no implicit database linkage, event-hash pins, and separately authorized session is a later deliverable. `--offline` alone is insufficient to guarantee database isolation in the earlier source review. Qt stderr contents of scrttv remain pending independent read-only inspection.
+
+**Checkpoint:** `BATCH3D_EVENT_3_XML_WELLFORMED_AND_PREFERRED_ORIGIN_PASS / PRIMARY_GFZ2010AVTM_SELECTED / SCOLV_FW_SOURCE_PREPARED / FW_RULE_MISSING_LAST_CHECK / GUI_NOT_RUN / NO_NEW_RUNTIME_AUTHORIZATION`.
