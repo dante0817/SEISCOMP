@@ -226,3 +226,25 @@ Operator subsequently ran a read-only Windows file-access diagnostic on the Y: w
 **Interpretation:** The earlier 3-attempt access-denied state was not reproduced in this test. Current readability is PASS but **not a SHA-256/content integrity or Windows syntax PASS**; no preflight/run has yet been performed, and underlying transient denial cause remains unknown. Do not change ACLs, default execution policy or endpoint-security controls. The next bounded step is a single new `Get-FileHash` comparison against `7C88244EA5F86050C7201C33E5CA994B17406C481443A73081069AFB40CBD449`, Windows `Parser.ParseFile` and default `-Root ... -WorkspaceRoot ...` preflight only. If the signed-script restriction reappears, after hash verification handle per-file Unblock-File only where office policy permits.
 
 **Checkpoint:** `SCOLV_NEW_LAUNCHER_READ_ACCESS_PASS / SHA256_PS_PARSE_AND_PREFLIGHT_PENDING / SCOLV_GUI_NOT_RUN`.
+
+## Batch 3D-05 operator Windows launcher offline preflight PASS
+
+On 2026-11-01 the operator completed per-file trust handling (as permitted under host policy), then ran the default **non-`-Run`** `Start-R10ScolvOfflineConnectedHost.ps1 -Root <disposable R10> -WorkspaceRoot <Y: project>`. Host read-only preflight reported:
+
+```text
+=== BATCH3D SCOLV NATIVE OFFLINE GUI PREFLIGHT ===
+Executable: C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\bin\scolv.exe
+Manifest: 83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74
+DISPOSABLE_RECEIPT_AND_QT_RUNTIME_HASHES_PASS
+DescriptionXMLCount: 131
+GFZ2010AVTM_INVENTORY_CONFIG_EVENT_SHA256_AND_SIZE_PASS
+BATCH3D_SCOLV_OFFLINE_GUI_SOURCE_PREFLIGHT_PASS
+GUI_NOT_RUN; FIREWALL_NOT_CHANGED; NO_NETWORK_PROBE; NO_FIXTURE_COPIES_CREATED
+RUNTIME_REQUIRES_SEPARATE_SCOLV_AUTHORIZATION_AND_CONNECTED_HOST_REVIEW
+```
+
+Prior operator command output separately confirmed the new launcher's SHA-256 `7C88244EA5F86050C7201C33E5CA994B17406C481443A73081069AFB40CBD449` and PowerShell syntax PASS before initial unsigned-script policy blocking; the operator subsequently resolved the per-file execution restriction. Exact ActiveStore `scolv` application outbound rule had also been independently verified earlier, but **the preflight-only launch did not itself check firewall or apply changes**.
+
+**Qualified milestone:** `BATCH3D_05_SCOLV_GUARDED_LAUNCHER_HOST_PREFLIGHT_PASS`. The `-Run` branch remains **NOT RUN**: no local fixture staging, no runtime environment preparation, no GUI startup, no stdout/Qt stderr or process exit. GUI testing requires a distinct, specific operator authorization for **one supervised offline GFZ2010AVTM `scolv` GUI session on a connected host** with acknowledged limitations: active rule scope is not packet-level proof; helper processes not contained; database/messaging disablement based on historical source review and unproven at runtime; local event's science not yet validated. Do not imply prior firewall creation authorization extends to GUI launch.
+
+**Current GUI count:** 2/11 first-window/exit-code-0 evidence (`scconfig`, `scrttv`), 9 not yet runtime tested; `scolv` is next once separately authorized.
