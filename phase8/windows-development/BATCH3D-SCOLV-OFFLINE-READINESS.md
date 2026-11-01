@@ -139,3 +139,23 @@ The script allows only the verified disposable native Windows R10 `bin/scolv.exe
 **Do not run `-Apply` without local/office firewall-change permission.** Do not launch `scolv` using the earlier scrttv runtime launcher: that launcher correctly rejects all non-scrttv `-Run` targets. A source-reviewed bounded `scolv` launcher with explicit offline XML arguments, no implicit database linkage, event-hash pins, and separately authorized session is a later deliverable. `--offline` alone is insufficient to guarantee database isolation in the earlier source review. Qt stderr contents of scrttv remain pending independent read-only inspection.
 
 **Checkpoint:** `BATCH3D_EVENT_3_XML_WELLFORMED_AND_PREFERRED_ORIGIN_PASS / PRIMARY_GFZ2010AVTM_SELECTED / SCOLV_FW_SOURCE_PREPARED / FW_RULE_MISSING_LAST_CHECK / GUI_NOT_RUN / NO_NEW_RUNTIME_AUTHORIZATION`.
+
+## Batch 3D-03 operator verified firewall script and missing rule
+
+2026-11-01 operator reported successful host SHA-256 and Windows PowerShell parser verification for `Ensure-R10ScolvOutboundBlock.ps1` (6,941 bytes, `FB2E930019C1FE304A355E5EAB928F380D9AE5001D5DDBECD7412A9370B5A44E`). The script was individually unblocked by the operator; no global execution policy change was reported. The earlier intermittent Y: read denial cleared with no ACL changes.
+
+Read-only preflight output:
+
+```text
+=== BATCH3D SCOLV OUTBOUND FIREWALL PREPARATION ===
+VerifiedScolvExecutable: C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\bin\scolv.exe
+PinnedManifestSHA256: 83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74
+DISPOSABLE_R10_IDENTITY_PASS; ACTIVE_FIREWALL_PROFILES_ENABLED
+SCOLV_EXACT_PATH_OUTBOUND_BLOCK_RULE_MISSING
+PREFLIGHT_ONLY; REQUIRES_APPLY_AND_ADMINISTRATOR_APPROVAL
+NO_GUI_EXECUTED; NO_FIREWALL_CHANGE
+```
+
+**Assessment:** `BATCH3D_03_FIREWALL_SCRIPT_HASH_SYNTAX_AND_PREFLIGHT_PASS / EXACT_SCOLV_RULE_MISSING / GUI_NOT_RUN`. Creating the single exact-program outbound block rule requires distinct explicit owner/office IT authorization and elevated interactive `-Apply` confirmation; do not infer consent from successful preflight. Rule configuration alone does not prove traffic-level containment, helper blocking or absence of database connections. `scolv` runtime is still gated separately on source-level offline/database behavior review and a new one-session authorization; the earlier `scrttv` permission is not transferable.
+
+Three real-event XML files were structurally inspected; primary `gfz2010avtm` has one event, one origin, preferredOrigin matched 1/1, 292 picks, six magnitudes and is pinned by SHA-256 `B81D460B33A6E8A6422742CC7465A2EF85694893F08B3405FF31A74BA32B4EB2`. These results are not evidence of scientific fidelity or `scolv` loader compatibility.
