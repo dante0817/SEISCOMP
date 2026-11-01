@@ -1,9 +1,10 @@
 <#
-Batch 3D-08: prepare a derived SCML 0.14 local event fixture from pinned GFZ QuakeML.
-DEFAULT READ ONLY: source/style metadata and XML structure inspection only.
+Batch 3D-09: prepare a derived SCML 0.14 local event fixture from pinned GFZ QuakeML.
+DEFAULT READ ONLY: source, manifest-verified stylesheet/XSD and XML structure inspection.
 -Convert opts into one new disposable-R10-work file; never runs a GUI or network tool.
-XSLT script/document() and external entities/resolvers are disabled, fail closed.
-The converter may reject genuine QuakeML if its source stylesheet needs extensions.
+Only document('scml_0.14.xsd') from the pinned stylesheet is permitted by a
+one-file memory-backed XmlResolver. XSLT script, DTD and network are prohibited.
+An incompatible or lossy transformation fails closed and is never used for GUI.
 #>
 [CmdletBinding(SupportsShouldProcess=$true,ConfirmImpact='High')]
 param(
@@ -17,6 +18,9 @@ $ErrorActionPreference='Stop'
 $manifestSha='83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74'
 $sourceSha='B81D460B33A6E8A6422742CC7465A2EF85694893F08B3405FF31A74BA32B4EB2'
 $sourceBytes=185646
+$expectedSchemaSha='5E5E77BB60BD9B24AB140EB716027E8D6F041BC3A9EB3BF9B9DCCE13EBDCC0E8'
+$schemaBytesExpected=77453
+$schemaRelative='share\xml\0.14\scml_0.14.xsd'
 $sourceRelative='data\real-events\gfz2010avtm\event.xml'
 $styleRelative='share\xml\0.14\quakeml_1.2__scml_0.14.xsl'
 $outputRelative='work\offline-gui-scolv\converted\gfz2010avtm-event-scml014.xml'
@@ -63,6 +67,23 @@ if ($style.PSIsContainer -or
   throw 'Invalid stylesheet file, symlink or unbounded size'
 }
 $styleSha=(Get-FileHash -LiteralPath $style.FullName -Algorithm SHA256 -ErrorAction Stop).Hash
+$schema=Get-Item -LiteralPath (Join-Path $installRoot $schemaRelative) -ErrorAction Stop
+if ($schema.PSIsContainer -or
+    ($schema.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+    $schema.Length -ne $schemaBytesExpected) {
+  throw 'Invalid SCML 0.14 schema size or reparse-point file'
+}
+$schemaSha=(Get-FileHash -LiteralPath $schema.FullName -Algorithm SHA256 -ErrorAction Stop).Hash
+if ($schemaSha -ine $expectedSchemaSha) {throw 'SCML 0.14 schema hash mismatch'}
+$installManifest=Get-Content -LiteralPath (Join-Path $installRoot 'SHA256SUMS.json') -Raw -ErrorAction Stop |
+  ConvertFrom-Json -ErrorAction Stop
+$schemaManifestEntries=@($installManifest.PSObject.Properties | Where-Object {
+  $_.Name.Replace('/','\') -ieq $schemaRelative
+})
+if ($schemaManifestEntries.Count -ne 1 -or
+    [string]$schemaManifestEntries[0].Value -ine $expectedSchemaSha) {
+  throw 'SCML 0.14 schema missing or mismatched in signed-off install manifest'
+}
 function New-XmlReaderSettings {
   $s=[System.Xml.XmlReaderSettings]::new()
   $s.DtdProcessing=[System.Xml.DtdProcessing]::Prohibit
@@ -128,6 +149,7 @@ function Inspect-StylesheetXml([string]$path) {
   $imports=0
   $scripts=0
   $documents=0
+  $allowedDocuments=0
   try {
     $r=[System.Xml.XmlReader]::Create($path,(New-XmlReaderSettings))
     while ($r.Read()) {
@@ -136,9 +158,19 @@ function Inspect-StylesheetXml([string]$path) {
       if ($r.NamespaceURI -eq $xsltNamespace -and
           $r.LocalName -in @('include','import')) {$imports++}
       if ($r.LocalName -eq 'script') {$scripts++}
+      $elementName=$r.LocalName
+      $elementNamespace=$r.NamespaceURI
       if ($r.HasAttributes) {
         while ($r.MoveToNextAttribute()) {
-          if ($r.Value -match '(?i)\bdocument\s*\(') {$documents++}
+          if ($r.Value -match '(?i)\bdocument\s*\(') {
+            $documents++
+            if ($elementName -ceq 'variable' -and
+                $elementNamespace -ceq $xsltNamespace -and
+                $r.LocalName -ceq 'select' -and
+                $r.Value.Trim() -ceq "document('scml_0.14.xsd')") {
+              $allowedDocuments++
+            }
+          }
         }
         $r.MoveToElement() | Out-Null
       }
@@ -147,11 +179,40 @@ function Inspect-StylesheetXml([string]$path) {
   finally {if ($null -ne $r) {$r.Dispose()}}
   return [pscustomobject]@{
     Root=$name;Namespace=$ns;Imports=$imports;
-    Scripts=$scripts;DocumentCalls=$documents
+    Scripts=$scripts;DocumentCalls=$documents;
+    AllowlistedSchemaDocumentCalls=$allowedDocuments
+  }
+}
+function Inspect-SchemaXml([string]$path) {
+  $reader=$null
+  $rootName=''
+  $rootNs=''
+  $targetNs=''
+  $dependencies=0
+  try {
+    $reader=[System.Xml.XmlReader]::Create($path,(New-XmlReaderSettings))
+    while ($reader.Read()) {
+      if ($reader.NodeType -ne [System.Xml.XmlNodeType]::Element) {continue}
+      if ($reader.Depth -eq 0) {
+        $rootName=$reader.LocalName
+        $rootNs=$reader.NamespaceURI
+        $targetNs=$reader.GetAttribute('targetNamespace')
+      }
+      if ($reader.NamespaceURI -eq 'http://www.w3.org/2001/XMLSchema' -and
+          $reader.LocalName -in @('include','import','redefine','override')) {
+        $dependencies++
+      }
+    }
+  }
+  finally {if ($null -ne $reader) {$reader.Dispose()}}
+  return [pscustomobject]@{
+    Root=$rootName;Namespace=$rootNs;TargetNamespace=$targetNs;
+    Dependencies=$dependencies
   }
 }
 $in=Inspect-EventXml $source.FullName
 $xsl=Inspect-StylesheetXml $style.FullName
+$schemaStructure=Inspect-SchemaXml $schema.FullName
 if ($in.Root -ne 'quakeml' -or $in.EventParameters -ne 1 -or
     $in.Events -ne 1 -or $in.Origins -ne 1 -or
     $in.Picks -ne 292 -or $in.Magnitudes -ne 6 -or
@@ -160,6 +221,16 @@ if ($in.Root -ne 'quakeml' -or $in.EventParameters -ne 1 -or
 }
 if ($xsl.Root -notin @('stylesheet','transform') -or
     $xsl.Namespace -ne $xsltNamespace) {throw 'Unexpected stylesheet root'}
+if ($xsl.Imports -ne 0 -or $xsl.Scripts -ne 0 -or
+    $xsl.DocumentCalls -ne 1 -or $xsl.AllowlistedSchemaDocumentCalls -ne 1) {
+  throw 'XSLT contains an unreviewed include, script or document() reference'
+}
+if ($schemaStructure.Root -ne 'schema' -or
+    $schemaStructure.Namespace -ne 'http://www.w3.org/2001/XMLSchema' -or
+    $schemaStructure.TargetNamespace -ne $scmlNamespace -or
+    $schemaStructure.Dependencies -ne 0) {
+  throw 'Unexpected SCML 0.14 schema root, namespace or external dependencies'
+}
 Write-Output '=== BATCH3D SCOLV QUAKE-TO-SCML PREPARATION ==='
 Write-Output ('VerifiedQuakeML: '+$source.FullName)
 Write-Output ('QuakeMLSHA256: '+$sourceSha)
@@ -169,7 +240,13 @@ Write-Output ('OriginalObjects: events='+$in.Events+' origins='+$in.Origins+
 Write-Output ('InstalledStylesheet: '+$style.FullName)
 Write-Output ('InstalledStylesheetSHA256: '+$styleSha)
 Write-Output ('StylesheetInspection: imports='+$xsl.Imports+' scripts='+$xsl.Scripts+
-  ' documentCalls='+$xsl.DocumentCalls)
+  ' documentCalls='+$xsl.DocumentCalls+
+  ' allowlistedSchemaDocumentCalls='+$xsl.AllowlistedSchemaDocumentCalls)
+Write-Output ('VerifiedLocalSchema: '+$schema.FullName)
+Write-Output ('VerifiedLocalSchemaSHA256: '+$schemaSha)
+Write-Output ('SchemaInspection: dependencies='+$schemaStructure.Dependencies+
+  ' targetNamespace='+$schemaStructure.TargetNamespace)
+Write-Output ('ExternalDocumentPolicy: only manifest-pinned scml_0.14.xsd, memory backed; no network')
 Write-Output ('ProposedOutput: '+(Join-Path $installRoot $outputRelative))
 if (-not $Convert) {
   Write-Output 'BATCH3D_QML_TO_SCML_PREFLIGHT_PASS'
@@ -180,9 +257,6 @@ if ([string]::IsNullOrWhiteSpace($ExpectedStylesheetSha256) -or
     $ExpectedStylesheetSha256 -notmatch '^[0-9a-fA-F]{64}$' -or
     $ExpectedStylesheetSha256 -ine $styleSha) {
   throw 'Conversion requires explicit pinned installed XSLT SHA-256'
-}
-if ($xsl.Imports -ne 0 -or $xsl.Scripts -ne 0 -or $xsl.DocumentCalls -ne 0) {
-  throw 'XSLT references external includes/scripts/document(): separate review required'
 }
 $out=[IO.Path]::GetFullPath((Join-Path $installRoot $outputRelative))
 if (-not $out.StartsWith($installRoot+'\work\', [StringComparison]::OrdinalIgnoreCase)) {
@@ -214,9 +288,81 @@ $styleReader=$null
 $writer=$null
 $createdTmp=$false
 try {
+  # Instantiate an exact-file, memory-backed resolver. Do not use
+  # XmlUrlResolver, XmlSecureResolver, file directory grants or network APIs.
+  $resolverTypeName='P8SeisCompOnlyXsd014ResolverV1'
+  if ($null -eq ($resolverTypeName -as [type])) {
+    $resolverSource=@'
+using System;
+using System.IO;
+using System.Net;
+using System.Xml;
+public sealed class P8SeisCompOnlyXsd014ResolverV1 : XmlResolver
+{
+    private readonly Uri stylesheetUri;
+    private readonly Uri schemaUri;
+    private readonly byte[] schemaBytes;
+
+    public P8SeisCompOnlyXsd014ResolverV1(string stylesheetPath,
+                                          string schemaPath,
+                                          byte[] verifiedSchemaBytes)
+    {
+        if (verifiedSchemaBytes == null || verifiedSchemaBytes.Length != 77453)
+            throw new InvalidOperationException("Unexpected schema byte count");
+        stylesheetUri = new Uri(Path.GetFullPath(stylesheetPath));
+        schemaUri = new Uri(Path.GetFullPath(schemaPath));
+        if (!stylesheetUri.IsFile || !schemaUri.IsFile)
+            throw new InvalidOperationException("Only local filesystem URIs permitted");
+        schemaBytes = (byte[])verifiedSchemaBytes.Clone();
+    }
+
+    public override Uri ResolveUri(Uri baseUri, string relativeUri)
+    {
+        if (baseUri == null ||
+            !baseUri.IsAbsoluteUri ||
+            Uri.Compare(baseUri, stylesheetUri, UriComponents.AbsoluteUri,
+                        UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) != 0 ||
+            !String.Equals(relativeUri, "scml_0.14.xsd", StringComparison.Ordinal))
+            throw new XmlException("XSLT attempted an unapproved resource reference");
+        return schemaUri;
+    }
+
+    public override object GetEntity(Uri absoluteUri, string role, Type ofObjectToReturn)
+    {
+        if (absoluteUri == null ||
+            Uri.Compare(absoluteUri, schemaUri, UriComponents.AbsoluteUri,
+                        UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) != 0 ||
+            (ofObjectToReturn != null &&
+             ofObjectToReturn != typeof(Stream) &&
+             ofObjectToReturn != typeof(object)))
+            throw new XmlException("XSLT attempted an unapproved resource read");
+        return new MemoryStream(schemaBytes, false);
+    }
+
+    public override ICredentials Credentials
+    {
+        set { throw new NotSupportedException("Credentials are prohibited"); }
+    }
+}
+'@
+    Add-Type -TypeDefinition $resolverSource -Language CSharp -ErrorAction Stop
+  }
+  $verifiedSchemaBytes=[IO.File]::ReadAllBytes($schema.FullName)
+  $schemaDigest=[System.Security.Cryptography.SHA256]::Create()
+  try {
+    $readSchemaSha=([BitConverter]::ToString($schemaDigest.ComputeHash($verifiedSchemaBytes))).Replace('-','')
+  }
+  finally {$schemaDigest.Dispose()}
+  if ($verifiedSchemaBytes.Length -ne $schemaBytesExpected -or
+      $readSchemaSha -ine $expectedSchemaSha) {
+    throw 'Schema bytes changed between preflight and conversion'
+  }
+  $resolver=New-Object $resolverTypeName -ArgumentList @(
+    $style.FullName, $schema.FullName, $verifiedSchemaBytes
+  )
   $processor=[System.Xml.Xsl.XslCompiledTransform]::new()
   $styleReader=[System.Xml.XmlReader]::Create($style.FullName,(New-XmlReaderSettings))
-  $xsltSettings=[System.Xml.Xsl.XsltSettings]::new($false,$false)
+  $xsltSettings=[System.Xml.Xsl.XsltSettings]::new($true,$false)
   $processor.Load($styleReader,$xsltSettings,$null)
   $styleReader.Dispose()
   $styleReader=$null
@@ -227,7 +373,7 @@ try {
   $writerSettings.CloseOutput=$true
   $writer=[System.Xml.XmlWriter]::Create($tmp,$writerSettings)
   $createdTmp=$true
-  $processor.Transform($inputReader,$null,$writer,$null)
+  $processor.Transform($inputReader,$null,$writer,$resolver)
   $writer.Dispose()
   $writer=$null
   $inputReader.Dispose()
