@@ -159,3 +159,13 @@ NO_GUI_EXECUTED; NO_FIREWALL_CHANGE
 **Assessment:** `BATCH3D_03_FIREWALL_SCRIPT_HASH_SYNTAX_AND_PREFLIGHT_PASS / EXACT_SCOLV_RULE_MISSING / GUI_NOT_RUN`. Creating the single exact-program outbound block rule requires distinct explicit owner/office IT authorization and elevated interactive `-Apply` confirmation; do not infer consent from successful preflight. Rule configuration alone does not prove traffic-level containment, helper blocking or absence of database connections. `scolv` runtime is still gated separately on source-level offline/database behavior review and a new one-session authorization; the earlier `scrttv` permission is not transferable.
 
 Three real-event XML files were structurally inspected; primary `gfz2010avtm` has one event, one origin, preferredOrigin matched 1/1, 292 picks, six magnitudes and is pinned by SHA-256 `B81D460B33A6E8A6422742CC7465A2EF85694893F08B3405FF31A74BA32B4EB2`. These results are not evidence of scientific fidelity or `scolv` loader compatibility.
+
+## Batch 3D-04 owner authorization for one exact-path scolv firewall rule
+
+2026-11-01 operator answered **`i authorize`** immediately following a specific request for permission to create **one exact-path Windows Firewall outbound block rule** for the verified disposable R10 `bin/scolv.exe`, **provided local office IT policy permits the administrator-level firewall change**. This does not grant permission to start `scolv`, access live data, run services, alter production configuration or modify firewall default policies.
+
+Operator instructions issued: open an elevated Windows PowerShell session, revalidate SHA-256 `FB2E930019C1FE304A355E5EAB928F380D9AE5001D5DDBECD7412A9370B5A44E` for `Ensure-R10ScolvOutboundBlock.ps1`, and run script against exact local `C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10` using `-Apply -Confirm`. Interactive rule-specific confirmation required; if Y: workspace is unavailable in elevated session, stop and report instead of bypassing restrictions. Then verify in non-elevated shell with the default read-only invocation.
+
+**Current evidence:** Script hash and Windows parser PASS and preflight showed `SCOLV_EXACT_PATH_OUTBOUND_BLOCK_RULE_MISSING`. **No administrator `-Apply` output has yet been provided. Do not claim the rule was created.** The permitted rule would cover only its executable path; network egress effectiveness and subprocess containment remain untested. Any future `scolv` GUI session requires **new, separate operator authorization** and source-verified offline/database behavior.
+
+**Checkpoint:** `BATCH3D_04_FIREWALL_RULE_APPLY_AUTHORIZED_CONDITIONAL_ON_OFFICE_POLICY / HOST_APPLY_AND_ACTIVE_SCOPE_VERIFICATION_PENDING / SCOLV_NOT_RUN`.
