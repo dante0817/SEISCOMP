@@ -304,7 +304,7 @@ Write-Output ('VerifiedLocalSchema: '+$schema.FullName)
 Write-Output ('VerifiedLocalSchemaSHA256: '+$schemaSha)
 Write-Output ('SchemaInspection: dependencies='+$schemaStructure.Dependencies+
   ' targetNamespace='+$schemaStructure.TargetNamespace)
-Write-Output ('ExternalDocumentPolicy: only manifest-pinned scml_0.14.xsd, memory backed; no network')
+Write-Output ('ExternalDocumentPolicy: only manifest-pinned stylesheet and scml_0.14.xsd, memory backed; no network')
 Write-Output ('ProposedOutput: '+(Join-Path $installRoot $outputRelative))
 if (-not $Convert) {
   Write-Output 'BATCH3D_QML_TO_SCML_PREFLIGHT_PASS'
