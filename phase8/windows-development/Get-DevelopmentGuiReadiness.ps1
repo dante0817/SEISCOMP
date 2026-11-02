@@ -42,7 +42,7 @@ Write-Output ('ScconfigPresent: True')
 Write-Output ('ModuleDescriptionXMLCount: '+$xmlCount)
 $activeRoot = [Environment]::GetEnvironmentVariable('SEISCOMP_ROOT','Process')
 $activeConfig = [Environment]::GetEnvironmentVariable('SEISCOMP_LOCAL_CONFIG','Process')
-Write-Output ('CurrentSessionRoot: '+$(if ([string]::IsNullOrWhiteSpace($activeRoot)) {'UNSET'} elseif ($activeRoot -ieq $rootPath) {'MATCHES_R9'} else {'DIFFERENT_ROOT'}))
+Write-Output ('CurrentSessionRoot: '+$(if ([string]::IsNullOrWhiteSpace($activeRoot)) {'UNSET'} elseif ($activeRoot -ieq $rootPath) {'MATCHES_SELECTED_ROOT'} else {'DIFFERENT_ROOT'}))
 Write-Output ('CurrentSessionLocalConfig: '+$(if ([string]::IsNullOrWhiteSpace($activeConfig)) {'UNSET'} else {'SET; REVIEW_EFFECTIVE_PRECEDENCE'}))
 
 # These are a small set of known possible override locations, not an exhaustive
@@ -62,7 +62,7 @@ $existingConfig = @($configCandidates | Where-Object { Test-Path -LiteralPath $_
 Write-Output ('CandidateConfigDirsPresent: '+$existingConfig.Count)
 foreach ($candidateDir in $existingConfig) {
     $candidateFiles = @(Get-ChildItem -LiteralPath $candidateDir -File -Recurse -ErrorAction Stop)
-    $kind = if ($candidateDir -ieq (Join-Path $rootPath 'work\config')) { 'R9_LOCAL_CONFIG' } else { 'USER_PROFILE_POSSIBLE_OVERRIDE' }
+    $kind = if ($candidateDir -ieq (Join-Path $rootPath 'work\config')) { 'INSTALL_LOCAL_CONFIG' } else { 'USER_PROFILE_POSSIBLE_OVERRIDE' }
     Write-Output ('  '+$kind+': Files='+$candidateFiles.Count)
 }
 
