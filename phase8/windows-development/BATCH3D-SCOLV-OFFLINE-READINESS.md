@@ -510,3 +510,19 @@ Because it failed **before** bytes could be read, the operator did not verify ne
 **Next:** replace only Y: development converter script, verify 24,861-byte size and SHA-256 using standard read-only byte read, parser PASS; apply per-file trust only where RemoteSigned host/office policy permits; run default read-only preflight; check final/`.tmp` nonexistence; make one user-confirmed local disposable `-Convert` attempt. The output must show `MagnitudeSemanticCheck` and strict `BATCH3D_GFZ_EVENT_SCML014_CONVERSION_STRUCTURAL_PASS` with ConvertedSCMLSize/SHA before an offline scolv launcher can be updated. Do not bypass semantic/reference mismatches. Separate user authorization needed for future GUI runtime.
 
 **Checkpoint:** `BATCH3D_13_XSLT_TRANSFORM_REACHED / 12_RAW_MAGNITUDE_ELEMENTS_AMBIGUOUS / MAGNITUDE_OBJECT_AWARE_VALIDATOR_COMMITTED / VALIDATED_SCML_NOT_YET_CREATED / GUI_NOT_RUN`.
+
+## Batch 3D-14 magnitude object counts PASS; publicID verification fails with ambiguous source
+
+2026-11-02 operator ran updated `Prepare-R10ScolvScmlEvent.ps1` with explicit confirmation. The verified source event had 1 event, 1 origin, 292 picks and 6 magnitudes. This conversion attempt completed the XSLT transformation and reported:
+```text
+ConversionOutputObjects: events=1 origins=1 picks=292 magnitudes=6 magnitudeValueFields=6 rawMagnitudeElements=12 preferredOrigins=1/1
+Missing or duplicate Magnitude publicID
+At .../Prepare-R10ScolvScmlEvent.ps1:172
+```
+Neither `MagnitudeSemanticCheck` nor `BATCH3D_GFZ_EVENT_SCML014_CONVERSION_STRUCTURAL_PASS`, `ConvertedSCMLSize`, or `ConvertedSCMLSHA256` appeared, so **no scientifically or structurally accepted output** exists in the current evidence. The selected XSLT resolver and the magnitude object vs numeric quantity counting now work far enough to reach object-level ID validation.
+
+**Source ambiguity:** `Get-MagnitudeRecords` is invoked on pinned source QuakeML *before* converted SCML, but the error lacks a file label. Function XPath `//*[local-name()='magnitude' and @publicID]` selects all publicID-bearing magnitude nodes, then throws if `id` is blank or `$records.ContainsKey(id)` is true. `$records=@{}` is PowerShell's normally case-insensitive hashtable; XML identifiers are case-sensitive and the implementation could flag distinct case-only IDs as duplicates. This is a *hypothesis*, not proof. It is also possible the input or output genuinely contains repeated/missing IDs. Do not relax identity checks, remove magnitude data, or allow GUI import.
+
+**Next:** bounded read-only XML inspection of the original pinned `data/real-events/gfz2010avtm/event.xml` using XmlReader with DTD prohibited and XmlResolver null; enumerate only six `magnitude` object publicID strings, their direct `type` and `mag/value`, and compare exact ordinal duplicates vs case-insensitive collisions. Inspect final and `.tmp` existence without changing files. If source IDs are valid, improve converter's validation diagnostics to identify source vs converted file and use `StringComparer.Ordinal` for exact unique-ID comparisons; keep strict publicID/type/value preservation and temporary output cleanup; one rerun only after a source-reviewed change. No further scolv GUI authorization.
+
+**Checkpoint:** `BATCH3D_14_XSLT_COMPLETED_MAGNITUDE_OBJECT_COUNTS_PASS / MAGNITUDE_ID_VALIDATION_FAILED_AMBIGUOUS / DERIVED_SCML_NOT_ACCEPTED / GUI_NOT_RUN`.
