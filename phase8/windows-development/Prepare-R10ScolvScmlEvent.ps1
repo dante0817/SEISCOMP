@@ -1,5 +1,5 @@
 <#
-Batch 3D-13: prepare a derived SCML 0.14 local event fixture from pinned GFZ QuakeML.
+Batch 3D-15: prepare a derived SCML 0.14 local event fixture from pinned GFZ QuakeML.
 DEFAULT READ ONLY: source, manifest-verified stylesheet/XSD and XML structure inspection.
 -Convert opts into one new disposable-R10-work file; never runs a GUI or network tool.
 Only the exact pinned stylesheet URI and its document('scml_0.14.xsd')
@@ -99,8 +99,9 @@ function Inspect-EventXml([string]$path) {
   $count=@{EventParameters=0;event=0;origin=0;pick=0;magnitude=0;arrival=0}
   $magnitudeObjects=0
   $magnitudeQuantityFields=0
-  $origins=@{}
-  $picks=@{}
+  # QuakeML/SCML publicIDs are case-sensitive (e.g. netMag.mB vs netMag.mb).
+  $origins=[System.Collections.Generic.Dictionary[string,bool]]::new([StringComparer]::Ordinal)
+  $picks=[System.Collections.Generic.Dictionary[string,bool]]::new([StringComparer]::Ordinal)
   $preferred=[System.Collections.Generic.List[string]]::new()
   $arrivalPickIds=[System.Collections.Generic.List[string]]::new()
   try {
@@ -164,12 +165,17 @@ function Get-MagnitudeRecords([string]$path, [string]$quantityElement) {
     $doc.Load($reader)
   }
   finally {if ($null -ne $reader) {$reader.Dispose()}}
-  $records=@{}
+  # Exact XML publicID comparison: ordinary PowerShell @{} is case-insensitive.
+  $records=[System.Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+  $preferredIds=[System.Collections.Generic.List[string]]::new()
   $nodes=$doc.SelectNodes("//*[local-name()='magnitude' and @publicID]")
   foreach ($node in $nodes) {
     $id=$node.GetAttribute('publicID')
-    if ([string]::IsNullOrWhiteSpace($id) -or $records.ContainsKey($id)) {
-      throw 'Missing or duplicate Magnitude publicID'
+    if ([string]::IsNullOrWhiteSpace($id)) {
+      throw ('Missing Magnitude publicID in '+$path)
+    }
+    if ($records.ContainsKey($id)) {
+      throw ('Duplicate case-sensitive Magnitude publicID in '+$path+': '+$id)
     }
     $quantities=$node.SelectNodes("./*[local-name()='"+$quantityElement+"']/*[local-name()='value']")
     if ($quantities.Count -ne 1) {throw ('Magnitude quantity missing/ambiguous for '+$id)}
@@ -193,10 +199,11 @@ function Get-MagnitudeRecords([string]$path, [string]$quantityElement) {
   foreach ($node in $doc.SelectNodes("//*[local-name()='preferredMagnitudeID']")) {
     $preferredCount++
     $id=$node.InnerText.Trim()
+    $preferredIds.Add($id)
     if ($records.ContainsKey($id)) {$preferredMatched++}
   }
   return [pscustomobject]@{
-    Records=$records;Count=$records.Count;
+    Records=$records;Count=$records.Count;PreferredIDs=$preferredIds;
     PreferredCount=$preferredCount;PreferredMatched=$preferredMatched
   }
 }
@@ -271,6 +278,11 @@ function Inspect-SchemaXml([string]$path) {
 $in=Inspect-EventXml $source.FullName
 $xsl=Inspect-StylesheetXml $style.FullName
 $schemaStructure=Inspect-SchemaXml $schema.FullName
+$originalMag=Get-MagnitudeRecords $source.FullName 'mag'
+if ($originalMag.Count -ne 6 -or
+    $originalMag.PreferredMatched -ne $originalMag.PreferredCount) {
+  throw 'Source Magnitude publicIDs or references failed exact-case integrity validation'
+}
 if ($in.Root -ne 'quakeml' -or $in.EventParameters -ne 1 -or
     $in.Events -ne 1 -or $in.Origins -ne 1 -or
     $in.Picks -ne 292 -or $in.Magnitudes -ne 6 -or
@@ -295,6 +307,8 @@ Write-Output ('QuakeMLSHA256: '+$sourceSha)
 Write-Output ('OriginalObjects: events='+$in.Events+' origins='+$in.Origins+
   ' picks='+$in.Picks+' magnitudes='+$in.Magnitudes+
   ' preferredOrigins='+$in.PreferredMatched+'/'+$in.PreferredRefs)
+Write-Output ('OriginalMagnitudeIDsExactCasePASS: '+$originalMag.Count+
+  ' preferred='+$originalMag.PreferredMatched+'/'+$originalMag.PreferredCount)
 Write-Output ('InstalledStylesheet: '+$style.FullName)
 Write-Output ('InstalledStylesheetSHA256: '+$styleSha)
 Write-Output ('StylesheetInspection: imports='+$xsl.Imports+' scripts='+$xsl.Scripts+
@@ -490,13 +504,24 @@ public sealed class P8SeisCompTwoFileMemoryResolverV4 : XmlResolver
 
   # Check the actual magnitude public objects, not all XML tags named
   # 'magnitude': SCML RealQuantity uses a nested same-name element.
-  $originalMag=Get-MagnitudeRecords $source.FullName 'mag'
   $convertedMag=Get-MagnitudeRecords $tmp 'magnitude'
   $magnitudesPreserved=($originalMag.Count -eq 6 -and
     $convertedMag.Count -eq 6 -and
     $originalMag.PreferredCount -eq $originalMag.PreferredMatched -and
     $convertedMag.PreferredCount -eq $convertedMag.PreferredMatched -and
     $originalMag.PreferredCount -eq $convertedMag.PreferredCount)
+  if ($originalMag.PreferredIDs.Count -ne $convertedMag.PreferredIDs.Count) {
+    $magnitudesPreserved=$false
+  }
+  else {
+    for ($k=0; $k -lt $originalMag.PreferredIDs.Count; $k++) {
+      if (-not [StringComparer]::Ordinal.Equals(
+        $originalMag.PreferredIDs[$k],$convertedMag.PreferredIDs[$k])) {
+        Write-Warning 'Converted preferredMagnitudeID differs from pinned QuakeML'
+        $magnitudesPreserved=$false
+      }
+    }
+  }
   foreach ($id in $originalMag.Records.Keys) {
     if (-not $convertedMag.Records.ContainsKey($id)) {
       Write-Warning ('Converted Magnitude publicID not preserved: '+$id)
