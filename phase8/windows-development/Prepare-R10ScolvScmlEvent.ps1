@@ -153,6 +153,53 @@ function Inspect-EventXml([string]$path) {
     ArrivalPickRefs=$arrivalPickIds.Count;ArrivalPickMatched=$pickMatches
   }
 }
+
+function Get-MagnitudeRecords([string]$path, [string]$quantityElement) {
+  # Secure XML loading; select only publicID-bearing Magnitude objects.
+  $doc=[System.Xml.XmlDocument]::new()
+  $doc.XmlResolver=$null
+  $reader=$null
+  try {
+    $reader=[System.Xml.XmlReader]::Create($path,(New-XmlReaderSettings))
+    $doc.Load($reader)
+  }
+  finally {if ($null -ne $reader) {$reader.Dispose()}}
+  $records=@{}
+  $nodes=$doc.SelectNodes("//*[local-name()='magnitude' and @publicID]")
+  foreach ($node in $nodes) {
+    $id=$node.GetAttribute('publicID')
+    if ([string]::IsNullOrWhiteSpace($id) -or $records.ContainsKey($id)) {
+      throw 'Missing or duplicate Magnitude publicID'
+    }
+    $quantities=$node.SelectNodes("./*[local-name()='"+$quantityElement+"']/*[local-name()='value']")
+    if ($quantities.Count -ne 1) {throw ('Magnitude quantity missing/ambiguous for '+$id)}
+    $typeNode=$node.SelectSingleNode("./*[local-name()='type']")
+    if ($null -eq $typeNode -or
+        [string]::IsNullOrWhiteSpace($typeNode.InnerText)) {
+      throw ('Magnitude type missing for '+$id)
+    }
+    $value=[double]::Parse(
+      $quantities[0].InnerText.Trim(),
+      [System.Globalization.NumberStyles]::Float,
+      [System.Globalization.CultureInfo]::InvariantCulture
+    )
+    if ([double]::IsNaN($value) -or [double]::IsInfinity($value)) {
+      throw ('Non-finite magnitude for '+$id)
+    }
+    $records[$id]=[pscustomobject]@{Type=$typeNode.InnerText.Trim();Value=$value}
+  }
+  $preferredCount=0
+  $preferredMatched=0
+  foreach ($node in $doc.SelectNodes("//*[local-name()='preferredMagnitudeID']")) {
+    $preferredCount++
+    $id=$node.InnerText.Trim()
+    if ($records.ContainsKey($id)) {$preferredMatched++}
+  }
+  return [pscustomobject]@{
+    Records=$records;Count=$records.Count;
+    PreferredCount=$preferredCount;PreferredMatched=$preferredMatched
+  }
+}
 function Inspect-StylesheetXml([string]$path) {
   $r=$null
   $name=''
