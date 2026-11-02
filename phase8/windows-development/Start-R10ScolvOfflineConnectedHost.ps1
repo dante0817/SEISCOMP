@@ -1,9 +1,10 @@
 <#
-Batch 3D-05: fail-closed original native Windows scolv offline GUI smoke.
+Batch 3D-16: fail-closed original native Windows scolv offline GUI smoke with pinned native SCML.
 DEFAULT READ-ONLY: only -Run enables local fixture staging and a GUI launch.
 Separate specific operator authorization is required. The host remains connected:
 exact program rule scope does NOT prove actual egress blocking or helper isolation.
-The three pinned XML inputs were operator-inspected but are not science-qualified.
+Original QuakeML was converted into structurally validated native SCML 0.14.
+This fixture is not scientifically or operationally qualified.
 #>
 [CmdletBinding(SupportsShouldProcess=$true)]
 param(
@@ -23,15 +24,15 @@ $ErrorActionPreference='Stop'
 $expectedManifest='83D6E625B76AFF60864C3FE58FC07C86C40CF2D7705B0B8151AE212EB451CF74'
 $ruleName='SeisComP-R10Test-scolv.exe-OutboundBlock'
 $inputs=@(
-  @{Name='inventory';Relative='data\phase5b6\gfz2010avtm\inputs\inventory-expanded.xml';
+  @{Name='inventory';Source='Workspace';Relative='data\phase5b6\gfz2010avtm\inputs\inventory-expanded.xml';
     Bytes=196426;Hash='FE208FA1BD82F8FC87B6461453139FB21985DD1A20E9CCE3F12D162E5A4D0010';
     Stage='inventory-expanded.xml'},
-  @{Name='config';Relative='data\phase5b6\gfz2010avtm\inputs\config-expanded.xml';
+  @{Name='config';Source='Workspace';Relative='data\phase5b6\gfz2010avtm\inputs\config-expanded.xml';
     Bytes=13309;Hash='98E56386BFB3DB4C58AAF89026DA31B1272153535B836FF73BEC1C8CF35556CD';
     Stage='config-expanded.xml'},
-  @{Name='event';Relative='data\real-events\gfz2010avtm\event.xml';
-    Bytes=185646;Hash='B81D460B33A6E8A6422742CC7465A2EF85694893F08B3405FF31A74BA32B4EB2';
-    Stage='event.xml'}
+  @{Name='event';Source='DisposableConverted';Relative='work\offline-gui-scolv\converted\gfz2010avtm-event-scml014.xml';
+    Bytes=203466;Hash='1E8448B8136B1CA7DEFBA7C0409D4B9881DBD4AAB6249546BD1C70631B586169';
+    Stage='event-scml014.xml'}
 )
 $rootItem=Get-Item -LiteralPath $Root -ErrorAction Stop
 if (-not $rootItem.PSIsContainer) {throw 'Test root must be directory'}
@@ -91,7 +92,26 @@ $xmlCount=@(Get-ChildItem -LiteralPath $descriptions -File -Filter '*.xml' -Erro
 if ($xmlCount -ne 131) {throw 'Unexpected GUI module description count'}
 $verifiedSources=@{}
 foreach ($input in $inputs) {
-  $path=Join-Path $workspacePath $input.Relative
+  if ($input.Source -eq 'DisposableConverted') {
+    $path=[IO.Path]::GetFullPath((Join-Path $installRoot $input.Relative))
+    $safeConvertedDir=Join-Path $installRoot 'work\offline-gui-scolv\converted'
+    if ([IO.Path]::GetDirectoryName($path) -ine $safeConvertedDir) {
+      throw 'Derived SCML source is outside the exact disposable converted directory'
+    }
+    $cursor=[IO.Path]::GetDirectoryName($path)
+    while ($cursor.Length -gt $installRoot.Length) {
+      $parent=Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
+      if (-not $parent.PSIsContainer -or
+          ($parent.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Derived SCML source has a non-directory or reparse-point ancestor'
+      }
+      $cursor=[IO.Path]::GetDirectoryName($cursor)
+    }
+  }
+  elseif ($input.Source -eq 'Workspace') {
+    $path=Join-Path $workspacePath $input.Relative
+  }
+  else {throw ('Unsupported input source class: '+$input.Name)}
   $source=Get-Item -LiteralPath $path -ErrorAction Stop
   if ($source.PSIsContainer -or
       ($source.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
@@ -107,7 +127,9 @@ Write-Output ('Executable: '+$exe)
 Write-Output ('Manifest: '+$expectedManifest)
 Write-Output 'DISPOSABLE_RECEIPT_AND_QT_RUNTIME_HASHES_PASS'
 Write-Output ('DescriptionXMLCount: '+$xmlCount)
-Write-Output 'GFZ2010AVTM_INVENTORY_CONFIG_EVENT_SHA256_AND_SIZE_PASS'
+Write-Output 'GFZ2010AVTM_INVENTORY_CONFIG_AND_DERIVED_SCML014_SHA256_AND_SIZE_PASS'
+Write-Output 'SCOLV_EVENT_INPUT_IS_STRUCTURALLY_VALIDATED_SCML014_NOT_ORIGINAL_QUAKEML'
+Write-Output 'EVENT_SCIENTIFIC_FIDELITY_AND_OFFLINE_GUI_IMPORT_STILL_UNQUALIFIED'
 if (-not $Run) {
   Write-Output 'BATCH3D_SCOLV_OFFLINE_GUI_SOURCE_PREFLIGHT_PASS'
   Write-Output 'GUI_NOT_RUN; FIREWALL_NOT_CHANGED; NO_NETWORK_PROBE; NO_FIXTURE_COPIES_CREATED'
@@ -266,7 +288,7 @@ try {
     '--inventory-db',('"'+$staged['inventory']+'"'),
     '--config-db',('"'+$staged['config']+'"'),
     '--input-file',('"'+$staged['event']+'"'))
-  Write-Output 'SCOLV_LAUNCH_REQUESTED: --offline --inventory-db <pinned XML> --config-db <pinned XML> --input-file <pinned XML>'
+  Write-Output 'SCOLV_LAUNCH_REQUESTED: --offline --inventory-db <pinned XML> --config-db <pinned XML> --input-file <pinned derived SCML014>'
   Write-Output 'DO_NOT_ENABLE_LIVE_ACQUISITION_MESSAGING_DATABASES_OR_SERVICES'
   $proc=Start-Process -FilePath $exe -ArgumentList $argsList -WorkingDirectory $installRoot -PassThru -Wait -RedirectStandardOutput $stdout -RedirectStandardError $stderr -ErrorAction Stop
   Write-Output ('SCOLV_PROCESS_EXIT: '+$proc.ExitCode)
