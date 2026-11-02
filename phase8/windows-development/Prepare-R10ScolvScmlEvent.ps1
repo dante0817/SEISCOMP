@@ -484,12 +484,46 @@ public sealed class P8SeisCompTwoFileMemoryResolverV4 : XmlResolver
   Write-Output ('ConversionOutputObjects: events='+$converted.Events+
     ' origins='+$converted.Origins+' picks='+$converted.Picks+
     ' magnitudes='+$converted.Magnitudes+
+    ' magnitudeValueFields='+$converted.MagnitudeValueFields+
+    ' rawMagnitudeElements='+$converted.RawMagnitudeElements+
     ' preferredOrigins='+$converted.PreferredMatched+'/'+$converted.PreferredRefs)
+
+  # Check the actual magnitude public objects, not all XML tags named
+  # 'magnitude': SCML RealQuantity uses a nested same-name element.
+  $originalMag=Get-MagnitudeRecords $source.FullName 'mag'
+  $convertedMag=Get-MagnitudeRecords $tmp 'magnitude'
+  $magnitudesPreserved=($originalMag.Count -eq 6 -and
+    $convertedMag.Count -eq 6 -and
+    $originalMag.PreferredCount -eq $originalMag.PreferredMatched -and
+    $convertedMag.PreferredCount -eq $convertedMag.PreferredMatched -and
+    $originalMag.PreferredCount -eq $convertedMag.PreferredCount)
+  foreach ($id in $originalMag.Records.Keys) {
+    if (-not $convertedMag.Records.ContainsKey($id)) {
+      Write-Warning ('Converted Magnitude publicID not preserved: '+$id)
+      $magnitudesPreserved=$false
+      continue
+    }
+    $a=$originalMag.Records[$id]
+    $b=$convertedMag.Records[$id]
+    if ($a.Type -cne $b.Type -or
+        [Math]::Abs($a.Value-$b.Value) -gt 0.00000001) {
+      Write-Warning ('Converted Magnitude type/value differs for: '+$id)
+      $magnitudesPreserved=$false
+    }
+  }
+  Write-Output ('MagnitudeSemanticCheck: sourceObjects='+$originalMag.Count+
+    ' convertedObjects='+$convertedMag.Count+
+    ' sourcePreferred='+$originalMag.PreferredMatched+'/'+$originalMag.PreferredCount+
+    ' convertedPreferred='+$convertedMag.PreferredMatched+'/'+$convertedMag.PreferredCount+
+    ' preserved='+$magnitudesPreserved)
   if ($converted.Root -ne 'seiscomp' -or
       $converted.Namespace -ne $scmlNamespace -or
       $converted.EventParameters -ne 1 -or
       $converted.Events -ne 1 -or $converted.Origins -ne 1 -or
       $converted.Picks -ne 292 -or $converted.Magnitudes -ne 6 -or
+      $converted.MagnitudeValueFields -ne 6 -or
+      $converted.RawMagnitudeElements -ne 12 -or
+      -not $magnitudesPreserved -or
       $converted.PreferredRefs -ne 1 -or $converted.PreferredMatched -ne 1 -or
       $converted.ArrivalPickMatched -ne $converted.ArrivalPickRefs) {
     throw 'Converted XML object counts/namespace/references not fully preserved; do not use'
