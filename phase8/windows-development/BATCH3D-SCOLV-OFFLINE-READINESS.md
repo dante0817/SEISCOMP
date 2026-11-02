@@ -480,3 +480,13 @@ NO CONVERSION; NO FILES MODIFIED; NO GUI EXECUTED
 **Next:** operator replaces only the Y: development script, verifies 20,908-byte size/new SHA256 through standard file-stream (intermittent Get-FileHash access denial on Y:), checks Windows parser and per-file RemoteSigned trust if necessary, runs default read-only preflight, then one consent-gated `-Convert` attempt only to local disposable work. If converter fails again, inspect nested exception; do not widen resource set. No further scolv GUI tests without separately obtaining one-session approval.
 
 **Checkpoint:** `BATCH3D_12_XSLT_STYLESHEET_URI_ROOT_CAUSE / V4_TWO_RESOURCE_MEMORY_ONLY_FIX_SOURCE_READY / HOST_CONVERSION_UNTESTED / GUI_NOT_RUN`.
+
+## Batch 3D-12 revised V4 converter not host-verified: read handle Access Denied
+
+2026-11-02 08:44 Asia/Manila operator attempted initial verification of the latest `Prepare-R10ScolvScmlEvent.ps1` (V4 GitHub source-only SHA-256 `DE1722072D4A278E887EF89056E9F34A8DBA06426D3890F232332E4DFBD0BD40`, 20,908 ASCII bytes). The first read operation `[IO.File]::Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)` threw `System.UnauthorizedAccessException: Access to the path ... is denied` at wrapper command line 17.
+
+Because it failed **before** bytes could be read, the operator did not verify new V4 script bytes/hash, parse source, run default preflight, invoke C# Add-Type or attempt another conversion. No new SCML output, scientific/structural qualification, or GUI session is reported. This is not proof of an XSLT/SeisComP error or of intentional Windows endpoint-security policy enforcement; cause unestablished. Previous Y: scripts had intermittent Get-FileHash denials with other read mechanisms sometimes succeeding, but this is now an actual File.Open read denial.
+
+**Next:** one bounded read-only Windows diagnostic comparing script metadata/first-line reads/ACL/Zone.Identifier and known-good same-directory script. Do not retry via alternative names/locations as an endpoint-policy workaround, change ACL, disable AV or elevate. If file still denies normal read, stop for office IT/security file-access review. Once stable legitimate read is restored, revalidate original V4 exact SHA before executing. The approved scope remains one derived SCML XML conversion; another scolv GUI session requires separate operator authorization.
+
+**Checkpoint:** `BATCH3D_12_V4_LOCAL_READ_DENIED / HASH_AND_PARSER_NOT_REACHED / NO_CONVERSION / SCOLV_GUI_NOT_RUN`.
