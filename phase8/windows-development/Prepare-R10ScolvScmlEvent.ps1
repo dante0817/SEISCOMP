@@ -1,5 +1,5 @@
 <#
-Batch 3D-12: prepare a derived SCML 0.14 local event fixture from pinned GFZ QuakeML.
+Batch 3D-13: prepare a derived SCML 0.14 local event fixture from pinned GFZ QuakeML.
 DEFAULT READ ONLY: source, manifest-verified stylesheet/XSD and XML structure inspection.
 -Convert opts into one new disposable-R10-work file; never runs a GUI or network tool.
 Only the exact pinned stylesheet URI and its document('scml_0.14.xsd')
@@ -97,6 +97,8 @@ function Inspect-EventXml([string]$path) {
   $rootName=''
   $rootNs=''
   $count=@{EventParameters=0;event=0;origin=0;pick=0;magnitude=0;arrival=0}
+  $magnitudeObjects=0
+  $magnitudeQuantityFields=0
   $origins=@{}
   $picks=@{}
   $preferred=[System.Collections.Generic.List[string]]::new()
@@ -111,6 +113,13 @@ function Inspect-EventXml([string]$path) {
         $rootNs=$r.NamespaceURI
       }
       if ($count.ContainsKey($name)) {$count[$name]++}
+      if ($name -eq 'magnitude') {
+        # SCML can use a publicID-bearing object plus a nested magnitude quantity.
+        if ([string]::IsNullOrWhiteSpace($r.GetAttribute('publicID'))) {
+          $magnitudeQuantityFields++
+        }
+        else {$magnitudeObjects++}
+      }
       if ($name -eq 'origin') {
         $id=$r.GetAttribute('publicID')
         if (-not [string]::IsNullOrWhiteSpace($id)) {$origins[$id]=$true}
@@ -137,8 +146,9 @@ function Inspect-EventXml([string]$path) {
   return [pscustomobject]@{
     Root=$rootName;Namespace=$rootNs;
     EventParameters=$count.EventParameters;Events=$count.event;
-    Origins=$count.origin;Picks=$count.pick;Magnitudes=$count.magnitude;
-    Arrivals=$count.arrival;
+    Origins=$count.origin;Picks=$count.pick;
+    Magnitudes=$magnitudeObjects;MagnitudeValueFields=$magnitudeQuantityFields;
+    RawMagnitudeElements=$count.magnitude;Arrivals=$count.arrival;
     PreferredRefs=$preferred.Count;PreferredMatched=$originMatches;
     ArrivalPickRefs=$arrivalPickIds.Count;ArrivalPickMatched=$pickMatches
   }
