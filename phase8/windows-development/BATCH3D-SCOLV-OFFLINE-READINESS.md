@@ -540,3 +540,26 @@ Neither `MagnitudeSemanticCheck` nor `BATCH3D_GFZ_EVENT_SCML014_CONVERSION_STRUC
 **Next bounded operator action:** update only Y: development script from feature branch, verify exact 26,261 bytes and SHA-256 via legitimate read-only byte stream/Get-Content, run Windows PowerShell Parser.ParseInput. If office policy permits and ZoneId=3 is on the verified script under RemoteSigned, per-file Unblock-File; default read-only preflight should newly show `OriginalMagnitudeIDsExactCasePASS: 6 preferred=...`. Before a single user-confirmed derived-file conversion, check that both final and `.tmp` output paths are absent; then use pinned installed 0.14 XSLT hash `48D7A0CD04AD2E716D94EF3180D0E60DDEDC5375BD0A16460E08436AD843BCD0`. Stop on any structural or semantic mismatch. No scolv GUI session authorized.
 
 **Checkpoint:** `BATCH3D_15_SOURCE_MAGNITUDES_EXACT_CASE_UNIQUE / POWERHELL_HASHTABLE_CASE_COLLISION_FIXED_IN_SOURCE / CONVERSION_NOT_YET_VALIDATED / SCOLV_GUI_NOT_RUN`.
+
+## Batch 3D-16 converted GFZ event SCML 0.14 passes structural check; launcher repinned
+
+2026-11-02 operator reported successful `Prepare-R10ScolvScmlEvent.ps1` conversion after exact-case GFZ magnitude ID handling. Operator output:
+```text
+ConversionOutputObjects: events=1 origins=1 picks=292 magnitudes=6 magnitudeValueFields=6 rawMagnitudeElements=12 preferredOrigins=1/1
+MagnitudeSemanticCheck: sourceObjects=6 convertedObjects=6 sourcePreferred=1/1 convertedPreferred=1/1 preserved=True
+ConvertedSCML: C:\Users\dantesoneja\AppData\Local\SeisComP-Scconfig-Test-R10\work\offline-gui-scolv\converted\gfz2010avtm-event-scml014.xml
+ConvertedSCMLSize: 203466
+ConvertedSCMLSHA256: 1E8448B8136B1CA7DEFBA7C0409D4B9881DBD4AAB6249546BD1C70631B586169
+BATCH3D_GFZ_EVENT_SCML014_CONVERSION_STRUCTURAL_PASS
+NO_GUI_EXECUTED; NO_FIREWALL_OR_NETWORK_CHANGE; SCIENTIFIC_FIDELITY_NOT_QUALIFIED
+```
+
+**Confirmed milestone:** a derived, pinned native SCML 0.14 EventParameters fixture was created on the disposable host NTFS. It contains one event/origin, 292 picks, 6 actual magnitudes and 6 nested quantity elements. The converter verified case-sensitive magnitude IDs, types and numeric values preserved, preferred origin and magnitude references matched. Source QuakeML, XSLT and schema unchanged. This is an XML structural/semantic conversion PASS, **not** a GUI-import PASS, full scientific equivalence, schema/behavioral validation of scolv, or network isolation.
+
+**Launcher development patch:** Updated `phase8/windows-development/Start-R10ScolvOfflineConnectedHost.ps1` (GitHub source-only) to replace the prior direct QuakeML `--input-file` with **only** the 203,466-byte, SHA256-pinned `work\offline-gui-scolv\converted\gfz2010avtm-event-scml014.xml` local source, staged as a distinct `inputs\gfz2010avtm\event-scml014.xml`. Inventory and configuration stay as their original workspace-pinned 196,426 / 13,309 byte XML inputs. The launcher now distinguishes `Source='Workspace'` vs `Source='DisposableConverted'`, requires the derived file's exact disposable converted directory with no reparse-point ancestors, and verifies its byte size + SHA-256 on every preflight. The runtime-specific `-Run` branch is **unchanged** as to authorization reference, non-elevated environment review, exact active outbound firewall program rule, no existing scolv process, local staging, explicit offline database/messaging CLI flags, stdout/Qt stderr capture, and restore of process environment. It uses the **new staged SCML filename** and does not overwrite the old QuakeML staging file.
+
+**New script SHA-256:** `20B0D7847D4BC7148EF3CB7A4802859316C766509E070280BC6212D11E589282`, **15,237 ASCII bytes**, GitHub read-back byte-equality PASS, self-tested source SHA algorithm + targeted static safeguards PASS. **Host Windows Parser.ParseFile, new script default read-only preflight, new source file SHA check and actual scolv GUI import have NOT YET RUN.** Prior first operator authorization was consumed on the failed QuakeML import attempt; no new GUI session has been authorized.
+
+**Next:** operator saves updated launcher in `Y:\OFFICE\IPP\2026\PROG\SEISCOMP\SeisComP_Phase5A_AI_Coder_Pack\phase8\windows-development\Start-R10ScolvOfflineConnectedHost.ps1`, confirms 15,237-byte length and expected SHA-256 using standard read-only byte access (Y: intermittent denial possible) and Windows Parser.ParseInput. If required, handle per-file ZoneId=3 trust only within effective policy and explicit office permission. Run **default no-`-Run` read-only preflight** with the known disposable R10 `-Root` and workspace `-WorkspaceRoot`. It must report `GFZ2010AVTM_INVENTORY_CONFIG_AND_DERIVED_SCML014_SHA256_AND_SIZE_PASS`, `BATCH3D_SCOLV_OFFLINE_GUI_SOURCE_PREFLIGHT_PASS`, `GUI_NOT_RUN`. If the host preflight passes, request **new separate one-session approval** before any GUI execution. Do not claim scolv is a third GUI PASS prematurely.
+
+**Checkpoint:** `BATCH3D_16_GFZ_DERIVED_SCML014_STRUCTURAL_PASS / SCOLV_GUARDED_LAUNCHER_SOURCE_REPINNED / WINDOWS_PREFLIGHT_PENDING / NEW_GUI_AUTH_REQUIRED`.
